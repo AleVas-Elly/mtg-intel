@@ -1,0 +1,52 @@
+name: grab
+
+# Phase 0 raw grabber (spec §6). Later runs act as retries; unchanged files are skipped (D3, D19).
+on:
+  schedule:
+    # UTC. Cardmarket price guide ~00:45, MTGJSON ~06:15, Cardmarket product lists ~09:20.
+    # :17 past the hour: GitHub delays or drops jobs scheduled on the hour.
+    - cron: "17 2,8,14 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: grab
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  grab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # CardTrader collection is paced at 1 request/second (D31)
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run mtg-intel grab
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DATASET: ${{ secrets.HF_DATASET }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # CardTrader sources report "disabled" until both are set; APPROVED only after
+          # CardTrader OKs market API access (spec D30).
+          CARDTRADER_TOKEN: ${{ secrets.CARDTRADER_TOKEN }}
+          CARDTRADER_APPROVED: ${{ vars.CARDTRADER_APPROVED }}
+          MTG_INTEL_STAGING: ${{ runner.temp }}/staging
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"
+      # Phase 2 tables (D39): runs even when the grab reported a problem, so tables stay current.
+      - run: uv run mtg-intel build-tables
+        if: success() || failure()
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DATASET: ${{ secrets.HF_DATASET }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MTG_INTEL_TABLES_STAGING: ${{ runner.temp }}/tables-staging
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"

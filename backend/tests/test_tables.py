@@ -1,0 +1,298 @@
+import gzip
+import json
+import lzma
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pyarrow as pa
+import pyarrow.parquet as pq
+import zstandard
+
+from mtg_intel.tables import build, mycards, prices, query, reference
+
+NOW = datetime(2026, 10, 19, 4, 0, tzinfo=UTC)
+
+
+def scryfall_card(**overrides):
+    card = {
+        "id": "sf-1",
+        "oracle_id": "or-1",
+        "name": "Elvish Archdruid",
+        "set": "fdn",
+        "set_name": "Foundations",
+        "set_type": "core",
+        "collector_number": "219",
+        "rarity": "rare",
+        "released_at": "2024-11-15",
+        "lang": "en",
+        "layout": "normal",
+        "border_color": "black",
+        "frame": "2015",
+        "finishes": ["nonfoil", "foil"],
+        "cardmarket_id": 795130,
+        "tcgplayer_id": 589337,
+        "games": ["paper", "arena"],
+        "unknown_extra_field": {"nested": True},  # Scryfall adds fields; we must not break
+    }
+    card.update(overrides)
+    return card
+
+
+def write_scryfall(path: Path, cards: list[dict]) -> Path:
+    with gzip.open(path, "wt") as f:
+        for card in cards:
+            f.write(json.dumps(card) + "\n")
+    return path
+
+
+def write_zst(path: Path, text: str) -> Path:
+    path.write_bytes(zstandard.ZstdCompressor().compress(text.encode()))
+    return path
+
+
+def write_identifiers(path: Path, rows: list[dict]) -> Path:
+    pq.write_table(pa.Table.from_pylist(rows), path)
+    return path
+
+
+def write_catalog(path: Path, blueprints: list[dict]) -> Path:
+    lines = [
+        {"path": "/games", "params": {}, "status": 200, "error": None, "body": "[]"},
+        {"path": "/blueprints/export", "params": {"expansion_id": 1}, "status": 200, "error": None,
+         "body": json.dumps(blueprints)},
+    ]
+    return write_zst(path, "\n".join(json.dumps(line) for line in lines) + "\n")
+
+
+def write_price_guide(path: Path, created_at: str, rows: list[dict]) -> Path:
+    return write_zst(path, json.dumps({"version": 1, "createdAt": created_at, "priceGuides": rows}))
+
+
+def write_mtgjson(path: Path, data: dict) -> Path:
+    path.write_bytes(lzma.compress(json.dumps({"meta": {}, "data": data}).encode()))
+    return path
+
+
+# --- reference ---------------------------------------------------------------------------------
+
+
+def test_cards_get_special_version_tags(tmp_path: Path):
+    src = write_scryfall(
+        tmp_path / "cards.jsonl.gz",
+        [
+            scryfall_card(),
+            scryfall_card(id="sf-2", collector_number="300", border_color="borderless",
+                          frame_effects=["showcase", "legendary"], promo_types=["serialized", "boosterfun"]),
+            scryfall_card(id="sf-3", collector_number="1", frame="1997", released_at="2023-02-03"),
+            scryfall_card(id="sf-4", collector_number="2", frame="1997", released_at="1999-01-01"),
+            scryfall_card(id="sf-digital", games=["arena"]),
+        ],
+    )
+
+    cards = reference.build_cards(src).to_pylist()
+
+    tags = {c["scryfall_id"]: c["special_tags"] for c in cards}
+    assert tags == {
+        "sf-1": [],
+        "sf-2": ["borderless", "showcase", "serialized"],
+        "sf-3": ["retroframe"],  # old frame on a modern card
+        "sf-4": [],  # an actual 1999 card is not a retro printing
+    }
+
+
+def test_card_ids_link_all_marketplaces(tmp_path: Path):
+    cards = reference.build_cards(write_scryfall(tmp_path / "c.jsonl.gz", [scryfall_card()]))
+    ids = write_identifiers(tmp_path / "ids.parquet", [
+        {"uuid": "uuid-1", "scryfallId": "sf-1", "mcmId": "795130"},
+        {"uuid": "uuid-other", "scryfallId": "sf-not-paper", "mcmId": None},
+    ])
+    catalog = write_catalog(tmp_path / "bp.jsonl.zst", [
+        {"id": 307063, "scryfall_id": "sf-1", "card_market_ids": [795130]},
+        {"id": 999, "scryfall_id": None, "card_market_ids": []},  # sealed product: no card
+    ])
+
+    links = reference.build_card_ids(cards, ids, catalog).to_pylist()
+
+    assert sorted((r["source"], r["external_id"]) for r in links) == [
+        ("cardmarket", "795130"),  # same ID from Scryfall, MTGJSON and CardTrader: kept once
+        ("cardtrader", "307063"),
+        ("mtgjson", "uuid-1"),
+        ("tcgplayer", "589337"),
+    ]
+
+
+# --- prices ------------------------------------------------------------------------------------
+
+
+def test_cardmarket_prices_use_cardmarkets_own_day(tmp_path: Path):
+    guide = write_price_guide(tmp_path / "g.json.zst", "2026-10-18T01:30:00+0200", [
+        {"idProduct": 795130, "idCategory": 1, "avg": 0.7, "low": 0.15, "trend": 0.65,
+         "avg1": 0.6, "avg7": 0.66, "avg30": 0.7, "trend-foil": 0.98, "low-foil": 0.3},
+    ])
+
+    day, table = prices.cardmarket_prices(guide)
+
+    row = table.to_pylist()[0]
+    assert day == date(2026, 10, 18)  # 23:30 UTC the day before, but Cardmarket's 18 October
+    assert row["created_at"] == datetime(2026, 10, 17, 23, 30, tzinfo=UTC)
+    assert (row["trend"], row["trend_foil"], row["avg_foil"]) == (0.65, 0.98, None)
+
+
+def test_mtgjson_prices_are_split_by_day_and_skip_known_days(tmp_path: Path):
+    src = write_mtgjson(tmp_path / "AllPrices.json.xz", {
+        "uuid-1": {
+            "paper": {"cardmarket": {"retail": {"foil": {"2026-10-16": 1.0, "2026-10-17": 1.1}},
+                                     "buylist": {}, "currency": "EUR"}},
+            "mtgo": {"cardhoarder": {"retail": {"normal": {"2026-10-17": 0.02}}, "currency": "USD"}},
+        },
+    })
+    written: dict[date, list] = {}
+
+    days = prices.mtgjson_prices(src, tmp_path / "work", lambda d, t: written.update({d: t.to_pylist()}),
+                                 skip_days={date(2026, 10, 16)})
+
+    assert days == [date(2026, 10, 17)]
+    assert written[date(2026, 10, 17)] == [{
+        "price_date": date(2026, 10, 17), "uuid": "uuid-1", "provider": "cardmarket",
+        "price_type": "retail", "finish": "foil", "currency": "EUR", "price": 1.1,
+    }]  # MTGO prices are left out
+
+
+# --- checks ------------------------------------------------------------------------------------
+
+
+def test_check_days_reports_gaps_stale_and_shrinking():
+    counts = {"2026-10-14": 1000, "2026-10-15": 1000, "2026-10-17": 500}
+    problems = build.check_days("Cardmarket", counts, NOW)
+    assert problems == [
+        "Cardmarket: missing price days 2026-10-16",
+        "Cardmarket: latest price day is 2026-10-17",
+        "Cardmarket: 2026-10-17 has 500 rows, 1,000 the day before",
+    ]
+    assert build.check_days("Cardmarket", {"2026-10-18": 10, "2026-10-19": 10}, NOW) == []
+
+
+# --- my cards ----------------------------------------------------------------------------------
+
+
+def two_printings(tmp_path: Path) -> pa.Table:
+    return reference.build_cards(write_scryfall(tmp_path / "c.jsonl.gz", [
+        scryfall_card(),
+        scryfall_card(id="sf-new", set="j25", collector_number="5", released_at="2025-01-01"),
+    ]))
+
+
+def test_wantlist_matches_by_number_name_and_id_and_keeps_unmatched(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    text = (
+        "name,set_code,collector_number,scryfall_id,language,foil,min_condition,via_zero,max_price_eur,note\n"
+        "Elvish Archdruid,FDN,219,,en,yes,nm,yes,0.50,\n"
+        "elvish archdruid,,,,,,,,,\n"
+        ",,,sf-1,,,,,,\n"
+        "Not A Real Card,,,,,,,,,\n"
+    )
+
+    rows = mycards.wantlist_table(text, cards).to_pylist()
+
+    assert [(r["line"], r["scryfall_id"], r["matched"]) for r in rows] == [
+        (2, "sf-1", True),
+        (3, "sf-new", True),  # name only: newest printing
+        (4, "sf-1", True),
+        (5, None, False),
+    ]
+    assert (rows[0]["min_condition"], rows[1]["foil"], rows[1]["via_zero"], rows[1]["language"]) == ("NM", "any", "yes", "any")
+
+
+def test_collection_reads_manabox_headers(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    text = (
+        "Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall ID,"
+        "Purchase price,Misprint,Altered,Condition,Language,Purchase price currency\n"
+        "Elvish Archdruid,fdn,Foundations,219,foil,rare,2,123,sf-1,0.55,false,false,near_mint,en,EUR\n"
+    )
+
+    [row] = mycards.collection_table(text, cards).to_pylist()
+
+    assert (row["scryfall_id"], row["matched"], row["quantity"], row["foil"], row["purchase_price"]) == (
+        "sf-1", True, "2", "foil", "0.55")
+
+
+# --- the build, end to end ---------------------------------------------------------------------
+
+
+def make_archive(root: Path) -> Path:
+    def at(path: str) -> Path:
+        p = root / path
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    write_scryfall(at("raw/scryfall_default_cards/2026-10-17/0200Z_default-cards.jsonl.gz"), [scryfall_card()])
+    write_identifiers(at("raw/mtgjson_card_identifiers/2026-10-18/1029Z_cardIdentifiers.parquet"),
+                      [{"uuid": "uuid-1", "scryfallId": "sf-1", "mcmId": "795130"}])
+    for day in ("17", "18"):
+        write_price_guide(at(f"raw/cardmarket_price_guide/2026-10-{day}/0217Z_price_guide_1.json.zst"),
+                          f"2026-10-{day}T02:44:00+0200", [{"idProduct": 795130, "trend": 0.6}])
+    write_mtgjson(at("raw/mtgjson_allprices/2026-10-17/1424Z_AllPrices.json.xz"), {
+        "uuid-1": {"paper": {"cardmarket": {"retail": {"normal": {"2026-10-15": 0.5, "2026-10-16": 0.55,
+                                                                  "2026-10-17": 0.6}}, "currency": "EUR"}}}})
+    write_mtgjson(at("raw/mtgjson_allprices_today/2026-10-18/0817Z_AllPricesToday.json.xz"), {
+        "uuid-1": {"paper": {"cardmarket": {"retail": {"normal": {"2026-10-18": 0.61}}, "currency": "EUR"}}}})
+    return root
+
+
+def test_build_is_incremental_and_queryable(tmp_path: Path):
+    raw = build.LocalRaw(make_archive(tmp_path / "archive"))
+    store = build.LocalTables(tmp_path / "tables")
+
+    first = build.build(raw, store, tmp_path / "staging", NOW)
+
+    assert first.problems == []
+    assert "prices/cardmarket/2026/2026-10-18.parquet (1 rows)" in first.written
+    # backfill fills 15-17; the daily file gives 18
+    mtgjson_files = sorted(w.split(" ")[0] for w in first.written if w.startswith("prices/mtgjson"))
+    assert mtgjson_files == [f"prices/mtgjson/2026/2026-10-{d}.parquet" for d in ("15", "16", "17", "18")]
+
+    second = build.build(raw, store, tmp_path / "staging", NOW)
+    assert second.written == [] and second.notes == ["nothing new to build"]
+
+    con = query.connect(tmp_path / "tables")
+    history = query.price_history(con, "elvish archdruid").fetchall()
+    assert [(r[0], r[5]) for r in history] == [(date(2026, 10, 17), 0.6), (date(2026, 10, 18), 0.6)]
+    mtgjson_days = con.execute("select count(*) from card_mtgjson_prices where scryfall_id = 'sf-1'").fetchone()
+    assert mtgjson_days == (4,)
+
+
+def test_build_picks_up_my_wantlist_and_rebuilds_only_when_it_changes(tmp_path: Path):
+    raw = build.LocalRaw(make_archive(tmp_path / "archive"))
+    store = build.LocalTables(tmp_path / "tables")
+    build.build(raw, store, tmp_path / "staging", NOW)
+
+    want = tmp_path / "want.csv"
+    want.write_text("name,set_code,collector_number\nElvish Archdruid,fdn,219\n")
+    store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
+    report = build.build(raw, store, tmp_path / "staging", NOW)
+    assert report.written == ["my/wantlist.parquet (1 rows)"]
+
+    assert build.build(raw, store, tmp_path / "staging", NOW).written == []
+
+    want.write_text("name,set_code,collector_number\nElvish Archdruid,fdn,219\nTypo Card,,\n")
+    store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
+    report = build.build(raw, store, tmp_path / "staging", NOW)
+    assert report.written == ["my/wantlist.parquet (2 rows)"]
+    assert report.problems == ["wantlist: 1 row(s) not matched to a card"]
+
+
+def test_new_product_lists_rebuild_only_the_products_table(tmp_path: Path):
+    archive = make_archive(tmp_path / "archive")
+    products = archive / "raw/cardmarket_products_singles/2026-10-18/0817Z_products_singles_1.json.zst"
+    products.parent.mkdir(parents=True)
+    write_zst(products, json.dumps({"products": [{"idProduct": 795130, "name": "Elvish Archdruid"}]}))
+    raw, store = build.LocalRaw(archive), build.LocalTables(tmp_path / "tables")
+    build.build(raw, store, tmp_path / "staging", NOW)
+
+    newer = archive / "raw/cardmarket_products_singles/2026-10-19/0817Z_products_singles_1.json.zst"
+    newer.parent.mkdir(parents=True)
+    write_zst(newer, json.dumps({"products": [{"idProduct": 795130, "name": "Elvish Archdruid"}, {"idProduct": 1}]}))
+    report = build.build(raw, store, tmp_path / "staging", NOW)
+
+    assert report.written == ["reference/cardmarket_products.parquet (2 rows)"]

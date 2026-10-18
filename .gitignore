@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Local data (the archive lives in remote storage, never in git)
+data/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Design docs and project instructions: private repo mtg-intel-docs, nested in docs/
+docs/
+CLAUDE.md
