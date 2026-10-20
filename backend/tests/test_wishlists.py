@@ -31,11 +31,11 @@ def test_slug_matches_cardtrader_meta_names():
     assert wishlists.slug("Lim-Dûl the Necromancer") == "lim-dul-the-necromancer"
 
 
-def test_wantlist_rows_resolve_number_name_and_any_printing():
+def test_wantlist_rows_resolve_number_name_and_group_alternatives():
     lists = [
         Wishlist(1, "Showcase", [
             item(meta_name="talion-the-kindly-lord", expansion_code="cwoe", collector_number="301", foil="false"),
-            item(meta_name="ashiok-s-reaper", expansion_code="cwoe", collector_number=None, language="jp"),
+            item(meta_name="ashiok-s-reaper", expansion_code="cwoe", collector_number=None),
             item(meta_name="balance", expansion_code=None, collector_number=None, condition=None, language=None),
             item(meta_name="ghost-card", expansion_code="cwoe", collector_number="999"),
         ]),
@@ -46,18 +46,32 @@ def test_wantlist_rows_resolve_number_name_and_any_printing():
 
     rows = wishlists.wantlist_rows(lists, {"cwoe": 3358}, BLUEPRINTS, {"balance": "Balance"})
 
-    assert [(r["name"], r["scryfall_id"], r["cardtrader_blueprint_id"], r["list"]) for r in rows] == [
-        ("Talion, the Kindly Lord", "sf-talion-borderless", "1", "Showcase; buy"),  # same wish, two lists
-        ("Ashiok's Reaper", "sf-reaper-a", "2", "Showcase"),  # any version in the expansion: one row each
-        ("Ashiok's Reaper", "", "3", "Showcase"),
-        ("Balance", "", "", "Showcase"),  # any printing
-        ("ghost-card", "", "", "Showcase"),
+    assert [(r["name"], r["scryfall_id"], r["cardtrader_blueprint_id"], r["list"], r["one_of"]) for r in rows] == [
+        ("Talion, the Kindly Lord", "sf-talion-borderless", "1", "Showcase; buy", ""),  # same wish, two lists
+        ("Ashiok's Reaper", "sf-reaper-a", "2", "Showcase", "Ashiok's Reaper (cwoe)"),  # no number: alternatives
+        ("Ashiok's Reaper", "", "3", "Showcase", "Ashiok's Reaper (cwoe)"),
+        ("Balance", "", "", "Showcase", ""),
+        ("ghost-card", "", "", "Showcase", ""),
     ]
     talion, reaper, _, balance, ghost = rows
     assert (talion["foil"], talion["min_condition"], talion["language"], talion["via_zero"]) == ("no", "NM", "en", "yes")
-    assert reaper["language"] == "ja"
+    assert reaper["note"] == "version not chosen on CardTrader: keep the ones you want"
     assert (balance["foil"], balance["min_condition"], balance["language"]) == ("any", "PO", "any")
+    assert balance["note"] == "no version on CardTrader: pick one"
     assert ghost["note"] == "CardTrader cwoe 999 not found"
+
+
+def test_non_foil_wish_skips_foil_only_versions():
+    blueprints = {3358: [
+        {"id": 1, "name": "Time Warp", "version": None, "fixed_properties": {"collector_number": "085"},
+         "scryfall_id": "sf-tw"},
+        {"id": 2, "name": "Time Warp", "version": "Etched Foil", "fixed_properties": {"collector_number": "85e"}},
+    ]}
+    lists = [Wishlist(1, "JP", [item(meta_name="time-warp", expansion_code="cwoe", language="jp", foil="false")])]
+
+    [row] = wishlists.wantlist_rows(lists, {"cwoe": 3358}, blueprints, {})
+
+    assert (row["scryfall_id"], row["language"], row["one_of"], row["note"]) == ("sf-tw", "ja", "", "")
 
 
 def test_fetch_blueprints_only_for_used_magic_expansions():
@@ -78,3 +92,17 @@ def test_fetch_blueprints_only_for_used_magic_expansions():
     assert codes == {"cwoe": 3358}  # sld belongs to another game
     assert list(blueprints) == [3358]
     assert seen == ["/expansions", "/blueprints/export?expansion_id=3358"]
+
+
+def test_blueprint_without_scryfall_id_is_found_by_set_and_number():
+    blueprints = {4310: [
+        {"id": 1, "name": "Ephemerate", "fixed_properties": {"collector_number": "044"}, "scryfall_id": "sf-eph"},
+        {"id": 2, "name": "Roaming Throne", "fixed_properties": {"collector_number": "099"}, "scryfall_id": None},
+    ]}
+    printings = {"sf-eph": ("mar", "44"), "sf-throne": ("mar", "99"), "sf-throne-lci": ("lci", "99")}
+    lists = [Wishlist(1, "Marvel", [item(meta_name="roaming-throne", expansion_code="mar", collector_number="099")])]
+
+    [row] = wishlists.wantlist_rows(lists, {"mar": 4310}, blueprints, {}, printings)
+
+    assert (row["scryfall_id"], row["cardtrader_blueprint_id"]) == ("sf-throne", "2")
+

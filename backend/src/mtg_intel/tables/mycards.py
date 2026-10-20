@@ -28,6 +28,7 @@ WANTLIST_COLUMNS = [
     "quantity",
     "list",  # my own grouping, e.g. the CardTrader wishlist it came from ("; " between several)
     "cardtrader_blueprint_id",  # exact CardTrader card, when known
+    "one_of",  # rows sharing a value are alternatives: buying any one fulfils the wish
     "note",
 ]
 
@@ -69,10 +70,9 @@ def wantlist_table(text: str, cards: pa.Table) -> pa.Table:
         row["min_condition"] = (row["min_condition"] or "NM").upper()
         row["via_zero"] = (row["via_zero"] or "yes").lower()
         row["quantity"] = row["quantity"] or "1"
-    table = match(pa.Table.from_pylist(rows, schema=_schema(["line"] + WANTLIST_COLUMNS, {"line": pa.int32()})), cards)
-    # A name with nothing narrowing it means any printing; `scryfall_id` then shows the newest one.
-    any_printing = [not (r["scryfall_id"] or r["collector_number"] or r["cardtrader_blueprint_id"]) for r in rows]
-    return table.append_column("any_printing", pa.array(any_printing, pa.bool_()))
+    # Every wish names its version (D44): a name alone is not matched.
+    schema = _schema(["line"] + WANTLIST_COLUMNS, {"line": pa.int32()})
+    return match(pa.Table.from_pylist(rows, schema=schema), cards, by_name=False)
 
 
 def collection_table(text: str, cards: pa.Table) -> pa.Table:
@@ -88,7 +88,7 @@ def _schema(columns: list[str], types: dict[str, pa.DataType]) -> pa.Schema:
     return pa.schema([(c, types.get(c, pa.string())) for c in columns])
 
 
-def match(rows: pa.Table, cards: pa.Table) -> pa.Table:
+def match(rows: pa.Table, cards: pa.Table, by_name: bool = True) -> pa.Table:
     """Find each row's Scryfall printing: by Scryfall ID, else set + number, else name (newest printing)."""
     con = duckdb.connect()
     con.register("rows", rows)
@@ -106,7 +106,7 @@ def match(rows: pa.Table, cards: pa.Table) -> pa.Table:
         by_name as (
             select r.line, arg_max(c.scryfall_id, c.released_at) as hit from rows r
             join cards c on lower(c.name) = lower(r.name)
-            where nullif(r.scryfall_id, '') is null and nullif(r.collector_number, '') is null
+            where nullif(r.scryfall_id, '') is null and nullif(r.collector_number, '') is null and $by_name
             group by r.line
         ),
         hits as (select * from by_id union all select * from by_number union all select * from by_name)
@@ -119,7 +119,8 @@ def match(rows: pa.Table, cards: pa.Table) -> pa.Table:
         left join (select line, any_value(hit) as hit from hits group by line) h using (line)
         left join cards c on c.scryfall_id = h.hit
         order by r.line
-        """
+        """,
+        {"by_name": by_name},
     ).to_arrow_table()
 
 

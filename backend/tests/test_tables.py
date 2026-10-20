@@ -182,7 +182,7 @@ def two_printings(tmp_path: Path) -> pa.Table:
     ]))
 
 
-def test_wantlist_matches_by_number_name_and_id_and_keeps_unmatched(tmp_path: Path):
+def test_wantlist_matches_by_number_and_id_and_needs_a_version(tmp_path: Path):
     cards = two_printings(tmp_path)
     text = (
         "name,set_code,collector_number,scryfall_id,language,foil,min_condition,via_zero,max_price_eur,note\n"
@@ -196,11 +196,10 @@ def test_wantlist_matches_by_number_name_and_id_and_keeps_unmatched(tmp_path: Pa
 
     assert [(r["line"], r["scryfall_id"], r["matched"]) for r in rows] == [
         (2, "sf-1", True),
-        (3, "sf-new", True),  # name only: any printing, shown as the newest
+        (3, None, False),  # name only: no version, flagged
         (4, "sf-1", True),
         (5, None, False),
     ]
-    assert [r["any_printing"] for r in rows] == [False, True, False, True]
     assert (rows[0]["min_condition"], rows[1]["foil"], rows[1]["via_zero"], rows[1]["language"]) == ("NM", "any", "yes", "any")
 
 

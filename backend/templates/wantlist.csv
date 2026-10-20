@@ -1,3 +1,4 @@
-name,set_code,collector_number,scryfall_id,language,foil,min_condition,via_zero,max_price_eur,quantity,list,cardtrader_blueprint_id,note
-Elvish Archdruid,fdn,219,,en,yes,NM,yes,0.50,1,,,example: English foil NM via Zero up to 0.50
-Sheoldred the Apocalypse,,,,any,any,SP,yes,,1,,,example: name only = any printing
+name,set_code,collector_number,scryfall_id,language,foil,min_condition,via_zero,max_price_eur,quantity,list,cardtrader_blueprint_id,one_of,note
+Elvish Archdruid,fdn,219,,en,yes,NM,yes,0.50,1,,,,example: English foil NM via Zero up to 0.50
+Tainted Pact,sta,33,,en,any,NM,yes,,1,,,pact,example: rows sharing one_of are alternatives
+Tainted Pact,,,,en,yes,NM,yes,,1,,155247,pact,"example: the etched version, known only by its CardTrader ID"

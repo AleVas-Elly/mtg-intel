@@ -210,9 +210,10 @@ def import_wishlists(args: argparse.Namespace) -> int:
     if not cards.exists():
         print("no card reference: run sync-tables first", file=sys.stderr)
         return 2
-    names = duckdb.sql(f"select distinct name from '{cards}'").fetchall()
-    card_names = {wishlists.slug(n): n for (n,) in names}
-    rows = wishlists.wantlist_rows(chosen, codes, blueprints, card_names)
+    printings = duckdb.sql(f"select scryfall_id, name, set_code, collector_number from '{cards}'").fetchall()
+    card_names = {wishlists.slug(name): name for _, name, _, _ in printings}
+    by_id = {sid: (set_code, number) for sid, _, set_code, number in printings}
+    rows = wishlists.wantlist_rows(chosen, codes, blueprints, card_names, by_id)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", newline="") as f:
