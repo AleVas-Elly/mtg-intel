@@ -34,7 +34,24 @@ SCRYFALL_COLUMNS = {
     "reserved": "BOOLEAN",
     "reprint": "BOOLEAN",
     "games": "VARCHAR[]",
+    # Card search (D45): what the card says and shows. Double-faced cards keep these per face.
+    "mana_cost": "VARCHAR",
+    "cmc": "DOUBLE",
+    "type_line": "VARCHAR",
+    "oracle_text": "VARCHAR",
+    "flavor_text": "VARCHAR",
+    "colors": "VARCHAR[]",
+    "color_identity": "VARCHAR[]",
+    "keywords": "VARCHAR[]",
+    "power": "VARCHAR",
+    "toughness": "VARCHAR",
+    "loyalty": "VARCHAR",
+    "artist": "VARCHAR",
+    "image_uris": "STRUCT(small VARCHAR, normal VARCHAR)",
+    "card_faces": "STRUCT(name VARCHAR, mana_cost VARCHAR, type_line VARCHAR, oracle_text VARCHAR, "
+    "flavor_text VARCHAR, artist VARCHAR, image_uris STRUCT(small VARCHAR, normal VARCHAR))[]",
 }
+CARDS_TABLE_VERSION = 2  # bump when the columns change, so the next build rewrites the table
 
 # Special-version tags (my collection focus). Frame effects and promo types are Scryfall's own words.
 FRAME_TAGS = ["showcase", "extendedart", "etched"]
@@ -58,6 +75,11 @@ FOIL_TAGS = [
 ]
 
 
+def faces(field: str) -> str:
+    """SQL for a double-faced card's field, joined front // back the way Scryfall prints it."""
+    return f"nullif(array_to_string(list_transform(card_faces, f -> f.{field}), ' // '), '')"
+
+
 def build_cards(scryfall_jsonl_gz: Path) -> pa.Table:
     """One row per paper printing, with `special_tags` such as borderless, showcase, extendedart."""
     con = duckdb.connect()
@@ -75,6 +97,12 @@ def build_cards(scryfall_jsonl_gz: Path) -> pa.Table:
             coalesce(frame_effects, []) as frame_effects, coalesce(promo_types, []) as promo_types,
             coalesce(full_art, false) as full_art, finishes, cardmarket_id, tcgplayer_id,
             edhrec_rank, reserved, reprint,
+            coalesce(mana_cost, {faces('mana_cost')}) as mana_cost, cmc,
+            type_line, coalesce(oracle_text, {faces('oracle_text')}) as oracle_text,
+            coalesce(flavor_text, {faces('flavor_text')}) as flavor_text,
+            colors, color_identity, keywords, power, toughness, loyalty,
+            coalesce(artist, {faces('artist')}) as artist,
+            coalesce(image_uris.normal, card_faces[1].image_uris.normal) as image_url,
             list_filter([
                 case when border_color = 'borderless' then 'borderless' end,
                 case when coalesce(full_art, false) then 'fullart' end,

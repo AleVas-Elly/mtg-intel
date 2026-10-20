@@ -126,3 +126,44 @@ def match(rows: pa.Table, cards: pa.Table, by_name: bool = True) -> pa.Table:
 
 def read_text(path: Path) -> str:
     return path.read_bytes().decode("utf-8-sig")
+
+
+def add_wishes(text: str, wishes: list[dict[str, str]]) -> tuple[str, list[dict[str, str]], list[dict[str, str]]]:
+    """Append wishes to the want-list CSV. A wish already there (same printing, language and foil) is
+    skipped. Returns the new CSV text, the added and the skipped wishes."""
+    rows = read_csv_rows(text) if text.strip() else []
+    have = {(r.get("scryfall_id"), r.get("language"), r.get("foil")) for r in rows}
+    added, skipped = [], []
+    for wish in wishes:
+        row = {c: wish.get(c, "") for c in WANTLIST_COLUMNS}
+        key = (row["scryfall_id"], row["language"], row["foil"])
+        (skipped if key in have else added).append(row)
+        have.add(key)
+    return write_csv(rows + added), added, skipped
+
+
+def remove_wishes(text: str, scryfall_ids: set[str], list_name: str | None = None) -> tuple[str, list[dict[str, str]]]:
+    """Drop the wishes for these printings (only from `list_name` when given; a row in several lists
+    then just leaves that list). Returns the new CSV text and the rows that changed."""
+    kept, changed = [], []
+    for row in read_csv_rows(text):
+        if row.get("scryfall_id") not in scryfall_ids:
+            kept.append(row)
+            continue
+        lists = [name for name in (row.get("list") or "").split("; ") if name]
+        if list_name and len(lists) > 1 and list_name in lists:
+            row["list"] = "; ".join(name for name in lists if name != list_name)
+            kept.append(row)
+        elif list_name and list_name not in lists:
+            kept.append(row)
+            continue
+        changed.append(row)
+    return write_csv(kept), changed
+
+
+def write_csv(rows: list[dict[str, str]]) -> str:
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=WANTLIST_COLUMNS, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    writer.writerows({c: row.get(c, "") for c in WANTLIST_COLUMNS} for row in rows)
+    return out.getvalue()

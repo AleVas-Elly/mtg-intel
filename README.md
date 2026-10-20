@@ -20,4 +20,9 @@ uv run mtg-intel price "Elvish Archdruid" --set fdn  # Cardmarket price history 
 uv run mtg-intel query "select * from wantlist"    # any SQL (DuckDB) over the tables
 uv run mtg-intel my-cards --wantlist my-wants.csv  # upload my want-list (template: backend/templates/wantlist.csv)
 uv run mtg-intel import-wishlists                  # list my CardTrader wishlists; pass IDs to turn them into a want-list CSV
+uv run mtg-intel search "art:cat is:showcase"       # Scryfall search over my cards (--in all for every card)
+uv run mtg-intel want add <scryfall-id> --list Showcase  # add a printing to the want-list (want remove to drop it)
 ```
+
+In Claude Code, ask in plain words instead ("which of my wants have a dragon in the art?"): the
+`cards` skill in `.claude/skills/cards` turns questions into Scryfall searches and runs these commands.

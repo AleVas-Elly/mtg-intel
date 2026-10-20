@@ -62,6 +62,27 @@ def main(argv: list[str] | None = None) -> int:
     price.add_argument("name")
     price.add_argument("--set", dest="set_code")
     price.add_argument("--last", type=int, default=10, help="days to show per printing")
+    find = commands.add_parser("search", help="Scryfall search over my cards or all cards (after sync-tables)")
+    find.add_argument("query", help="Scryfall search syntax, e.g. 'art:cat t:creature'")
+    find.add_argument("--in", dest="scope", choices=["mine", "wantlist", "collection", "all"], default="mine")
+    find.add_argument("--prints", action="store_true", help="every printing, not one per card (scope all)")
+    find.add_argument("--limit", type=int, default=60, help="rows to show")
+    find.add_argument("--json", action="store_true", help="print JSON rows")
+    want = commands.add_parser("want", help="add or remove want-list cards, then rebuild the tables")
+    want_commands = want.add_subparsers(dest="want_command", required=True)
+    want_add = want_commands.add_parser("add", help="add printings by Scryfall ID")
+    want_add.add_argument("ids", nargs="+")
+    want_add.add_argument("--list", default="", help="list name, e.g. Showcase")
+    want_add.add_argument("--lang", default="en", help="en, ja, it, … or any")
+    want_add.add_argument("--foil", choices=["yes", "no", "any"], default="any")
+    want_add.add_argument("--cond", choices=["NM", "SP", "MP", "PL", "PO"], default="NM", help="worst condition I accept")
+    want_add.add_argument("--zero", choices=["yes", "no"], default="yes", help="CardTrader Zero only")
+    want_add.add_argument("--max-price", default="", help="target price in EUR")
+    want_add.add_argument("--one-of", default="", help="group name: buying any one of the group fulfils the wish")
+    want_add.add_argument("--note", default="")
+    want_remove = want_commands.add_parser("remove", help="remove printings by Scryfall ID")
+    want_remove.add_argument("ids", nargs="+")
+    want_remove.add_argument("--list", help="only from this list")
     args = parser.parse_args(argv)
 
     load_env_file(REPO_ROOT / ".env")
@@ -82,6 +103,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if sent else 1
     if args.command in ("query", "price"):
         return run_query(args)
+    if args.command == "search":
+        return run_search(args)
+    if args.command == "want":
+        return edit_wantlist(args)
     store: Store
     if args.local:
         store = LocalStore(args.local)
@@ -262,6 +287,92 @@ def run_query(args: argparse.Namespace) -> int:
             cells = [f"{v:>6.2f}" if v is not None else "     -" for v in r[5:]]
             print(f"  {r[0]}  {cells[0]} {cells[1]} {cells[2]} |      {cells[3]} {cells[4]} {cells[5]}")
     return 0
+
+
+def run_search(args: argparse.Namespace) -> int:
+    import json
+
+    from mtg_intel import search
+    from mtg_intel.tables import query
+
+    con = query.connect(TABLES_DIR)
+    if "cards" not in query.views(con):
+        print("no tables yet: run sync-tables first", file=sys.stderr)
+        return 2
+    with httpx.Client(timeout=60) as client:
+        try:
+            ids, found = search.search(search.Scryfall(client), con, args.query, args.scope,
+                                       "prints" if args.prints else None)
+        except search.SearchError as e:
+            print(f"Scryfall: {e}", file=sys.stderr)
+            return 2
+    rows = search.describe(con, ids).to_pylist()
+    shown = rows[: args.limit]
+    if args.json:
+        print(json.dumps({"query": args.query, "scope": args.scope, "total": len(rows), "truncated": found.truncated,
+                          "warnings": found.warnings, "cards": shown}, default=str, ensure_ascii=False))
+        return 0
+    for w in found.warnings:
+        print(f"Scryfall warning: {w}")
+    for r in shown:
+        price = " / ".join(f"{label} {v:.2f}" for label, v in [("€", r["trend"]), ("foil €", r["trend_foil"])] if v)
+        mine = "; ".join(x for x in [f"wanted: {r['wanted_in']}" if r["wanted_in"] else "",
+                                     f"owned: {r['owned']}" if r["owned"] else ""] if x)
+        tags = f" [{', '.join(r['special_tags'])}]" if r["special_tags"] else ""
+        print(f"{r['name']} ({r['set_code'].upper()} #{r['collector_number']}){tags}  {price or 'no price'}"
+              + (f"  | {mine}" if mine else "") + f"  | {r['scryfall_id']}")
+    more = f", showing {len(shown)}" if len(rows) > len(shown) else ""
+    print(f"{len(rows)} cards{more}" + (" (stopped early: too many results, narrow the search)" if found.truncated else ""))
+    return 0
+
+
+def edit_wantlist(args: argparse.Namespace) -> int:
+    from mtg_intel.tables import build, mycards, query
+
+    store = tables_store(None)
+    current = store.fetch(build.MY_INPUTS["wantlist"])
+    text = mycards.read_text(current) if current else ""
+    if args.want_command == "add":
+        con = query.connect(TABLES_DIR)
+        found = con.execute(
+            """select c.scryfall_id, c.name, min(try_cast(i.external_id as bigint)) as blueprint
+               from cards c left join card_ids i on i.scryfall_id = c.scryfall_id and i.source = 'cardtrader'
+               where c.scryfall_id in (select unnest(?)) group by all""",
+            [args.ids],
+        ).fetchall()
+        unknown = set(args.ids) - {r[0] for r in found}
+        if unknown:
+            print(f"not in the card table: {sorted(unknown)}", file=sys.stderr)
+            return 2
+        wishes = [
+            {"name": name, "scryfall_id": sid, "language": args.lang, "foil": args.foil, "min_condition": args.cond,
+             "via_zero": args.zero, "max_price_eur": args.max_price, "quantity": "1", "list": args.list,
+             "cardtrader_blueprint_id": str(blueprint or ""), "one_of": args.one_of, "note": args.note}
+            for sid, name, blueprint in found
+        ]
+        text, added, skipped = mycards.add_wishes(text, wishes)
+        message = f"want-list: add {len(added)}"
+        for r in added:
+            print(f"   added  {r['name']}  ({r['scryfall_id']})")
+        for r in skipped:
+            print(f" already  {r['name']}  ({r['scryfall_id']})")
+        if not added:
+            return 0
+    else:
+        text, changed = mycards.remove_wishes(text, set(args.ids), args.list)
+        message = f"want-list: remove {len(changed)}"
+        for r in changed:
+            print(f" removed  {r['name']}  ({r['scryfall_id']})" + (f" from {args.list}" if args.list else ""))
+        if not changed:
+            print("nothing to remove")
+            return 0
+    out = REPO_ROOT / "data" / "my" / "wantlist.csv"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text)
+    store.put([(build.MY_INPUTS["wantlist"], out)], message)
+    # Rebuild now so the want-list table (and anything reading it) is current right away.
+    status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False))
+    return status or sync_tables()
 
 
 def telegram_setup() -> int:

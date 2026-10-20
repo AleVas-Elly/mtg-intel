@@ -100,6 +100,31 @@ def test_cards_get_special_version_tags(tmp_path: Path):
     }
 
 
+def test_cards_keep_text_cost_type_and_artist_also_for_double_faced_cards(tmp_path: Path):
+    src = write_scryfall(tmp_path / "cards.jsonl.gz", [
+        scryfall_card(mana_cost="{3}{G}", cmc=4.0, type_line="Creature — Elf Druid",
+                      oracle_text="Tap: add G for each Elf.", artist="Karl Kopinski",
+                      image_uris={"small": "s.jpg", "normal": "n.jpg"}),
+        scryfall_card(id="sf-dfc", name="Tergrid, God of Fright // Tergrid's Lantern", collector_number="112",
+                      type_line="Legendary Creature — God // Legendary Artifact", cmc=5.0, artist="Yongjae Choi",
+                      card_faces=[
+                          {"name": "Tergrid, God of Fright", "mana_cost": "{3}{B}{B}", "oracle_text": "Menace",
+                           "image_uris": {"small": "f.jpg", "normal": "front.jpg"}},
+                          {"name": "Tergrid's Lantern", "mana_cost": "{3}{B}", "oracle_text": "Tap: lose 3 life."},
+                      ]),
+    ])
+
+    cards = {c["scryfall_id"]: c for c in reference.build_cards(src).to_pylist()}
+    elf, tergrid = cards["sf-1"], cards["sf-dfc"]
+
+    assert (elf["mana_cost"], elf["cmc"], elf["type_line"], elf["artist"], elf["image_url"]) == (
+        "{3}{G}", 4.0, "Creature — Elf Druid", "Karl Kopinski", "n.jpg")
+    assert elf["oracle_text"] == "Tap: add G for each Elf."
+    assert tergrid["mana_cost"] == "{3}{B}{B} // {3}{B}"
+    assert tergrid["oracle_text"] == "Menace // Tap: lose 3 life."
+    assert tergrid["image_url"] == "front.jpg"
+
+
 def test_card_ids_link_all_marketplaces(tmp_path: Path):
     cards = reference.build_cards(write_scryfall(tmp_path / "c.jsonl.gz", [scryfall_card()]))
     ids = write_identifiers(tmp_path / "ids.parquet", [

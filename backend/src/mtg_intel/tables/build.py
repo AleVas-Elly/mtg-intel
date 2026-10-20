@@ -189,7 +189,7 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
     built_from: dict[str, dict] = state.setdefault("reference_inputs", {})
     if built_from and not {"cards", "products"} & built_from.keys():
         built_from.clear()  # state from before the split: rebuild once
-    card_inputs = {k: latest[k] for k in CARD_SOURCES}
+    card_inputs = {k: latest[k] for k in CARD_SOURCES} | {"table_version": reference.CARDS_TABLE_VERSION}
     product_inputs = {k: latest[k] for k in PRODUCT_SOURCES}
     if not (latest["scryfall_default_cards"] and latest["mtgjson_card_identifiers"]):
         report.notes.append("reference tables skipped: Scryfall or MTGJSON identifiers not archived yet")
