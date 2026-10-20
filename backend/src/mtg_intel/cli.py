@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -380,7 +381,8 @@ def edit_wantlist(args: argparse.Namespace) -> int:
 
 
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
-SKIP_AFTER = timedelta(minutes=20)  # a scheduled run this soon after a check is redundant
+SKIP_AFTER = timedelta(minutes=8)  # a scheduled (fallback) run this soon after a check is redundant
+SLOW_CHECK = timedelta(minutes=8)  # checks start every 10 minutes (D48)
 
 
 def check_deals(args: argparse.Namespace) -> int:
@@ -414,12 +416,22 @@ def check_deals(args: argparse.Namespace) -> int:
         # GitHub's own (late) schedule is only the fallback for the on-time timer (D48).
         print(f"skipped: the timer already checked at {last}")
         return 0
-    # Earlier check summaries, for the usual CardTrader price of each wish (D47).
+    # Earlier checks, for the usual CardTrader price of each wish (D47): the daily files of the
+    # last week. Yesterday's is packed from its per-check files by the first check of the day.
+    work = REPO_ROOT / "data" / "deals-staging"
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
+    files: list[tuple[str, Path]] = []
     history: dict[int, list[dict]] = {}
-    for days_back in range(deals.USUAL_DAYS + 1):
-        day = now - timedelta(days=days_back)
-        past = store.fetch(f"checks/{day:%Y/%m}/{day:%Y-%m-%d}.parquet")
-        for row in pq.read_table(past).to_pylist() if past else []:
+    for days_back in range(1, deals.USUAL_DAYS + 1):
+        day = (now - timedelta(days=days_back)).date()
+        daily = store.fetch(daily_checks_path(day))
+        if daily is None and days_back == 1:
+            daily = pack_day(store, day, work)
+            if daily:
+                files.append((daily_checks_path(day), daily))
+        for row in pq.read_table(daily).to_pylist() if daily else []:
             history.setdefault(row["blueprint_id"], []).append(row)
 
     with httpx.Client(timeout=60) as client:
@@ -447,21 +459,44 @@ def check_deals(args: argparse.Namespace) -> int:
         if sent:
             print(f"alerts sent: {sum(sent)} of {len(sent)}")
 
+    took = datetime.now(UTC) - now
+    if took > SLOW_CHECK:
+        print(f"WARNING  the check took {took.seconds // 60} min: the want-list is outgrowing the 10-minute rhythm")
     state["last_check"] = now.isoformat()
-    work = REPO_ROOT / "data" / "deals-staging"
-    work.mkdir(parents=True, exist_ok=True)
     (work / "state.json").write_text(json.dumps(state, indent=1))
-    day_path = f"checks/{now:%Y/%m}/{now:%Y-%m-%d}.parquet"
-    today = store.fetch(day_path)
-    rows = pa.Table.from_pylist(result.summary) if result.summary else None
-    if today and rows is not None:
-        rows = pa.concat_tables([pq.read_table(today), rows], promote_options="default")
-    files = [(DEALS_STATE, work / "state.json")]
-    if rows is not None:
-        pq.write_table(rows, work / "checks.parquet", compression="zstd")
-        files.append((day_path, work / "checks.parquet"))
+    files.append((DEALS_STATE, work / "state.json"))
+    if result.summary:
+        # One small file per check: nothing is rewritten, so the dataset's history stays small.
+        pq.write_table(pa.Table.from_pylist(result.summary), work / "check.parquet", compression="zstd")
+        files.append((f"checks/{now:%Y/%m/%d}/{now:%H%M%S}Z.parquet", work / "check.parquet"))
     store.put(files, f"deal check {now:%Y-%m-%d %H:%MZ}: {len(result.deals)} deals, {len(result.new)} new")
     return 0
+
+
+def daily_checks_path(day) -> str:
+    return f"checks/daily/{day:%Y}/{day.isoformat()}.parquet"
+
+
+def pack_day(store, day, work: Path) -> Path | None:
+    """All of one day's per-check files (and the older one-file-per-day format) in one file."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from huggingface_hub import snapshot_download
+
+    if not hasattr(store, "repo_id"):
+        return None
+    folder = snapshot_download(
+        store.repo_id, repo_type="dataset", token=store.token, local_dir=work / "pack",
+        allow_patterns=[f"checks/{day:%Y/%m/%d}/*.parquet", f"checks/{day:%Y/%m}/{day.isoformat()}.parquet"],
+    )
+    parts = sorted(Path(folder).glob("checks/**/*.parquet"))
+    if not parts:
+        return None
+    out = work / f"daily-{day.isoformat()}.parquet"
+    tables = [pq.read_table(p) for p in parts]
+    pq.write_table(pa.concat_tables(tables, promote_options="default"), out, compression="zstd")
+    print(f"packed {len(parts)} check files of {day} into {daily_checks_path(day)}")
+    return out
 
 
 DEALS_STATE = "deals/state.json"

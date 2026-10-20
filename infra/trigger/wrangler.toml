@@ -4,7 +4,7 @@ compatibility_date = "2025-06-01"
 workers_dev = false
 
 [triggers]
-crons = ["7,37 * * * *", "17 2,8,14 * * *"]
+crons = ["7,17,27,37,47,57 * * * *", "17 2,8,14 * * *"]
 
 [vars]
 GITHUB_REPO = "AleVas-Elly/mtg-intel"

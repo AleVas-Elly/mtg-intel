@@ -3,7 +3,7 @@
 // schedules as a fallback.
 
 const SCHEDULE = {
-  "7,37 * * * *": ["deals.yml"], // deal check every 30 minutes
+  "7,17,27,37,47,57 * * * *": ["deals.yml"], // deal check every 10 minutes
   "17 2,8,14 * * *": ["grab.yml"], // data grab 3 times a day
 };
 

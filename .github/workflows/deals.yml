@@ -1,10 +1,10 @@
 name: deals
 
-# Phase 3 deal check: every want-list card on CardTrader, Telegram alert for new deals (D34, D40).
+# Phase 3 deal check: every want-list card on CardTrader, Telegram alert for new deals (D46, D47).
 on:
   schedule:
-    # GitHub runs schedules late or skips them under load; an outside trigger calling
-    # workflow_dispatch is the reliable path (spec §7).
+    # Fallback only: the Cloudflare timer (infra/trigger) starts this every 10 minutes through
+    # workflow_dispatch, because GitHub runs schedules late or skips them (D48).
     - cron: "7,37 * * * *"
   workflow_dispatch:
 
