@@ -58,19 +58,20 @@ def test_deal_is_measured_against_the_lower_of_cardmarket_and_cardtrader():
     assert deals.best_deal(wish(), [listing(id=1, cents=288), listing(id=2, cents=320)]) is None
     # Next listing 4.50: the lower reference is 4.50, 2.88 is 36% under -> great deal.
     deal = deals.best_deal(wish(), [listing(id=1, cents=288), listing(id=2, cents=450)])
-    assert (deal.listing.id, round(deal.below_pct), deal.tier[1], deal.cardtrader_kind) == (1, 36, "🔥 Great deal", "next listing")
+    assert (deal.listing.id, round(deal.below_pct), deal.tier[1], deal.cardtrader_kind) == (1, 36, "🔥 Great deal", "next cheapest copy")
     # With a usual CardTrader price, that wins over the next listing.
     deal = deals.best_deal(wish(), [listing(id=1, cents=288), listing(id=2, cents=320)], usual=4.80)
-    assert (round(deal.below_pct), deal.cardtrader_kind) == (38, "usual")  # 4.67 trend is the lower
+    assert (round(deal.below_pct), deal.cardtrader_kind) == (38, "usual price")  # 4.67 trend is the lower
     # Only one listing and no history: Cardmarket alone.
     assert round(deals.best_deal(wish(), [listing(cents=288)]).below_pct) == 38
 
 
-def test_tiers_20_35_40_and_my_own_floor():
+def test_tiers_20_30_40_and_my_own_floor():
     def tier(cents):
         deal = deals.best_deal(wish(trend=10.0), [listing(cents=cents)])
         return deal.tier[1] if deal else None
-    assert [tier(c) for c in (850, 800, 650, 600, 590)] == [None, "✅ Good deal", "🔥 Great deal", "🚨 Steal", "🚨 Steal"]
+    assert [tier(c) for c in (850, 800, 710, 700, 600, 590)] == [
+        None, "✅ Good deal", "✅ Good deal", "🔥 Great deal", "🚨 Steal", "🚨 Steal"]
     assert deals.best_deal(wish(trend=10.0, deal_pct=30.0), [listing(cents=750)]) is None
     target = deals.best_deal(wish(max_price_eur=4.0), [listing(cents=400)])
     assert (target.tier, target.reasons) == (None, ["at or under my €4.00 target"])
@@ -145,7 +146,7 @@ def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
     assert text.splitlines()[0] == "Well under what this usually costs."
     assert "Loki, God of Mischief (MSH #343, borderless)" in text
     assert "€2.88 on CardTrader via Zero: Near Mint, EN, non-foil, seller in IT" in text
-    assert "Compared with: Cardmarket trend €4.67, CardTrader Zero next listing €4.50" in text
+    assert "Compared with: Cardmarket trend €4.67 (38% less), CardTrader Zero next cheapest copy €4.50 (36% less)" in text
     assert "Cardmarket: lowest €3.00, 7-day average €4.59" in text
     assert "https://www.cardtrader.com/cards/10" in text
     assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&language=1&minCondition=2&isFoil=N" in text

@@ -22,7 +22,7 @@ from mtg_intel.archive.cardtrader import Session
 # Deal tiers (D47), strongest first: % under the reference, name, what the message says.
 TIERS = [
     (40.0, "🚨 Steal", "Rarely this cheap. Worth buying now."),
-    (35.0, "🔥 Great deal", "Well under what this usually costs."),
+    (30.0, "🔥 Great deal", "Well under what this usually costs."),
     (20.0, "✅ Good deal", "Cheaper than usual, worth a look."),
 ]
 DEFAULT_DEAL_PCT = TIERS[-1][0]  # the lowest tier; a card's `deal_pct` overrides it
@@ -136,7 +136,7 @@ class Deal:
     listing: Listing
     cardmarket: float | None  # Cardmarket trend for the listing's finish
     cardtrader: float | None  # usual (or next-cheapest) CardTrader price for the wish
-    cardtrader_kind: str  # "usual" | "next listing" | ""
+    cardtrader_kind: str  # "usual price" | "next cheapest copy" | ""
     below_pct: float | None  # how far under the lower reference, in %
     tier: tuple[float, str, str] | None
     reasons: list[str]
@@ -158,9 +158,9 @@ def best_deal(wish: dict[str, Any], listings: list[Listing], usual: float | None
     best = matching[0]
     cardmarket = cardmarket_reference(best, wish)
     if usual is not None:
-        cardtrader, kind = usual, "usual"
+        cardtrader, kind = usual, "usual price"
     elif len(matching) > 1:
-        cardtrader, kind = matching[1].price, "next listing"
+        cardtrader, kind = matching[1].price, "next cheapest copy"
     else:
         cardtrader, kind = None, ""
     references = [r for r in (cardmarket, cardtrader) if r]
@@ -264,8 +264,13 @@ def message(deal: Deal) -> tuple[str, str]:
     where = f"{(w.get('set_code') or '').upper()} #{w.get('collector_number')}" if w.get("set_code") else "CardTrader"
     finish = "foil" if x.foil else "non-foil"
     label, advice = (deal.tier[1], deal.tier[2]) if deal.tier else ("🎯 Target price", "At or under the price I set.")
-    compared = [f"Cardmarket trend €{deal.cardmarket:.2f}" if deal.cardmarket else "",
-                f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f}" if deal.cardtrader else ""]
+    def off(reference: float) -> str:
+        pct = (1 - x.price / reference) * 100
+        return f"{pct:.0f}% less" if pct >= 0 else f"{-pct:.0f}% more"
+
+    compared = [f"Cardmarket trend €{deal.cardmarket:.2f} ({off(deal.cardmarket)})" if deal.cardmarket else "",
+                f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f} ({off(deal.cardtrader)})"
+                if deal.cardtrader else ""]
     lines = [
         advice,
         f"{w['name']} ({where}, {version})",
@@ -274,7 +279,7 @@ def message(deal: Deal) -> tuple[str, str]:
         "Why: " + "; ".join(deal.reasons),
         "Compared with: " + ", ".join(c for c in compared if c) if any(compared) else "",
         cardmarket_context(w, x.foil),
-        f"CardTrader: https://www.cardtrader.com/cards/{w['blueprint_id']}",
+        f"Open on CardTrader: https://www.cardtrader.com/cards/{w['blueprint_id']}",
     ]
     if w.get("cardmarket_id"):
         params = [f"idProduct={w['cardmarket_id']}"]
@@ -283,7 +288,7 @@ def message(deal: Deal) -> tuple[str, str]:
         params.append(f"minCondition={CM_MIN_CONDITION.get(w['min_condition'], 2)}")
         if w["foil"] in ("yes", "no"):
             params.append(f"isFoil={'Y' if w['foil'] == 'yes' else 'N'}")
-        lines.append("Cardmarket: https://www.cardmarket.com/en/Magic/Products?" + "&".join(params))
+        lines.append("Open on Cardmarket: https://www.cardmarket.com/en/Magic/Products?" + "&".join(params))
     if w.get("list"):
         lines.append(f"List: {w['list']}")
     pct = f" ({deal.below_pct:.0f}% under)" if deal.tier else ""
