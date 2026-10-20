@@ -29,6 +29,7 @@ WANTLIST_COLUMNS = [
     "list",  # my own grouping, e.g. the CardTrader wishlist it came from ("; " between several)
     "cardtrader_blueprint_id",  # exact CardTrader card, when known
     "one_of",  # rows sharing a value are alternatives: buying any one fulfils the wish
+    "deal_pct",  # optional: % under Cardmarket trend that counts as a deal (default 25, D40)
     "note",
 ]
 

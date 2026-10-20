@@ -19,6 +19,7 @@ from typing import Protocol
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from mtg_intel import deals
 from mtg_intel.tables import mycards, prices, reference
 
 STATE_PATH = "_build.json"
@@ -257,6 +258,23 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
                     if unmatched:
                         report.problems.append(f"{name}: {unmatched} row(s) not matched to a card")
             state["my_inputs"] = fingerprint
+
+    # Deal watch (phase 3): the want-list with the latest Cardmarket prices, for the deal checker.
+    def current(path: str) -> pa.Table | None:
+        local = out / path
+        if local.exists():
+            return pq.read_table(local)
+        fetched = store.fetch(path)
+        return pq.read_table(fetched) if fetched else None
+
+    latest_day = max(cm_days, default=None)
+    watch_inputs = {"my_inputs": state.get("my_inputs"), "cardmarket_day": latest_day}
+    if my_inputs["wantlist"] and state.get("watch_inputs") != watch_inputs:
+        wantlist, card_table = current("my/wantlist.parquet"), cards or current("reference/cards.parquet")
+        if wantlist is not None and card_table is not None:
+            cardmarket = current(f"prices/cardmarket/{latest_day[:4]}/{latest_day}.parquet") if latest_day else None
+            stage("my/watch.parquet", deals.watch_table(wantlist, card_table, cardmarket))
+            state["watch_inputs"] = watch_inputs
 
     report.problems += check_days("Cardmarket", cm_days, now)
     report.problems += check_days("MTGJSON", mj_days, now, ignore_before=first_daily_date(processed))

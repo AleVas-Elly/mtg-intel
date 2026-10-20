@@ -83,6 +83,8 @@ def main(argv: list[str] | None = None) -> int:
     want_remove = want_commands.add_parser("remove", help="remove printings by Scryfall ID")
     want_remove.add_argument("ids", nargs="+")
     want_remove.add_argument("--list", help="only from this list")
+    deal_check = commands.add_parser("check-deals", help="check CardTrader for want-list deals and alert (phase 3)")
+    deal_check.add_argument("--dry-run", action="store_true", help="print deals; send and save nothing")
     args = parser.parse_args(argv)
 
     load_env_file(REPO_ROOT / ".env")
@@ -107,6 +109,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_search(args)
     if args.command == "want":
         return edit_wantlist(args)
+    if args.command == "check-deals":
+        return check_deals(args)
     store: Store
     if args.local:
         store = LocalStore(args.local)
@@ -373,6 +377,80 @@ def edit_wantlist(args: argparse.Namespace) -> int:
     # Rebuild now so the want-list table (and anything reading it) is current right away.
     status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False))
     return status or sync_tables()
+
+
+MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
+
+
+def check_deals(args: argparse.Namespace) -> int:
+    """One deal check (phase 3): every wished card on CardTrader, alerts for new deals, and the
+    check summary and alert memory saved to the tables dataset."""
+    import json
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from mtg_intel import deals
+    from mtg_intel.archive.cardtrader import Session
+    from mtg_intel.archive.sources import InvalidDownload
+
+    token = os.environ.get("CARDTRADER_TOKEN")
+    if not token:
+        print("CARDTRADER_TOKEN is not set", file=sys.stderr)
+        return 2
+    store = tables_store(None)
+    watch_file = store.fetch("my/watch.parquet")
+    if not watch_file:
+        print("no watch table yet: upload a want-list and run build-tables", file=sys.stderr)
+        return 2
+    watch = pq.read_table(watch_file).to_pylist()
+    state_file = store.fetch(DEALS_STATE)
+    state = json.loads(state_file.read_text()) if state_file else {}
+    alerted = state.setdefault("alerted", {})
+    now = datetime.now(UTC).replace(microsecond=0)
+
+    with httpx.Client(timeout=60) as client:
+        session = Session(client, token, out=None)
+        result = deals.check(session, watch, alerted, now)
+        targets = deals.cardmarket_targets(watch, alerted, now)
+        messages = [deals.message(d) for d in result.new] + targets
+        try:
+            session.summary()
+        except InvalidDownload as e:
+            if not args.dry_run:
+                alert(client, "mtg-intel deal check needs a look", f"CardTrader: {e}")
+            print(f"PROBLEM  CardTrader: {e}", file=sys.stderr)
+        for d in result.deals:
+            title, _ = deals.message(d)
+            print(f"{'NEW ' if d in result.new else '    '}{title}  ({'; '.join(d.reasons)})")
+        print(f"{len({w['blueprint_id'] for w in watch})} cards checked, {len(result.summary)} listing groups, "
+              f"{len(result.deals)} deals, {len(messages)} to alert, {len(result.failed_blueprints)} failed")
+        if args.dry_run:
+            return 0
+        for title, text in messages[:MAX_DEAL_MESSAGES]:
+            alert(client, title, text)
+        if len(messages) > MAX_DEAL_MESSAGES:
+            rest = [title for title, _ in messages[MAX_DEAL_MESSAGES:]]
+            alert(client, f"{len(rest)} more deals", "\n".join(rest))
+
+    state["last_check"] = now.isoformat()
+    work = REPO_ROOT / "data" / "deals-staging"
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "state.json").write_text(json.dumps(state, indent=1))
+    day_path = f"checks/{now:%Y/%m}/{now:%Y-%m-%d}.parquet"
+    today = store.fetch(day_path)
+    rows = pa.Table.from_pylist(result.summary) if result.summary else None
+    if today and rows is not None:
+        rows = pa.concat_tables([pq.read_table(today), rows], promote_options="default")
+    files = [(DEALS_STATE, work / "state.json")]
+    if rows is not None:
+        pq.write_table(rows, work / "checks.parquet", compression="zstd")
+        files.append((day_path, work / "checks.parquet"))
+    store.put(files, f"deal check {now:%Y-%m-%d %H:%MZ}: {len(result.deals)} deals, {len(result.new)} new")
+    return 0
+
+
+DEALS_STATE = "deals/state.json"
 
 
 def telegram_setup() -> int:

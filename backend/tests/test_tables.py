@@ -293,17 +293,20 @@ def test_build_picks_up_my_wantlist_and_rebuilds_only_when_it_changes(tmp_path: 
     build.build(raw, store, tmp_path / "staging", NOW)
 
     want = tmp_path / "want.csv"
-    want.write_text("name,set_code,collector_number\nElvish Archdruid,fdn,219\n")
+    want.write_text("name,set_code,collector_number,cardtrader_blueprint_id\nElvish Archdruid,fdn,219,77\n")
     store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
     report = build.build(raw, store, tmp_path / "staging", NOW)
-    assert report.written == ["my/wantlist.parquet (1 rows)"]
+    assert report.written == ["my/wantlist.parquet (1 rows)", "my/watch.parquet (1 rows)"]
+    [watch] = pq.read_table(tmp_path / "tables/my/watch.parquet").to_pylist()
+    assert (watch["blueprint_id"], watch["cardmarket_id"]) == (77, 795130)
+    assert watch["trend"] is not None  # latest Cardmarket price day
 
     assert build.build(raw, store, tmp_path / "staging", NOW).written == []
 
     want.write_text("name,set_code,collector_number\nElvish Archdruid,fdn,219\nTypo Card,,\n")
     store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
     report = build.build(raw, store, tmp_path / "staging", NOW)
-    assert report.written == ["my/wantlist.parquet (2 rows)"]
+    assert report.written == ["my/wantlist.parquet (2 rows)", "my/watch.parquet (0 rows)"]
     assert report.problems == ["wantlist: 1 row(s) not matched to a card"]
 
 

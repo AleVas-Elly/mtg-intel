@@ -1,0 +1,37 @@
+name: deals
+
+# Phase 3 deal check: every want-list card on CardTrader, Telegram alert for new deals (D34, D40).
+on:
+  schedule:
+    # GitHub runs schedules late or skips them under load; an outside trigger calling
+    # workflow_dispatch is the reliable path (spec §7).
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: deals
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # ~4 min for 216 cards at 1 request/second
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run mtg-intel check-deals
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DATASET: ${{ secrets.HF_DATASET }}
+          CARDTRADER_TOKEN: ${{ secrets.CARDTRADER_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"
