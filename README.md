@@ -26,3 +26,9 @@ uv run mtg-intel want add <scryfall-id> --list Showcase  # add a printing to the
 
 In Claude Code, ask in plain words instead ("which of my wants have a dragon in the art?"): the
 `cards` skill in `.claude/skills/cards` turns questions into Scryfall searches and runs these commands.
+
+## On-time timer
+
+GitHub starts scheduled workflows late or skips them, so a Cloudflare Worker (`infra/trigger`) starts
+`deals` every 30 minutes and `grab` three times a day through `workflow_dispatch`. Deploy with
+`npx wrangler deploy` from `infra/trigger`; its secrets are listed in `wrangler.toml`.
