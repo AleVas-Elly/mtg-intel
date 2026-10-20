@@ -1,0 +1,13 @@
+name = "mtg-intel-trigger"
+main = "worker.js"
+compatibility_date = "2025-06-01"
+workers_dev = false
+
+[triggers]
+crons = ["7,37 * * * *", "17 2,8,14 * * *"]
+
+[vars]
+GITHUB_REPO = "AleVas-Elly/mtg-intel"
+
+# Secrets (wrangler secret put): GITHUB_TOKEN (fine-grained, this repo only, Actions: read and write),
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.

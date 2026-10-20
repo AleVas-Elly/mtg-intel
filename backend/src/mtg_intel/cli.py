@@ -380,6 +380,7 @@ def edit_wantlist(args: argparse.Namespace) -> int:
 
 
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
+SKIP_AFTER = timedelta(minutes=20)  # a scheduled run this soon after a check is redundant
 
 
 def check_deals(args: argparse.Namespace) -> int:
@@ -408,6 +409,11 @@ def check_deals(args: argparse.Namespace) -> int:
     state = json.loads(state_file.read_text()) if state_file else {}
     alerted = state.setdefault("alerted", {})
     now = datetime.now(UTC).replace(microsecond=0)
+    last = state.get("last_check")
+    if os.environ.get("GITHUB_EVENT_NAME") == "schedule" and last and now - datetime.fromisoformat(last) < SKIP_AFTER:
+        # GitHub's own (late) schedule is only the fallback for the on-time timer (D48).
+        print(f"skipped: the timer already checked at {last}")
+        return 0
     # Earlier check summaries, for the usual CardTrader price of each wish (D47).
     history: dict[int, list[dict]] = {}
     for days_back in range(deals.USUAL_DAYS + 1):
