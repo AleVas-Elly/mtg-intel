@@ -53,21 +53,50 @@ def test_fits_language_foil_condition_and_zero():
     assert deals.fits(listing(zero=False), wish(via_zero="no"))
 
 
-def test_deal_needs_25_percent_under_trend_or_my_target():
-    assert deals.best_deal(wish(), [listing(cents=400)]) is None  # 14% under
-    deal = deals.best_deal(wish(), [listing(id=2, cents=350), listing(id=1, cents=288)])
-    assert (deal.listing.id, round(deal.below_pct), deal.reasons) == (1, 38, ["38% under Cardmarket trend"])
-    assert deals.best_deal(wish(deal_pct=40.0), [listing(cents=288)]) is None
+def test_deal_is_measured_against_the_lower_of_cardmarket_and_cardtrader():
+    # Cardmarket trend 4.67; next Zero listing 3.20 is lower, so 2.88 is only 10% under: no deal.
+    assert deals.best_deal(wish(), [listing(id=1, cents=288), listing(id=2, cents=320)]) is None
+    # Next listing 4.50: the lower reference is 4.50, 2.88 is 36% under -> great deal.
+    deal = deals.best_deal(wish(), [listing(id=1, cents=288), listing(id=2, cents=450)])
+    assert (deal.listing.id, round(deal.below_pct), deal.tier[1], deal.cardtrader_kind) == (1, 36, "🔥 Great deal", "next listing")
+    # With a usual CardTrader price, that wins over the next listing.
+    deal = deals.best_deal(wish(), [listing(id=1, cents=288), listing(id=2, cents=320)], usual=4.80)
+    assert (round(deal.below_pct), deal.cardtrader_kind) == (38, "usual")  # 4.67 trend is the lower
+    # Only one listing and no history: Cardmarket alone.
+    assert round(deals.best_deal(wish(), [listing(cents=288)]).below_pct) == 38
+
+
+def test_tiers_20_35_40_and_my_own_floor():
+    def tier(cents):
+        deal = deals.best_deal(wish(trend=10.0), [listing(cents=cents)])
+        return deal.tier[1] if deal else None
+    assert [tier(c) for c in (850, 800, 650, 600, 590)] == [None, "✅ Good deal", "🔥 Great deal", "🚨 Steal", "🚨 Steal"]
+    assert deals.best_deal(wish(trend=10.0, deal_pct=30.0), [listing(cents=750)]) is None
     target = deals.best_deal(wish(max_price_eur=4.0), [listing(cents=400)])
-    assert target.reasons == ["at or under my €4.00 target"]
+    assert (target.tier, target.reasons) == (None, ["at or under my €4.00 target"])
 
 
 def test_foil_only_card_is_compared_with_the_foil_trend():
     w = wish(finishes=["foil"], trend=0.44, trend_foil=20.20)
-    assert deals.reference(listing(foil=False), w) == 20.20
+    assert deals.cardmarket_reference(listing(foil=False), w) == 20.20
     assert deals.best_deal(w, [listing(cents=1800, foil=False)]) is None  # not a 96% deal
-    assert deals.reference(listing(), wish(trend_foil=0.0)) == 4.67
+    assert deals.cardmarket_reference(listing(), wish(trend_foil=0.0)) == 4.67
     assert deals.best_deal(wish(trend=None, trend_foil=None), [listing()]) is None  # no reference, no target
+
+
+def summary_row(at, cents, **kw):
+    row = {"checked_at": at, "blueprint_id": 10, "language": "en", "condition": "Near Mint", "foil": False,
+           "zero": True, "min_price": cents / 100, "listings": 3}
+    return {**row, **kw}
+
+
+def test_usual_price_is_the_weekly_median_of_the_cheapest_fitting_listing():
+    history = [summary_row(NOW - timedelta(days=d, hours=1), 400 + 10 * d) for d in range(1, 6)]
+    history += [summary_row(NOW - timedelta(days=1), 100, language="it"),  # doesn't fit the wish
+                summary_row(NOW - timedelta(days=1), 100, zero=False),
+                summary_row(NOW - timedelta(days=20), 100)]  # too old
+    assert deals.usual_zero_price(wish(), history, NOW) == 4.30  # median of 4.10 … 4.50
+    assert deals.usual_zero_price(wish(), history[:2], NOW) is None  # under 3 days of history
 
 
 def fake_session(listings_by_blueprint, failing=()):
@@ -84,6 +113,7 @@ def test_check_alerts_once_then_on_a_lower_price_and_forgets_gone_deals():
     alerted: dict = {}
 
     first = deals.check(fake_session({10: [item(cents=288)], 11: [item(cents=999)]}), watch, alerted, NOW)
+    assert first.deals[0].tier[1] == "🔥 Great deal"
     assert [d.wish["name"] for d in first.new] == ["Loki, God of Mischief"]
     assert {r["blueprint_id"] for r in first.summary} == {10, 11}
 
@@ -108,13 +138,14 @@ def test_a_failed_card_keeps_its_alert_memory():
     assert result.failed_blueprints == [10] and "sf-loki|en|any" in alerted
 
 
-def test_message_has_card_listing_reason_and_both_links():
-    deal = deals.best_deal(wish(language="en", foil="no"), [listing(cents=288)])
+def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
+    deal = deals.best_deal(wish(language="en", foil="no"), [listing(id=1, cents=288), listing(id=2, cents=450)])
     title, text = deals.message(deal)
-    assert title == "Deal: Loki, God of Mischief €2.88"
+    assert title == "🔥 Great deal: Loki, God of Mischief €2.88 (36% under)"
+    assert text.splitlines()[0] == "Well under what this usually costs."
     assert "Loki, God of Mischief (MSH #343, borderless)" in text
     assert "€2.88 on CardTrader via Zero: Near Mint, EN, non-foil, seller in IT" in text
-    assert "38% under Cardmarket trend (trend €4.67)" in text
+    assert "Compared with: Cardmarket trend €4.67, CardTrader Zero next listing €4.50" in text
     assert "Cardmarket: lowest €3.00, 7-day average €4.59" in text
     assert "https://www.cardtrader.com/cards/10" in text
     assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&language=1&minCondition=2&isFoil=N" in text
@@ -126,3 +157,13 @@ def test_cardmarket_target_alerts_once_and_again_when_lower():
     assert [t for t, _ in deals.cardmarket_targets(watch, alerted, NOW)] == ["Target: Loki, God of Mischief €4.67 on Cardmarket"]
     assert deals.cardmarket_targets(watch, alerted, NOW) == []
     assert len(deals.cardmarket_targets([wish(max_price_eur=5.0, trend=4.10)], alerted, NOW)) == 1
+
+
+def test_a_deal_on_one_alternative_is_dropped_when_another_is_cheaper():
+    watch = [wish(one_of="pact", trend=None, trend_foil=None, blueprint_id=10),  # etched: no Cardmarket price
+             wish(one_of="pact", scryfall_id="sf-regular", blueprint_id=11, trend=60.0)]
+    listings = {10: [item(id=1, cents=4562), item(id=2, cents=6014)], 11: [item(id=3, cents=3830), item(id=4, cents=3866)]}
+    assert deals.check(fake_session(listings), watch, {}, NOW).deals == []
+    listings[11] = [item(id=3, cents=5500), item(id=4, cents=5600)]
+    assert [d.listing.id for d in deals.check(fake_session(listings), watch, {}, NOW).deals] == [1]
+

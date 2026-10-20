@@ -2,14 +2,16 @@
 
 `watch_table` (built with the tables) holds each want-list wish with its Cardmarket reference
 prices. `check` asks CardTrader for the live listings of every wished card, keeps the ones that
-fit the wish (language, foil, condition, Zero), and calls the cheapest a deal when it is at least
-`deal_pct` under the Cardmarket trend for that finish, or at or under my target price.
+fit the wish (language, foil, condition, Zero), and compares the cheapest with the lower of the
+Cardmarket trend for its finish and the usual CardTrader Zero price for the same wish (D47). At
+least 20% under is a deal, in three tiers; at or under my target price is one too.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
+from statistics import median
 from typing import Any
 
 import duckdb
@@ -17,8 +19,16 @@ import pyarrow as pa
 
 from mtg_intel.archive.cardtrader import Session
 
-DEFAULT_DEAL_PCT = 25.0  # D40: one global X, overridable per card
+# Deal tiers (D47), strongest first: % under the reference, name, what the message says.
+TIERS = [
+    (40.0, "🚨 Steal", "Rarely this cheap. Worth buying now."),
+    (35.0, "🔥 Great deal", "Well under what this usually costs."),
+    (20.0, "✅ Good deal", "Cheaper than usual, worth a look."),
+]
+DEFAULT_DEAL_PCT = TIERS[-1][0]  # the lowest tier; a card's `deal_pct` overrides it
 REALERT_DAYS = 7  # the same deal at the same price is repeated after a week
+USUAL_DAYS = 7  # the usual CardTrader Zero price: median of the cheapest per check over this window
+USUAL_MIN_DAYS = 3  # with less history, the next-cheapest listing stands in
 
 # CardTrader condition words, best first, and the want-list grade each one meets.
 CONDITIONS = ["Mint", "Near Mint", "Slightly Played", "Moderately Played", "Played", "Heavily Played", "Poor"]
@@ -98,42 +108,71 @@ def fits(listing: Listing, wish: dict[str, Any]) -> bool:
     return not (wish["via_zero"] == "yes" and not listing.zero)
 
 
-def reference(listing: Listing, wish: dict[str, Any]) -> float | None:
+def cardmarket_reference(listing: Listing, wish: dict[str, Any]) -> float | None:
     """Cardmarket trend for the listing's finish. A card printed only in foil uses the foil trend
     whatever the listing says: its non-foil trend is noise (e.g. €0.44 against €20 foil)."""
     finishes = wish.get("finishes") or []
     foil = listing.foil or (bool(finishes) and "nonfoil" not in finishes)
-    return wish.get("trend_foil") if foil else wish.get("trend")
+    return (wish.get("trend_foil") if foil else wish.get("trend")) or None
+
+
+def usual_zero_price(wish: dict[str, Any], history: list[dict[str, Any]], now: datetime) -> float | None:
+    """Median over the last week of the cheapest listing fitting this wish in each past check
+    (from the check summaries), or None with less than `USUAL_MIN_DAYS` days of history."""
+    cheapest: dict[datetime, float] = {}
+    since = now - timedelta(days=USUAL_DAYS)
+    for row in history:
+        listing = Listing(0, row["min_price"], row["condition"], row["language"], row["foil"], row["zero"], "", 1)
+        if row["checked_at"] >= since and row["checked_at"] < now and fits(listing, wish):
+            cheapest[row["checked_at"]] = min(cheapest.get(row["checked_at"], row["min_price"]), row["min_price"])
+    if len({t.date() for t in cheapest}) < USUAL_MIN_DAYS:
+        return None
+    return median(cheapest.values())
 
 
 @dataclass
 class Deal:
     wish: dict[str, Any]
     listing: Listing
-    reference: float | None
-    below_pct: float | None  # how far under the reference, in %
+    cardmarket: float | None  # Cardmarket trend for the listing's finish
+    cardtrader: float | None  # usual (or next-cheapest) CardTrader price for the wish
+    cardtrader_kind: str  # "usual" | "next listing" | ""
+    below_pct: float | None  # how far under the lower reference, in %
+    tier: tuple[float, str, str] | None
     reasons: list[str]
 
     @property
     def key(self) -> str:
         """Identifies the wish across want-list edits (line numbers shift)."""
-        return f"{self.wish['scryfall_id'] or self.wish['blueprint_id']}|{self.wish['language']}|{self.wish['foil']}"
+        return wish_key(self.wish)
 
 
-def best_deal(wish: dict[str, Any], listings: list[Listing]) -> Deal | None:
+def wish_key(wish: dict[str, Any]) -> str:
+    return f"{wish['scryfall_id'] or wish['blueprint_id']}|{wish['language']}|{wish['foil']}"
+
+
+def best_deal(wish: dict[str, Any], listings: list[Listing], usual: float | None = None) -> Deal | None:
     matching = sorted((x for x in listings if fits(x, wish)), key=lambda x: x.price)
     if not matching:
         return None
     best = matching[0]
-    ref = reference(best, wish)
-    pct = wish.get("deal_pct") if wish.get("deal_pct") is not None else DEFAULT_DEAL_PCT
-    below = (1 - best.price / ref) * 100 if ref else None
-    reasons = []
-    if below is not None and below >= pct:
-        reasons.append(f"{below:.0f}% under Cardmarket trend")
+    cardmarket = cardmarket_reference(best, wish)
+    if usual is not None:
+        cardtrader, kind = usual, "usual"
+    elif len(matching) > 1:
+        cardtrader, kind = matching[1].price, "next listing"
+    else:
+        cardtrader, kind = None, ""
+    references = [r for r in (cardmarket, cardtrader) if r]
+    below = round((1 - best.price / min(references)) * 100, 6) if references else None  # exact 20% stays 20
+    floor = wish.get("deal_pct") if wish.get("deal_pct") is not None else DEFAULT_DEAL_PCT
+    tier = None
+    if below is not None and below >= floor:
+        tier = next((t for t in TIERS if below >= t[0]), TIERS[-1])
+    reasons = [f"{below:.0f}% under the lower market price"] if tier else []
     if wish.get("max_price_eur") is not None and best.price <= wish["max_price_eur"]:
         reasons.append(f"at or under my €{wish['max_price_eur']:.2f} target")
-    return Deal(wish, best, ref, below, reasons) if reasons else None
+    return Deal(wish, best, cardmarket, cardtrader, kind, below, tier, reasons) if reasons else None
 
 
 @dataclass
@@ -157,13 +196,16 @@ def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) 
     ]
 
 
-def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime) -> CheckResult:
+def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime,
+          history: dict[int, list[dict[str, Any]]] | None = None) -> CheckResult:
     """Ask CardTrader about every wished card once, find deals, decide which are new.
+    `history` holds earlier check summaries per blueprint, for the usual CardTrader price.
 
     `alerted` (key -> {listing, price, at}) is updated in place: deals that are gone are forgotten,
     so a later deal on the same wish alerts again.
     """
     result = CheckResult()
+    cheapest: dict[str, float] = {}  # wish key -> cheapest fitting listing, deal or not
     by_blueprint: dict[int, list[dict[str, Any]]] = {}
     for wish in watch:
         by_blueprint.setdefault(wish["blueprint_id"], []).append(wish)
@@ -175,12 +217,25 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
         listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or []) if x]
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:
-            deal = best_deal(wish, listings)
+            fitting = [x.price for x in listings if fits(x, wish)]
+            if fitting:
+                cheapest[wish_key(wish)] = min(fitting)
+            usual = usual_zero_price(wish, (history or {}).get(blueprint_id, []), now)
+            deal = best_deal(wish, listings, usual)
             if deal:
                 result.deals.append(deal)
+    # Alternatives (`one_of`): a deal on one version is no deal when another is cheaper right now.
+    groups: dict[str, list[str]] = {}
+    for w in watch:
+        if w.get("one_of"):
+            groups.setdefault(w["one_of"], []).append(wish_key(w))
+    result.deals = [
+        d for d in result.deals
+        if not any(cheapest.get(k, float("inf")) < d.listing.price - 0.005
+                   for k in groups.get(d.wish.get("one_of") or "", []) if k != d.key)
+    ]
     current = {d.key for d in result.deals}
-    checked = {f"{w['scryfall_id'] or w['blueprint_id']}|{w['language']}|{w['foil']}"
-               for bp, ws in by_blueprint.items() if bp not in result.failed_blueprints for w in ws}
+    checked = {wish_key(w) for bp, ws in by_blueprint.items() if bp not in result.failed_blueprints for w in ws}
     for key in list(alerted):
         if key in checked and key not in current:
             del alerted[key]
@@ -202,16 +257,22 @@ def cardmarket_context(wish: dict[str, Any], foil: bool) -> str:
 
 
 def message(deal: Deal) -> tuple[str, str]:
-    """Alert title and text: the card, the listing, why it's a deal, and both marketplaces' links."""
+    """Alert title and text: how strong the deal is, the card, the listing, what it was compared
+    with, and both marketplaces' links."""
     w, x = deal.wish, deal.listing
     version = ", ".join(w.get("special_tags") or []) or "regular"
     where = f"{(w.get('set_code') or '').upper()} #{w.get('collector_number')}" if w.get("set_code") else "CardTrader"
     finish = "foil" if x.foil else "non-foil"
+    label, advice = (deal.tier[1], deal.tier[2]) if deal.tier else ("🎯 Target price", "At or under the price I set.")
+    compared = [f"Cardmarket trend €{deal.cardmarket:.2f}" if deal.cardmarket else "",
+                f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f}" if deal.cardtrader else ""]
     lines = [
+        advice,
         f"{w['name']} ({where}, {version})",
         f"€{x.price:.2f} on CardTrader{' via Zero' if x.zero else ''}: "
         + f"{x.condition}, {x.language.upper()}, {finish}, seller in {x.country}",
-        "Why: " + "; ".join(deal.reasons) + (f" (trend €{deal.reference:.2f})" if deal.reference else ""),
+        "Why: " + "; ".join(deal.reasons),
+        "Compared with: " + ", ".join(c for c in compared if c) if any(compared) else "",
         cardmarket_context(w, x.foil),
         f"CardTrader: https://www.cardtrader.com/cards/{w['blueprint_id']}",
     ]
@@ -225,7 +286,8 @@ def message(deal: Deal) -> tuple[str, str]:
         lines.append("Cardmarket: https://www.cardmarket.com/en/Magic/Products?" + "&".join(params))
     if w.get("list"):
         lines.append(f"List: {w['list']}")
-    return f"Deal: {w['name']} €{x.price:.2f}", "\n".join(lines)
+    pct = f" ({deal.below_pct:.0f}% under)" if deal.tier else ""
+    return f"{label}: {w['name']} €{x.price:.2f}{pct}", "\n".join(line for line in lines if line)
 
 
 def cardmarket_targets(watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime) -> list[tuple[str, str]]:

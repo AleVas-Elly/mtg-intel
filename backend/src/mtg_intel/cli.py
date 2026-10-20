@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -408,10 +408,17 @@ def check_deals(args: argparse.Namespace) -> int:
     state = json.loads(state_file.read_text()) if state_file else {}
     alerted = state.setdefault("alerted", {})
     now = datetime.now(UTC).replace(microsecond=0)
+    # Earlier check summaries, for the usual CardTrader price of each wish (D47).
+    history: dict[int, list[dict]] = {}
+    for days_back in range(deals.USUAL_DAYS + 1):
+        day = now - timedelta(days=days_back)
+        past = store.fetch(f"checks/{day:%Y/%m}/{day:%Y-%m-%d}.parquet")
+        for row in pq.read_table(past).to_pylist() if past else []:
+            history.setdefault(row["blueprint_id"], []).append(row)
 
     with httpx.Client(timeout=60) as client:
         session = Session(client, token, out=None)
-        result = deals.check(session, watch, alerted, now)
+        result = deals.check(session, watch, alerted, now, history)
         targets = deals.cardmarket_targets(watch, alerted, now)
         messages = [deals.message(d) for d in result.new] + targets
         try:
