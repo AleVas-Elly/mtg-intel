@@ -427,11 +427,12 @@ def check_deals(args: argparse.Namespace) -> int:
               f"{len(result.deals)} deals, {len(messages)} to alert, {len(result.failed_blueprints)} failed")
         if args.dry_run:
             return 0
-        for title, text in messages[:MAX_DEAL_MESSAGES]:
-            alert(client, title, text)
+        sent = [alert(client, title, text) for title, text in messages[:MAX_DEAL_MESSAGES]]
         if len(messages) > MAX_DEAL_MESSAGES:
             rest = [title for title, _ in messages[MAX_DEAL_MESSAGES:]]
-            alert(client, f"{len(rest)} more deals", "\n".join(rest))
+            sent.append(alert(client, f"{len(rest)} more deals", "\n".join(rest)))
+        if sent:
+            print(f"alerts sent: {sum(sent)} of {len(sent)}")
 
     state["last_check"] = now.isoformat()
     work = REPO_ROOT / "data" / "deals-staging"
