@@ -196,10 +196,11 @@ def test_wantlist_matches_by_number_name_and_id_and_keeps_unmatched(tmp_path: Pa
 
     assert [(r["line"], r["scryfall_id"], r["matched"]) for r in rows] == [
         (2, "sf-1", True),
-        (3, "sf-new", True),  # name only: newest printing
+        (3, "sf-new", True),  # name only: any printing, shown as the newest
         (4, "sf-1", True),
         (5, None, False),
     ]
+    assert [r["any_printing"] for r in rows] == [False, True, False, True]
     assert (rows[0]["min_condition"], rows[1]["foil"], rows[1]["via_zero"], rows[1]["language"]) == ("NM", "any", "yes", "any")
 
 

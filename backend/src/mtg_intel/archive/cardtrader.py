@@ -29,13 +29,13 @@ MARKETPLACE_PASSES: list[dict[str, str]] = [{}, {"language": "en"}, {"foil": "tr
 
 
 class Session:
-    """Paced, retrying GETs that write one JSONL line each."""
+    """Paced, retrying GETs that write one JSONL line each (or nothing, with `out=None`)."""
 
     def __init__(
         self,
         client: httpx.Client,
         token: str,
-        out: IO[str],
+        out: IO[str] | None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
         interval: float | None = None,
@@ -46,6 +46,7 @@ class Session:
         self.last_request: float | None = None
         self.requests = 0
         self.failed = 0
+        self.last_status: int | None = None
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> Any | None:
         """Return the parsed JSON body, or None if the request failed after retries."""
@@ -68,6 +69,7 @@ class Session:
                 self.sleep(RETRY_WAITS[attempt])
 
         ok = error is None and status is not None and status < 400
+        self.last_status = status
         self.requests += 1
         self.failed += 0 if ok else 1
         line = {
@@ -78,7 +80,8 @@ class Session:
             "error": error if not ok else None,
             "body": body,
         }
-        self.out.write(json.dumps(line, ensure_ascii=False) + "\n")
+        if self.out is not None:
+            self.out.write(json.dumps(line, ensure_ascii=False) + "\n")
         if not ok:
             return None
         try:

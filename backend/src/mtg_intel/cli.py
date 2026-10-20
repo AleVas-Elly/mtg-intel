@@ -46,6 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     mine.add_argument("--collection", type=Path, help="ManaBox CSV export")
     mine.add_argument("--wantlist", type=Path, help="want-list CSV (see backend/templates/wantlist.csv)")
     mine.add_argument("--local-out", type=Path, help="tables folder instead of Hugging Face")
+    wishlists = commands.add_parser(
+        "import-wishlists", help="turn CardTrader wishlists into a want-list CSV (no list given: show the lists)"
+    )
+    wishlists.add_argument("ids", nargs="*", type=int, help="wishlist IDs to import")
+    wishlists.add_argument("--out", type=Path, default=REPO_ROOT / "data" / "my" / "wantlist.csv")
     commands.add_parser("sync-tables", help="download the tables to data/tables for querying")
     commands.add_parser("telegram-setup", help="find my chat with the bot and send a test message")
     test_alert = commands.add_parser("alert", help="send an alert through the configured channel")
@@ -64,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         return build_tables(args)
     if args.command == "my-cards":
         return push_my_cards(args)
+    if args.command == "import-wishlists":
+        return import_wishlists(args)
     if args.command == "sync-tables":
         return sync_tables()
     if args.command == "telegram-setup":
@@ -169,6 +176,54 @@ def push_my_cards(args: argparse.Namespace) -> int:
 
 
 TABLES_DIR = REPO_ROOT / "data" / "tables"
+
+
+def import_wishlists(args: argparse.Namespace) -> int:
+    """List my CardTrader wishlists, or write the chosen ones as a want-list CSV to upload with my-cards."""
+    import csv
+
+    import duckdb
+
+    from mtg_intel.archive.cardtrader import Session
+    from mtg_intel.tables import mycards, wishlists
+
+    token = os.environ.get("CARDTRADER_TOKEN")
+    if not token:
+        print("CARDTRADER_TOKEN is not set (add it to .env)", file=sys.stderr)
+        return 2
+    with httpx.Client(timeout=60) as client:
+        session = Session(client, token, out=None)
+        headers = [w for w in wishlists.list_wishlists(session) if w.get("game_id") == 1]
+        if not args.ids:
+            for w in headers:
+                print(f"{w['id']:>9}  {w['name']}  (updated {w['updated_at'][:10]})")
+            print("pass the IDs to import, e.g. import-wishlists 2398152 3262115")
+            return 0
+        unknown = set(args.ids) - {w["id"] for w in headers}
+        if unknown:
+            print(f"not my Magic wishlists: {sorted(unknown)}", file=sys.stderr)
+            return 2
+        chosen = wishlists.fetch_wishlists(session, args.ids)
+        codes, blueprints = wishlists.fetch_blueprints(session, chosen)
+
+    cards = TABLES_DIR / "reference" / "cards.parquet"
+    if not cards.exists():
+        print("no card reference: run sync-tables first", file=sys.stderr)
+        return 2
+    names = duckdb.sql(f"select distinct name from '{cards}'").fetchall()
+    card_names = {wishlists.slug(n): n for (n,) in names}
+    rows = wishlists.wantlist_rows(chosen, codes, blueprints, card_names)
+
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=mycards.WANTLIST_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+    items = sum(len(w.items) for w in chosen)
+    unresolved = sum(1 for r in rows if r["note"].endswith("not found"))
+    print(f"{items} items from {len(chosen)} lists -> {len(rows)} want-list rows in {args.out}"
+          + (f" ({unresolved} not found on CardTrader, kept by name)" if unresolved else ""))
+    return 0
 
 
 def sync_tables() -> int:

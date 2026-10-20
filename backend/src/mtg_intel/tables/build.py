@@ -246,7 +246,14 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
                 if my_inputs[name]:
                     table = builder(mycards.read_text(my_inputs[name]), cards)
                     stage(f"my/{name}.parquet", table)
-                    unmatched = table.num_rows - sum(table.column("matched").to_pylist())
+                    # Rows with a CardTrader card but no Scryfall printing can still be tracked on CardTrader.
+                    matched = table.column("matched").to_pylist()
+                    blueprints = (
+                        table.column("cardtrader_blueprint_id").to_pylist()
+                        if "cardtrader_blueprint_id" in table.column_names
+                        else [""] * len(matched)
+                    )
+                    unmatched = sum(1 for ok, bp in zip(matched, blueprints, strict=True) if not ok and not bp)
                     if unmatched:
                         report.problems.append(f"{name}: {unmatched} row(s) not matched to a card")
             state["my_inputs"] = fingerprint

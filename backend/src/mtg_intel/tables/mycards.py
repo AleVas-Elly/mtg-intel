@@ -25,6 +25,9 @@ WANTLIST_COLUMNS = [
     "min_condition",  # NM | SP | MP | PL | PO
     "via_zero",  # yes | no (CardTrader Zero only)
     "max_price_eur",  # optional target price
+    "quantity",
+    "list",  # my own grouping, e.g. the CardTrader wishlist it came from ("; " between several)
+    "cardtrader_blueprint_id",  # exact CardTrader card, when known
     "note",
 ]
 
@@ -65,7 +68,11 @@ def wantlist_table(text: str, cards: pa.Table) -> pa.Table:
         row["foil"] = (row["foil"] or "any").lower()
         row["min_condition"] = (row["min_condition"] or "NM").upper()
         row["via_zero"] = (row["via_zero"] or "yes").lower()
-    return match(pa.Table.from_pylist(rows, schema=_schema(["line"] + WANTLIST_COLUMNS, {"line": pa.int32()})), cards)
+        row["quantity"] = row["quantity"] or "1"
+    table = match(pa.Table.from_pylist(rows, schema=_schema(["line"] + WANTLIST_COLUMNS, {"line": pa.int32()})), cards)
+    # A name with nothing narrowing it means any printing; `scryfall_id` then shows the newest one.
+    any_printing = [not (r["scryfall_id"] or r["collector_number"] or r["cardtrader_blueprint_id"]) for r in rows]
+    return table.append_column("any_printing", pa.array(any_printing, pa.bool_()))
 
 
 def collection_table(text: str, cards: pa.Table) -> pa.Table:
