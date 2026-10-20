@@ -48,6 +48,9 @@ def main(argv: list[str] | None = None) -> int:
     mine.add_argument("--local-out", type=Path, help="tables folder instead of Hugging Face")
     commands.add_parser("sync-tables", help="download the tables to data/tables for querying")
     commands.add_parser("telegram-setup", help="find my chat with the bot and send a test message")
+    test_alert = commands.add_parser("alert", help="send an alert through the configured channel")
+    test_alert.add_argument("title")
+    test_alert.add_argument("message")
     query = commands.add_parser("query", help="run SQL against the tables (after sync-tables)")
     query.add_argument("sql")
     price = commands.add_parser("price", help="Cardmarket price history of a card (after sync-tables)")
@@ -65,6 +68,11 @@ def main(argv: list[str] | None = None) -> int:
         return sync_tables()
     if args.command == "telegram-setup":
         return telegram_setup()
+    if args.command == "alert":
+        with httpx.Client() as client:
+            sent = alert(client, args.title, args.message)
+        print("sent" if sent else "not sent: no alert channel configured or it failed")
+        return 0 if sent else 1
     if args.command in ("query", "price"):
         return run_query(args)
     store: Store

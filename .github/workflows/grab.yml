@@ -7,6 +7,11 @@ on:
     # :17 past the hour: GitHub delays or drops jobs scheduled on the hour.
     - cron: "17 2,8,14 * * *"
   workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Send a test alert before grabbing"
+        type: boolean
+        default: false
 
 concurrency:
   group: grab
@@ -26,6 +31,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen
+      - run: uv run mtg-intel alert "mtg-intel test" "GitHub Actions can reach you."
+        if: inputs.test_alert
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       - run: uv run mtg-intel grab
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
