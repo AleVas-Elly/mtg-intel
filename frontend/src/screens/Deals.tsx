@@ -3,8 +3,7 @@ import type { AppData } from "../data";
 import { dealRatio } from "../data";
 import { ago, time, TIERS } from "../format";
 import { link } from "../router";
-import { IconBrush, IconSettings, IconWarn } from "../ui/icons";
-import { setLabOpen } from "../labstate";
+import { IconSettings, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton, type Item } from "../ui/Row";
 import type { Deal } from "../types";
 
@@ -67,7 +66,6 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
           <Status data={data} />
         </div>
         <div style={{ display: "flex", gap: "8px" }}>
-          <button class="icon-btn" type="button" onClick={() => setLabOpen(true)} aria-label="Design lab"><IconBrush /></button>
           <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
         </div>
       </header>

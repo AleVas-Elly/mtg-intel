@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 
 export interface Look { palette: string; type: string; motion: string; density: string; tiers: string }
 
-export const DEFAULT: Look = { palette: "island", type: "figtree", motion: "smooth", density: "comfortable", tiers: "violet" };
+export const DEFAULT: Look = { palette: "island", type: "system", motion: "lively", density: "comfortable", tiers: "gold" };
 
 export const OPTIONS: { [K in keyof Look]: { id: string; label: string; mana?: string; hint: string }[] } = {
   palette: [
