@@ -53,7 +53,7 @@ export function Check({ data }: { data: AppData }) {
       <p class="hint" style={{ marginTop: 0 }}>Look at a few cards at random and at everything the automatic checks flagged. Something wrong? Tap the card, use “Copy details for Claude”, and paste it to Claude: it gets fixed where the data comes from.</p>
 
       <div class="list-head">Spot check<span>
-        <button class="btn" type="button" onClick={() => setSeed((s) => s + 1)} style={{ height: "30px", fontSize: "13px", padding: "0 12px" }}><IconShuffle />Shuffle</button>
+        <button class="btn sm" type="button" onClick={() => setSeed((s) => s + 1)} ><IconShuffle />Shuffle</button>
       </span></div>
       <div class="cards">
         {spot.map((w) => {
@@ -73,7 +73,7 @@ export function Check({ data }: { data: AppData }) {
       {groups.length > 0 ? (
         <>
           <div class="list-head" style={{ marginTop: "18px" }}>Needs a look<span>
-            <button class="btn" type="button" onClick={copy} style={{ height: "30px", fontSize: "13px", padding: "0 12px" }}><IconCopy />{copied ? "Copied" : "Copy all"}</button>
+            <button class="btn sm" type="button" onClick={copy} ><IconCopy />{copied ? "Copied" : "Copy all"}</button>
           </span></div>
           {groups.map(([code, ws]) => (
             <>

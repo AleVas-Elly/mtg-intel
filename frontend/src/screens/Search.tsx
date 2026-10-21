@@ -138,7 +138,7 @@ export function Search({ data }: { data: AppData }) {
           <button type="button" aria-pressed={scope === "mine"} onClick={() => setScope("mine")}>My cards</button>
           <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All cards</button>
         </div>
-        <button class="btn primary" type="submit" disabled={!q.trim() || state === "busy"} style={{ height: "36px" }}>Search</button>
+        <button class="btn primary" type="submit" disabled={!q.trim() || state === "busy"} style={{ height: "36px", borderRadius: "10px" }}>Search</button>
       </form>
       {error && <div class="notice"><IconWarn />{error}</div>}
       {state === "idle" && (

@@ -452,3 +452,5 @@ img { display: block; }
 ::view-transition-group(card-open) { animation-duration: 0.45s; animation-timing-function: var(--ease); }
 ::view-transition-old(card-open), ::view-transition-new(card-open) { height: 100%; object-fit: cover; }
 html.vt .detail, html.vt .detail-backdrop { animation: none; }
+.btn.sm { height: 32px; padding: 0 12px; font-size: 13.5px; border-radius: 9px; }
+.btn.sm svg { width: 15px; height: 15px; }

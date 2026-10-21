@@ -50,7 +50,7 @@ export function Settings({ data }: { data: AppData }) {
       <div class="group-title">Devices with a passkey</div>
       <div class="group">
         {devices.map((d) => <div class="kv"><dt>{d.device}</dt><dd>added {day(d.created)}</dd></div>)}
-        <div class="kv"><dt>Add another device</dt><dd><button class="btn" type="button" style={{ height: "32px", fontSize: "13.5px" }} onClick={add}>Show QR code</button></dd></div>
+        <div class="kv"><dt>Add another device</dt><dd><button class="btn sm" type="button"  onClick={add}>Show QR code</button></dd></div>
       </div>
       {invite && (
         <div class="group" style={{ padding: "16px", textAlign: "center" }}>
