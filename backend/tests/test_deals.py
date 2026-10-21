@@ -149,7 +149,7 @@ def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
     assert "Compared with: Cardmarket trend €4.67 (38% less), CardTrader Zero next cheapest copy €4.50 (36% less)" in text
     assert "Cardmarket: lowest €3.00, 7-day average €4.59" in text
     assert "https://www.cardtrader.com/cards/10" in text
-    assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&language=1&minCondition=2&isFoil=N" in text
+    assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&sellerCountry=23&language=1&minCondition=2&isFoil=N" in text
 
 
 def test_cardmarket_target_alerts_once_and_again_when_lower():

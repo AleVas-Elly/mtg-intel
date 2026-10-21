@@ -38,6 +38,7 @@ LANGUAGES = {"ja": "jp"}  # want-list (Scryfall) code -> CardTrader code; the re
 # Cardmarket product-page filters (language ids and minimum condition ids are Cardmarket's).
 CM_LANGUAGES = {"en": 1, "fr": 2, "de": 3, "es": 4, "it": 5, "zhs": 6, "ja": 7, "pt": 8, "ru": 9, "ko": 10, "zht": 11}
 CM_MIN_CONDITION = {"NM": 2, "SP": 3, "MP": 4, "PL": 5, "PO": 7}
+CM_SELLER_COUNTRY = 23  # the Netherlands: the only sellers I buy from on Cardmarket (low shipping)
 
 
 def watch_table(wantlist: pa.Table, cards: pa.Table, cardmarket: pa.Table | None) -> pa.Table:
@@ -282,7 +283,7 @@ def message(deal: Deal) -> tuple[str, str]:
         f"Open on CardTrader: https://www.cardtrader.com/cards/{w['blueprint_id']}",
     ]
     if w.get("cardmarket_id"):
-        params = [f"idProduct={w['cardmarket_id']}"]
+        params = [f"idProduct={w['cardmarket_id']}", f"sellerCountry={CM_SELLER_COUNTRY}"]
         if w["language"] in CM_LANGUAGES:
             params.append(f"language={CM_LANGUAGES[w['language']]}")
         params.append(f"minCondition={CM_MIN_CONDITION.get(w['min_condition'], 2)}")
