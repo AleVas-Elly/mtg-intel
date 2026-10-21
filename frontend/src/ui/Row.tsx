@@ -8,8 +8,8 @@ import { ManaCost, SetSymbol } from "./symbols";
 import { useLook } from "../lab";
 
 /** One card: picture, name and cost, the collector line, the wish, and both markets' prices. */
-export function WishRow({ w, data, current, extra, ctPrice, gone }: {
-  w: Wish; data: AppData; current?: boolean; extra?: ComponentChildren; ctPrice?: number | null; gone?: boolean;
+export function WishRow({ w, data, current, extra, ctPrice, gone, n }: {
+  w: Wish; data: AppData; current?: boolean; extra?: ComponentChildren; ctPrice?: number | null; gone?: boolean; n?: number;
 }) {
   const live = data.liveOf(w.key);
   const ct = ctPrice !== undefined ? ctPrice : live?.price;
@@ -21,6 +21,7 @@ export function WishRow({ w, data, current, extra, ctPrice, gone }: {
       data-key={w.key}
       href={`?card=${encodeURIComponent(w.key)}`}
       aria-current={current ? "true" : undefined}
+      style={n != null ? { "--n": n } : undefined}
       onClick={(e) => { e.preventDefault(); openCard(w.key); }}
     >
       <CardImage src={w.thumb} alt="" foil={showsFoil(w)} />
@@ -54,12 +55,12 @@ export function RowSkeleton({ n = 6 }: { n?: number }) {
 export interface Item { w: Wish; extra?: ComponentChildren; ctPrice?: number | null; gone?: boolean }
 
 /** A big card picture with its name, version and both prices (the Gallery layout). */
-function GalleryCard({ w, data, extra, ctPrice, gone }: Item & { data: AppData }) {
+function GalleryCard({ w, data, extra, ctPrice, gone, n }: Item & { data: AppData; n: number }) {
   const live = data.liveOf(w.key);
   const ct = ctPrice !== undefined ? ctPrice : live?.price;
   const cm = cmTrend(w, live?.foil);
   return (
-    <a class={`g-card${gone ? " gone" : ""}`} data-key={w.key} href={`?card=${encodeURIComponent(w.key)}`}
+    <a class={`g-card${gone ? " gone" : ""}`} data-key={w.key} href={`?card=${encodeURIComponent(w.key)}`} style={{ "--n": n }}
       onClick={(e) => { e.preventDefault(); openCard(w.key); }}>
       <CardImage src={w.image} alt={w.name} foil={showsFoil(w)} placeholder={w.thumb} />
       <div class="g-name"><span>{w.name}</span>{data.flagsOf(w).length > 0 && <span class="flag-dot" title="Needs a look" />}</div>
@@ -77,7 +78,7 @@ function GalleryCard({ w, data, extra, ctPrice, gone }: Item & { data: AppData }
 export function CardList({ items, data, current }: { items: Item[]; data: AppData; current?: string | null }) {
   const look = useLook();
   if (look.density === "gallery") {
-    return <div class="gallery">{items.map((it) => <GalleryCard {...it} data={data} />)}</div>;
+    return <div class="gallery">{items.map((it, n) => <GalleryCard {...it} data={data} n={n} />)}</div>;
   }
-  return <div class="list">{items.map((it) => <WishRow {...it} data={data} current={current === it.w.key} />)}</div>;
+  return <div class="list">{items.map((it, n) => <WishRow {...it} data={data} n={n} current={current === it.w.key} />)}</div>;
 }

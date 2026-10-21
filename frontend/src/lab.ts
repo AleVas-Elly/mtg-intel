@@ -4,7 +4,7 @@ import { useEffect, useState } from "preact/hooks";
 
 export interface Look { palette: string; type: string; motion: string; density: string; tiers: string }
 
-export const DEFAULT: Look = { palette: "silver", type: "system", motion: "smooth", density: "comfortable", tiers: "violet" };
+export const DEFAULT: Look = { palette: "island", type: "figtree", motion: "smooth", density: "comfortable", tiers: "violet" };
 
 export const OPTIONS: { [K in keyof Look]: { id: string; label: string; mana?: string; hint: string }[] } = {
   palette: [
@@ -21,9 +21,9 @@ export const OPTIONS: { [K in keyof Look]: { id: string; label: string; mana?: s
     { id: "serif", label: "Card serif", hint: "Titles and card names in a serif like the one printed on cards" },
   ],
   motion: [
-    { id: "calm", label: "Calm", hint: "Fades only, nothing moves by itself" },
-    { id: "smooth", label: "Smooth", hint: "Card flies open, soft foil shimmer" },
-    { id: "lively", label: "Lively", hint: "Stronger foil, cards tilt, springy taps, list reveal" },
+    { id: "calm", label: "Calm", hint: "Things just appear: no flying card, foil stays still" },
+    { id: "smooth", label: "Smooth", hint: "A tapped card flies into its page, lists fade in, foil shimmers slowly" },
+    { id: "lively", label: "Lively", hint: "The card flies with a bounce, lists cascade in, cards tilt when touched, Steal badges shine" },
   ],
   density: [
     { id: "compact", label: "Compact", hint: "Small pictures, more cards per screen" },
@@ -31,6 +31,9 @@ export const OPTIONS: { [K in keyof Look]: { id: string; label: string; mana?: s
     { id: "gallery", label: "Gallery", hint: "Big card pictures in a grid" },
   ],
   tiers: [
+    { id: "green", label: "Green", hint: "The colour of saving money, like price drops and \u201ccheaper here\u201d" },
+    { id: "gold", label: "Gold", hint: "Treasure gold; close to the rare set symbol" },
+    { id: "rose", label: "Rose", hint: "Sale-tag pink-red" },
     { id: "violet", label: "Violet", hint: "Deal tiers in three violets" },
     { id: "ink", label: "Ink", hint: "Deal tiers in black and grey, no colour" },
   ],

@@ -282,7 +282,7 @@ img { display: block; }
 }
 .tier small { font-weight: 500; opacity: 0.8; font-size: 12px; }
 .tier.t1 { background: var(--tier-1-bg); color: var(--tier-1-ink); }
-.tier.t2 { background: var(--tier-2-bg); color: var(--tier-ink); }
+.tier.t2 { background: var(--tier-2-bg); color: var(--tier-2-ink, var(--tier-ink)); }
 .tier.t3 { background: var(--tier-3-bg); color: var(--tier-3-ink, var(--tier-ink)); box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--tier-3-bg) 70%, transparent); }
 .tier.target { background: var(--fill-strong); color: var(--ink); }
 .chg { font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -580,31 +580,55 @@ html.vt .detail, html.vt .detail-backdrop { animation: none; }
 :root[data-type="serif"] .r-name, :root[data-type="serif"] .tile b, :root[data-type="serif"] .g-name { font-weight: 600; font-size: 16.5px; letter-spacing: -0.005em; }
 .r-name, .tile b, .g-name { font-family: var(--font-name); }
 
-/* ---------- Design lab: motion ---------- */
+/* ---------- Design lab: motion ----------
+   Calm: things appear. Smooth: the card flies into its page, lists fade in, foil drifts.
+   Lively: the flight bounces, lists cascade, pictures tilt when touched, Steal badges shine. */
+@keyframes reveal { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
 :root[data-motion="calm"] .foil::after { animation: none; opacity: 0.35; }
 :root[data-motion="calm"] .dot.live { animation: none; }
-:root[data-motion="calm"] .detail { animation: fade 0.2s var(--ease); }
+:root[data-motion="calm"] .detail { animation: fade 0.15s linear; }
 :root[data-motion="calm"] .tab:active, :root[data-motion="calm"] .btn:active { transform: none; }
-:root[data-motion="calm"] ::view-transition-group(card-open) { animation-duration: 0.01s; }
+:root[data-motion="calm"] .card-big { transform: none !important; }
+:root[data-motion="calm"]::view-transition-group(card-open) { animation-duration: 0s; }
+:root[data-motion="calm"]::view-transition-old(root), :root[data-motion="calm"]::view-transition-new(root) { animation-duration: 0.15s; }
+
+:root[data-motion="smooth"] .list, :root[data-motion="smooth"] .gallery { animation: fade 0.35s var(--ease) both; }
+
 :root[data-motion="lively"] { --spring: cubic-bezier(0.34, 1.45, 0.64, 1); }
-:root[data-motion="lively"] .foil::after { opacity: 0.95; animation-duration: 3.2s; }
+:root[data-motion="lively"]::view-transition-group(card-open) { animation-duration: 0.62s; animation-timing-function: var(--spring); }
+:root[data-motion="lively"] .detail { animation-duration: 0.55s; animation-timing-function: var(--spring); }
+:root[data-motion="lively"] .foil::after { opacity: 0.95; animation-duration: 3s; }
 :root[data-motion="lively"] .row .thumb, :root[data-motion="lively"] .g-card .thumb { transition: transform 0.45s var(--spring); }
-:root[data-motion="lively"] .row:hover .thumb { transform: perspective(500px) rotateY(-10deg) rotateX(5deg) scale(1.05); }
+:root[data-motion="lively"] .row:hover .thumb { transform: perspective(500px) rotateY(-10deg) rotateX(5deg) scale(1.06); }
+:root[data-motion="lively"] .row:active .thumb { transform: perspective(500px) rotateY(-14deg) rotateX(6deg) scale(1.1); transition-duration: 0.2s; }
 :root[data-motion="lively"] .g-card:hover .thumb { transform: perspective(900px) rotateY(-6deg) rotateX(4deg) translateY(-4px); }
-:root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 0.55s var(--ease) both; }
-:root[data-motion="lively"] .list > .row:nth-child(1), :root[data-motion="lively"] .gallery > *:nth-child(1) { animation-delay: 35ms; }
-:root[data-motion="lively"] .list > .row:nth-child(2), :root[data-motion="lively"] .gallery > *:nth-child(2) { animation-delay: 70ms; }
-:root[data-motion="lively"] .list > .row:nth-child(3), :root[data-motion="lively"] .gallery > *:nth-child(3) { animation-delay: 105ms; }
-:root[data-motion="lively"] .list > .row:nth-child(4), :root[data-motion="lively"] .gallery > *:nth-child(4) { animation-delay: 140ms; }
-:root[data-motion="lively"] .list > .row:nth-child(5), :root[data-motion="lively"] .gallery > *:nth-child(5) { animation-delay: 175ms; }
-:root[data-motion="lively"] .list > .row:nth-child(6), :root[data-motion="lively"] .gallery > *:nth-child(6) { animation-delay: 210ms; }
-:root[data-motion="lively"] .list > .row:nth-child(7), :root[data-motion="lively"] .gallery > *:nth-child(7) { animation-delay: 245ms; }
-:root[data-motion="lively"] .list > .row:nth-child(8), :root[data-motion="lively"] .gallery > *:nth-child(8) { animation-delay: 280ms; }
-:root[data-motion="lively"] .list > .row:nth-child(9), :root[data-motion="lively"] .gallery > *:nth-child(9) { animation-delay: 315ms; }
-:root[data-motion="lively"] .list > .row:nth-child(10), :root[data-motion="lively"] .gallery > *:nth-child(10) { animation-delay: 350ms; }
-:root[data-motion="lively"] .list > .row:nth-child(11), :root[data-motion="lively"] .gallery > *:nth-child(11) { animation-delay: 385ms; }
-:root[data-motion="lively"] .list > .row:nth-child(12), :root[data-motion="lively"] .gallery > *:nth-child(12) { animation-delay: 420ms; }
-@keyframes reveal { from { opacity: 0; transform: translateY(10px) scale(0.985); } }
+:root[data-motion="lively"] .g-card:active .thumb { transform: perspective(900px) rotateY(-9deg) rotateX(5deg) scale(0.97); transition-duration: 0.2s; }
+:root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 0.6s var(--spring) both; animation-delay: calc(min(var(--n, 12), 12) * 40ms); }
+:root[data-motion="lively"] .tier.t3 { position: relative; overflow: hidden; }
+:root[data-motion="lively"] .tier.t3::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%) 200% 0 / 250% 100% no-repeat;
+  animation: shine 3.4s var(--ease) infinite 0.8s;
+}
+@keyframes shine { 0% { background-position: 200% 0; } 35%, 100% { background-position: -100% 0; } }
+
+/* the lab's preview strip plays the same moves on a few of my cards */
+.lab-demo {
+  position: relative; display: flex; gap: 8px; justify-content: center; align-items: center; width: 100%; height: 108px; margin-top: 10px;
+  border: 0; border-radius: 12px; background: var(--fill); cursor: pointer; overflow: hidden; color: var(--ink-2);
+}
+.lab-demo small { position: absolute; right: 10px; bottom: 6px; font-size: 11px; }
+.demo-card { width: 46px; display: block; animation: fade 0.15s linear both; }
+.demo-card .thumb { width: 100%; box-shadow: var(--shadow-1); }
+:root[data-motion="smooth"] .demo-card { animation: fade 0.35s var(--ease) both; }
+:root[data-motion="smooth"] .demo-card.lift { animation: fade 0.35s var(--ease) both, lift 0.45s var(--ease) 0.7s both; }
+:root[data-motion="lively"] .demo-card { animation: reveal 0.6s var(--spring) both; animation-delay: calc(var(--i) * 70ms); }
+:root[data-motion="lively"] .demo-card.lift { animation: reveal 0.6s var(--spring) 140ms both, lift-tilt 0.62s var(--spring) 0.8s both; }
+@keyframes lift { to { transform: translateY(-6px) scale(1.28); } }
+@keyframes lift-tilt { to { transform: translateY(-6px) scale(1.32) perspective(500px) rotateY(-12deg) rotateX(6deg); } }
+.demo-card.lift { position: relative; z-index: 1; }
+.lab-note { font-size: 12.5px; color: var(--ink-2); margin-top: 8px; }
+.lab-tiers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 
 /* ---------- Design lab: density ---------- */
 :root[data-density="compact"] .row { grid-template-columns: 36px minmax(0, 1fr) auto; padding: 8px 14px; gap: 10px; }
@@ -627,6 +651,15 @@ html.vt .detail, html.vt .detail-backdrop { animation: none; }
 :root[data-tiers="ink"] .tier.t1 { background: var(--fill-strong); color: var(--ink); }
 :root[data-tiers="ink"] .tier.t2 { background: var(--ink-2); color: var(--surface); }
 :root[data-tiers="ink"] .tier.t3 { background: var(--ink); color: var(--surface); box-shadow: none; }
+:root[data-tiers="green"] { --tier-1-bg: #e2f6ec; --tier-1-ink: #05683f; --tier-2-bg: #0f8452; --tier-2-ink: #ffffff; --tier-3-bg: #064d2e; --tier-3-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-tiers="green"]:not([data-theme="light"]) { --tier-1-bg: #0d2c1f; --tier-1-ink: #7fe3b2; --tier-2-bg: #137d4f; --tier-2-ink: #ffffff; --tier-3-bg: #5ee8a6; --tier-3-ink: #032517; } }
+:root[data-tiers="green"][data-theme="dark"] { --tier-1-bg: #0d2c1f; --tier-1-ink: #7fe3b2; --tier-2-bg: #137d4f; --tier-2-ink: #ffffff; --tier-3-bg: #5ee8a6; --tier-3-ink: #032517; }
+:root[data-tiers="gold"] { --tier-1-bg: #fbf0d2; --tier-1-ink: #6e4a00; --tier-2-bg: #e2ad2a; --tier-2-ink: #2b1c00; --tier-3-bg: #8a5d00; --tier-3-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-tiers="gold"]:not([data-theme="light"]) { --tier-1-bg: #2d2308; --tier-1-ink: #f2cb66; --tier-2-bg: #b88616; --tier-2-ink: #1d1300; --tier-3-bg: #f5cd55; --tier-3-ink: #241800; } }
+:root[data-tiers="gold"][data-theme="dark"] { --tier-1-bg: #2d2308; --tier-1-ink: #f2cb66; --tier-2-bg: #b88616; --tier-2-ink: #1d1300; --tier-3-bg: #f5cd55; --tier-3-ink: #241800; }
+:root[data-tiers="rose"] { --tier-1-bg: #ffe7ef; --tier-1-ink: #a8124a; --tier-2-bg: #d42a63; --tier-2-ink: #ffffff; --tier-3-bg: #8c0b39; --tier-3-ink: #ffffff; }
+@media (prefers-color-scheme: dark) { :root[data-tiers="rose"]:not([data-theme="light"]) { --tier-1-bg: #3a1222; --tier-1-ink: #ffa3c3; --tier-2-bg: #c92560; --tier-2-ink: #ffffff; --tier-3-bg: #ff86ae; --tier-3-ink: #3a0716; } }
+:root[data-tiers="rose"][data-theme="dark"] { --tier-1-bg: #3a1222; --tier-1-ink: #ffa3c3; --tier-2-bg: #c92560; --tier-2-ink: #ffffff; --tier-3-bg: #ff86ae; --tier-3-ink: #3a0716; }
 
 /* ---------- Design lab panel ---------- */
 .lab {
@@ -643,7 +676,7 @@ html.vt .detail, html.vt .detail-backdrop { animation: none; }
 .lab-group { padding: 10px 0; }
 .lab-group + .lab-group { border-top: 0.5px solid var(--line); }
 .lab-label { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-.lab-label span { font-size: 13px; font-weight: 600; }
+.lab-label span { font-size: 13px; font-weight: 600; white-space: nowrap; }
 .lab-label small { font-size: 12px; color: var(--ink-2); text-align: right; }
 .lab-options { display: flex; gap: 6px; flex-wrap: wrap; }
 .lab-options button {
