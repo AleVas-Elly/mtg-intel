@@ -11,6 +11,9 @@ import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
 import { Detail } from "./screens/Detail";
 import { Lab } from "./ui/Lab";
+
+// The development copy runs on test data; say so, so it is never mistaken for the real site.
+const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
 import { setLabOpen, useLabOpen } from "./labstate";
 
 const TABS = [
@@ -54,7 +57,10 @@ function Signed({ path, card }: { path: string; card: string | null }) {
         <div class="grow" />
         <a href="/settings" onClick={link("/settings")} aria-current={path === "/settings" ? "page" : undefined}><IconSettings />Settings</a>
       </nav>
-      <main class="main">{screen}</main>
+      <main class="main">
+        {LOCAL && <div class="local-copy">Local test copy on Claude's machine: made-up prices, not your real deals.</div>}
+        {screen}
+      </main>
       {card && <Detail data={data} wishKey={card} />}
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <nav class="tabbar" aria-label="Main">

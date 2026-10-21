@@ -707,3 +707,9 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 .swatch img { width: 18px; height: 18px; border-radius: 50%; box-shadow: -0.5px 1px 0 rgba(0, 0, 0, 0.5); flex: none; }
 .lab-options .swatch[aria-checked="true"] { background: var(--fill-strong); color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
 .lab-foot { display: flex; justify-content: space-between; gap: 8px; padding: 10px 14px 14px; border-top: 0.5px solid var(--line); }
+
+/* the local development copy, never the real site */
+.local-copy {
+  position: sticky; top: 0; z-index: 30; margin: 0 auto; max-width: 760px; padding: 8px 14px; text-align: center;
+  font-size: 13px; font-weight: 600; background: var(--warn-bg); color: var(--warn); border-radius: 0 0 12px 12px;
+}
