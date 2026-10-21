@@ -30,7 +30,7 @@ interface Passkey {
 const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
 const INVITE_MINUTES = 15;
-const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|prices-\d{1,2})$/;
+const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|purchases|prices-\d{1,2})$/;
 // Want-list edits made on the site (D50): one KV key per waiting edit, so writes from different
 // places never overwrite each other; the GitHub job reads them all and reports which are done.
 const EDIT_PREFIX = "edit:";
@@ -189,8 +189,8 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
   return json({ error: "Not found" }, 404);
 }
 
-interface Edit { id: string; at: string; op: "add" | "update" | "remove"; key?: string; scryfall_id?: string;
-  settings?: Record<string, string>; card?: Record<string, unknown> }
+interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "bought"; key?: string; scryfall_id?: string;
+  settings?: Record<string, string>; card?: Record<string, unknown>; purchase?: Record<string, string> }
 
 async function waitingEdits(env: Env): Promise<Edit[]> {
   const listed = await env.DATA.list({ prefix: EDIT_PREFIX });
@@ -217,14 +217,14 @@ async function edits(request: Request, env: Env, rest: string, ctx: ExecutionCon
   }
   if (request.method !== "POST" || rest) return json({ error: "Not found" }, 404);
   const body = (await request.json().catch(() => null)) as Partial<Edit> | null;
-  const ok = body && (body.op === "add" ? typeof body.scryfall_id === "string" : (body.op === "update" || body.op === "remove") && typeof body.key === "string");
+  const ok = body && (body.op === "add" ? typeof body.scryfall_id === "string" : (body.op === "update" || body.op === "remove" || body.op === "bought") && typeof body.key === "string");
   if (!ok || JSON.stringify(body).length > 4000) return json({ error: "That change isn't valid." }, 400);
   if ((await env.DATA.list({ prefix: EDIT_PREFIX })).keys.length >= MAX_EDITS) {
     return json({ error: "Too many changes are waiting. Try again in a few minutes." }, 429);
   }
   const at = new Date().toISOString();
   const edit: Edit = { id: randomToken(12), at, op: body.op!, key: body.key, scryfall_id: body.scryfall_id,
-    settings: body.settings ?? {}, card: body.card };
+    settings: body.settings ?? {}, card: body.card, purchase: body.purchase };
   await env.DATA.put(`${EDIT_PREFIX}${at}:${edit.id}`, JSON.stringify(edit));
   if (env.TRIGGER) ctx.waitUntil(env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined));
   return json(await editsDoc(env));

@@ -1,7 +1,7 @@
 // Want-list edits made on the site (spec D50). Each one is saved on the Worker at once and shown
 // straight away; a GitHub job writes it into the want-list file within a few minutes.
 import { send, setLocal, useDoc } from "./api";
-import type { Edit, EditsDoc, Settings, Wish } from "./types";
+import type { Edit, EditsDoc, Purchase, Settings, Wish } from "./types";
 
 /** What a new wish starts with (user, 2026-10-22): English, any finish, NM or better, any CardTrader
  *  seller, on the Showcase list. */
@@ -51,6 +51,10 @@ export function overlay(wishes: Wish[], ops: Edit[]): Wish[] {
       out.set(op.key, { ...withSettings(out.get(op.key)!, op.settings ?? {}), pending: "update" });
     } else if (op.op === "remove" && op.key) {
       out.delete(op.key);
+    } else if (op.op === "bought" && op.key && out.has(op.key)) {
+      const w = out.get(op.key)!;  // one copy off; the wish goes at zero
+      if (w.quantity > 1) out.set(op.key, { ...w, quantity: w.quantity - 1, pending: "update" });
+      else out.delete(op.key);
     }
   }
   return [...out.values()];
@@ -72,4 +76,18 @@ export async function undoEdit(id: string): Promise<void> {
 
 export async function dismissFailed(): Promise<void> {
   setLocal("edits", await send<EditsDoc>("DELETE", "/api/edits/failed"));
+}
+
+/** Purchases still on their way into the file, shaped like recorded ones. */
+export function pendingPurchases(ops: Edit[]): Purchase[] {
+  return ops.filter((o) => o.op === "bought" && o.purchase && o.card).map((o, i) => {
+    const p = o.purchase!, c = o.card!;
+    const price = Number(p.price_eur), trend = p.cardmarket_trend_eur ? Number(p.cardmarket_trend_eur) : null;
+    return {
+      n: -1 - i, date: p.date, name: c.name ?? "", set: c.set ?? null, number: c.number ?? null, scryfall_id: c.scryfall_id ?? null,
+      language: p.language, foil: p.foil === "yes", condition: p.condition, price, market: p.market, cardmarket: trend,
+      saved: trend != null ? Math.round((trend - price) * 100) / 100 : null, thumb: c.thumb ?? null, rarity: c.rarity ?? null,
+      tags: c.tags ?? [], set_name: c.set_name ?? null, lists: c.lists ?? [], pending: true,
+    };
+  }).reverse();
 }

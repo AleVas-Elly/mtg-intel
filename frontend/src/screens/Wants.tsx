@@ -2,12 +2,16 @@ import { useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import type { AppData } from "../data";
 import { dealRatio, wishCount } from "../data";
-import { cmTrend, day, foilOnly, showsFoil } from "../format";
-import { dismissFailed } from "../edits";
+import { cmTrend, day, eur, foilOnly, showsFoil, tagName } from "../format";
+import { CardImage } from "../ui/CardImage";
+import { SetSymbol } from "../ui/symbols";
+import { dismissFailed, pendingPurchases } from "../edits";
 import { LOCAL } from "../env";
 import { IconSearch, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton } from "../ui/Row";
-import type { HistoryDoc, Wish } from "../types";
+import type { HistoryDoc, PurchasesDoc, Wish } from "../types";
+
+const BOUGHT = "\u0000bought";  // the Bought segment, never a real list name
 
 const SORTS = [
   { id: "deal", label: "Closest to a deal" },
@@ -86,15 +90,18 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
               {l}<small>{wishCount(l === "All" ? wishes : wishes.filter((w) => w.lists.includes(l)))}</small>
             </button>
           ))}
+          <button type="button" aria-pressed={list === BOUGHT} onClick={() => pick(BOUGHT)}>Bought</button>
         </div>
         <label class="field"><IconSearch /><span class="sr">Filter</span>
           <input type="search" placeholder="Search cards" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
         </label>
-        <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
-          {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}
-        </select>
+        {list !== BOUGHT && (
+          <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
+            {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}
+          </select>
+        )}
       </div>
-      {!data.wants ? <RowSkeleton /> : shown.length ? (
+      {list === BOUGHT ? <BoughtList data={data} q={q} /> : !data.wants ? <RowSkeleton /> : shown.length ? (
         <CardList data={data} current={card} items={shown.map((w) => {
           const c = showChange ? change30(w, history.doc) : null;
           return {
@@ -106,7 +113,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
       ) : (
         <div class="empty"><h2>Nothing matches “{q}”</h2><p>Try a card name, a set code like <b>msh</b>, or a version like <b>borderless</b>.</p></div>
       )}
-      <p class="hint">Green dot: CardTrader's cheapest copy that fits the wish, right now. Blue square: Cardmarket's trend for that finish (all sellers, all conditions, once a day).</p>
+      {list !== BOUGHT && <p class="hint">Green dot: CardTrader's cheapest copy that fits the wish, right now. Blue square: Cardmarket's trend for that finish (all sellers, all conditions, once a day).</p>}
     </div>
   );
 }
@@ -130,6 +137,49 @@ function EditsStatus({ data }: { data: AppData }) {
           <button class="btn sm" type="button" onClick={() => dismissFailed()}>Dismiss</button>
         </div>
       )}
+    </>
+  );
+}
+
+const MARKET: Record<string, string> = { cardtrader: "CardTrader", cardmarket: "Cardmarket", other: "Elsewhere" };
+
+/** Cards I bought, newest first, with what each saved against Cardmarket's trend that day. */
+function BoughtList({ data, q }: { data: AppData; q: string }) {
+  const doc = useDoc<PurchasesDoc>("purchases").doc;
+  const all = [...pendingPurchases(data.edits.ops), ...(doc?.purchases ?? [])];
+  const needle = q.trim().toLowerCase();
+  const rows = all.filter((p) => !needle || p.name.toLowerCase().includes(needle) || (p.set ?? "").toLowerCase() === needle);
+  const compared = all.filter((p) => p.saved != null);
+  const saved = compared.reduce((t, p) => t + p.saved!, 0);
+  const paid = all.reduce((t, p) => t + p.price, 0);
+  if (doc === undefined && !all.length) return <RowSkeleton n={3} />;
+  if (!all.length) {
+    return <div class="empty"><h2>Nothing bought yet</h2><p>On a card's page, tap <b>Bought it</b> to record what you paid. It shows here with what you saved against Cardmarket.</p></div>;
+  }
+  return (
+    <>
+      <div class="savings">
+        <div><span class="label">Saved against Cardmarket</span><b class={saved >= 0 ? "good" : "bad"}>{eur(Math.abs(saved))}{saved < 0 ? " more" : ""}</b></div>
+        <div><span class="label">Paid</span><b>{eur(paid)}</b></div>
+        <div><span class="label">Cards</span><b>{all.length}</b></div>
+      </div>
+      <div class="list">
+        {rows.map((p) => (
+          <div class="row static">
+            <CardImage src={p.thumb} alt="" foil={p.foil} />
+            <div class="r-main">
+              <div class="r-name"><span>{p.name}</span></div>
+              <div class="r-line"><SetSymbol set={p.set} rarity={p.rarity} /><span>{p.tags.length ? p.tags.map(tagName).join(", ") : "regular"}{p.set ? `, ${p.set.toUpperCase()} ${p.number}` : ""}</span></div>
+              <div class="r-wish">{p.pending && <span class="pending">Saving</span>}{day(p.date)}, {MARKET[p.market] ?? p.market}, {p.condition}{p.foil ? ", foil" : ""}</div>
+            </div>
+            <div class="r-price">
+              <span class="p-paid">{eur(p.price)}</span>
+              {p.saved != null && <span class={`chg ${p.saved > 0 ? "down" : p.saved < 0 ? "up" : "flat"}`}>{p.saved >= 0 ? `saved ${eur(p.saved)}` : `${eur(-p.saved)} over`}</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p class="hint">Saved is the difference with Cardmarket's trend for that finish on the day you bought, before shipping.</p>
     </>
   );
 }

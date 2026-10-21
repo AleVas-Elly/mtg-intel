@@ -118,3 +118,21 @@ def test_uploads_retry_network_and_server_errors():
     target = site.Site(httpx.Client(transport=httpx.MockTransport(handler)), "https://x", "t", sleep=lambda s: None)
     target.put("wants", {"a": 1})
     assert calls == ["POST", "POST", "POST"]
+
+
+def test_purchases_doc_shows_newest_first_with_the_saving():
+    from mtg_intel.tables import mycards
+
+    cards = pa.table({"scryfall_id": ["sf-1"], "image_url": ["https://cards.scryfall.io/normal/front/a.jpg"],
+                      "rarity": ["rare"], "special_tags": [["showcase"]], "set_name": ["Foundations"]})
+    text = mycards.append_purchases("", [
+        {"date": "2026-10-20", "name": "A", "scryfall_id": "sf-1", "foil": "no", "condition": "NM", "price_eur": "3.50",
+         "market": "cardtrader", "cardmarket_trend_eur": "5.10", "list": "Showcase"},
+        {"date": "2026-10-22", "name": "B", "foil": "yes", "condition": "SP", "price_eur": "2.00", "market": "other"},
+    ])
+
+    doc = site.purchases_doc(text, cards, NOW)
+
+    assert [(p["name"], p["saved"], p["foil"]) for p in doc["purchases"]] == [("B", None, True), ("A", 1.6, False)]
+    assert doc["purchases"][1]["thumb"] == "https://cards.scryfall.io/small/front/a.jpg"
+    assert doc["purchases"][1]["lists"] == ["Showcase"]

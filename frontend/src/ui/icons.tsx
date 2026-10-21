@@ -22,3 +22,4 @@ export const IconPlus = (p: P) => <svg {...base} {...p}><path d="M12 5v14M5 12h1
 export const IconMinus = (p: P) => <svg {...base} {...p}><path d="M5 12h14" /></svg>;
 export const IconEdit = (p: P) => <svg {...base} {...p}><path d="M4 20h4L19 9l-4-4L4 16v4Z" /><path d="m13.5 6.5 4 4" /></svg>;
 export const IconTrash = (p: P) => <svg {...base} {...p}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>;
+export const IconBag = (p: P) => <svg {...base} {...p}><path d="M5 8h14l-1 12H6L5 8Z" /><path d="M9 8V6a3 3 0 0 1 6 0v2" /><path d="m9.5 14 2 2 3.5-3.5" /></svg>;

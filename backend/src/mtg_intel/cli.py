@@ -418,6 +418,7 @@ def apply_site_edits() -> int:
     import pyarrow.compute as pc
     import pyarrow.parquet as pq
 
+    from mtg_intel import site
     from mtg_intel.site import Site
     from mtg_intel.tables import build, mycards
 
@@ -442,7 +443,8 @@ def apply_site_edits() -> int:
                 blueprint = int(row["external_id"])
                 blueprint_of[row["scryfall_id"]] = min(blueprint_of.get(row["scryfall_id"], blueprint), blueprint)
         before = text
-        text, results = mycards.apply_edits(text, ops, cards, blueprint_of)
+        bought: list[dict[str, str]] = []
+        text, results = mycards.apply_edits(text, ops, cards, blueprint_of, bought)
         for r in results:
             print(f"{'     ok' if r['ok'] else ' FAILED'}  {r['message']}")
         status = 0
@@ -450,12 +452,22 @@ def apply_site_edits() -> int:
             out = REPO_ROOT / "data" / "my" / "wantlist.csv"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text)
-            store.put([(build.MY_INPUTS["wantlist"], out)], f"want-list: {sum(r['ok'] for r in results)} edits from the site")
+            files = [(build.MY_INPUTS["wantlist"], out)]
+            if bought:
+                old = store.fetch(PURCHASES)
+                purchases = mycards.append_purchases(mycards.read_text(old) if old else "", bought)
+                out_purchases = out.parent / "purchases.csv"
+                out_purchases.write_text(purchases)
+                files.append((PURCHASES, out_purchases))
+            store.put(files, f"want-list: {sum(r['ok'] for r in results)} edits from the site")
+            if bought:
+                site_store.put("purchases", site.purchases_doc(purchases, cards, datetime.now(UTC).replace(microsecond=0)))
             status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
         site_store.put("edits-applied", {"results": results})
         return status
 
 
+PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c); phase 4's collection starts here
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
 SKIP_AFTER = timedelta(minutes=8)  # a scheduled (fallback) run this soon after a check is redundant
 SLOW_CHECK = timedelta(minutes=8)  # checks start every 10 minutes (D48)

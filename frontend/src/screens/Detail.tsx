@@ -8,7 +8,8 @@ import { toast } from "../toast";
 import { WishSheet } from "../ui/WishSheet";
 import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
-import { IconBack, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
+import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
+import { BoughtSheet } from "../ui/BoughtSheet";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import type { CtHistoryDoc, HistoryDoc, RecentDoc, Wish } from "../types";
 
@@ -56,6 +57,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [buying, setBuying] = useState(false);
   // Opened by a view transition: that already animated the pane, so its own entrance stays off
   // (switching it back on when the transition ends would play it a second time).
   const [quiet] = useState(() => document.documentElement.classList.contains("vt"));
@@ -141,6 +143,9 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           </div>
         </div>
 
+        <button class="btn wide soft" type="button" onClick={() => setBuying(true)} disabled={w.pending === "add"}
+          title={w.pending === "add" ? "Wait until it's saved to the want-list" : undefined}><IconBag />Bought it</button>
+
         {deal && (
           <div class="group" style={{ padding: "14px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <span class={`tier ${tier?.cls ?? "target"}`}>{tier?.label ?? "Target price"}{deal.below_pct != null && <small>{Math.round(deal.below_pct)}% under</small>}</span>
@@ -187,6 +192,8 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         </div>
       </aside>
       {editing && <WishSheet wish={w} adding={false} lists={allLists(data)} data={data} onClose={() => setEditing(false)} />}
+      {buying && <BoughtSheet wish={w} live={live} onClose={() => setBuying(false)}
+        onDone={() => { setBuying(false); if (w.quantity <= 1) closeCard(); }} />}
       {confirming && (
         <Confirm title={`Remove ${w.name} from the want-list?`}
           text={w.pending === "add" ? "It hasn't been saved yet, so it's simply not added." : "Its settings go with it. You can add it again from Search."}

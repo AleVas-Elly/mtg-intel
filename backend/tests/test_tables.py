@@ -256,6 +256,33 @@ def test_site_edits_add_change_and_remove_wishes(tmp_path: Path):
     assert (rows[1]["min_condition"], rows[1]["via_zero"]) == ("NM", "no")  # the defaults
 
 
+def test_bought_takes_one_copy_off_and_records_the_purchase(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    text = mycards.write_csv([
+        {"name": "Elvish Archdruid", "scryfall_id": "sf-1", "language": "en", "foil": "any", "quantity": "2", "list": "Showcase"},
+        {"name": "Elvish Archdruid", "scryfall_id": "sf-new", "language": "any", "foil": "yes", "quantity": "1"},
+    ])
+    buy = {"price_eur": "3,5", "market": "cardtrader", "condition": "nm", "foil": "no", "date": "2026-10-22",
+           "cardmarket_trend_eur": "5.1"}
+    ops = [
+        {"id": "a", "op": "bought", "key": "sf-1|en|any", "purchase": buy},
+        {"id": "b", "op": "bought", "key": "sf-new|any|yes", "purchase": buy | {"foil": "yes", "language": "ja"}},
+        {"id": "c", "op": "bought", "key": "sf-new|any|yes", "purchase": buy},  # gone with "b"
+        {"id": "d", "op": "bought", "key": "sf-1|en|any", "purchase": buy | {"market": "ebay"}},
+    ]
+    bought: list[dict] = []
+
+    text, results = mycards.apply_edits(text, ops, cards, {}, bought)
+
+    assert [(r["id"], r["ok"]) for r in results] == [("a", True), ("b", True), ("c", False), ("d", False)]
+    assert results[0]["message"] == "bought Elvish Archdruid, 1 more wanted"
+    assert [(r["scryfall_id"], r["quantity"]) for r in mycards.read_csv_rows(text)] == [("sf-1", "1")]
+    assert [(p["scryfall_id"], p["price_eur"], p["condition"], p["language"], p["list"], p["cardmarket_trend_eur"])
+            for p in bought] == [("sf-1", "3.50", "NM", "en", "Showcase", "5.10"), ("sf-new", "3.50", "NM", "ja", "", "5.10")]
+    again = mycards.append_purchases(mycards.append_purchases("", bought[:1]), bought[1:])
+    assert [p["scryfall_id"] for p in mycards.read_csv_rows(again)] == ["sf-1", "sf-new"]
+
+
 def test_collection_reads_manabox_headers(tmp_path: Path):
     cards = two_printings(tmp_path)
     text = (

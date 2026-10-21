@@ -174,6 +174,12 @@ def write_csv(rows: list[dict[str, str]]) -> str:
 # --- edits made on the website (3c, D50) ------------------------------------------------------
 
 EDITABLE = ["language", "foil", "min_condition", "via_zero", "max_price_eur", "deal_pct", "quantity", "list", "note"]
+# Cards I bought, recorded on the site ("Bought it", 3c): what I paid against Cardmarket's trend
+# that day is the saving (spec principle 5). Phase 4 builds the collection from it.
+PURCHASE_COLUMNS = ["date", "name", "set_code", "collector_number", "scryfall_id", "cardtrader_blueprint_id", "language",
+                    "foil", "condition", "price_eur", "market", "cardmarket_trend_eur", "list", "note"]
+MARKETS = ("cardtrader", "cardmarket", "other")
+
 ADD_DEFAULTS = {"language": "en", "foil": "any", "min_condition": "NM", "via_zero": "no", "quantity": "1"}  # user, 2026-10-22
 
 
@@ -225,11 +231,47 @@ def wish_key_of(row: dict[str, object]) -> str:
     return f"{sid or (int(blueprint) if blueprint else None)}|{row['language']}|{row['foil']}"
 
 
-def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[str, int]) -> tuple[str, list[dict]]:
+def _purchase(wish_row: dict[str, str], purchase: dict[str, object]) -> tuple[dict[str, str], str | None]:
+    """A purchase row for a wish, or why the purchase can't be recorded."""
+    p = {k: ("" if v is None else str(v).strip()) for k, v in purchase.items()}
+    try:
+        price = float(p.get("price_eur", "").replace(",", "."))
+    except ValueError:
+        return {}, "the price paid must be a number"
+    if price <= 0:
+        return {}, "the price paid must be above zero"
+    if p.get("market") not in MARKETS:
+        return {}, "where it was bought must be CardTrader, Cardmarket or other"
+    if p.get("condition", "").upper() not in CONDITIONS:
+        return {}, f"condition must be one of {', '.join(CONDITIONS)}"
+    if p.get("foil") not in ("yes", "no"):
+        return {}, "foil must be yes or no"
+    date = p.get("date", "")
+    if not (len(date) == 10 and date[4] == date[7] == "-" and date.replace("-", "").isdigit()):
+        return {}, "the date must look like 2026-10-22"
+    trend = p.get("cardmarket_trend_eur", "")
+    try:
+        trend = f"{float(trend):.2f}" if trend else ""
+    except ValueError:
+        trend = ""
+    language = (p.get("language") or wish_row.get("language") or "").lower()
+    return {
+        "date": date, "name": wish_row.get("name", ""), "set_code": wish_row.get("set_code", ""),
+        "collector_number": wish_row.get("collector_number", ""), "scryfall_id": wish_row.get("scryfall_id", ""),
+        "cardtrader_blueprint_id": wish_row.get("cardtrader_blueprint_id", ""),
+        "language": "" if language == "any" else language, "foil": p["foil"], "condition": p["condition"].upper(),
+        "price_eur": f"{price:.2f}", "market": p["market"], "cardmarket_trend_eur": trend,
+        "list": wish_row.get("list", ""), "note": p.get("note", "").replace("\n", " "),
+    }, None
+
+
+def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[str, int],
+                bought: list[dict[str, str]] | None = None) -> tuple[str, list[dict]]:
     """Apply the site's waiting edits, oldest first, to the want-list CSV text. Each op is
-    {"id", "op": "add" | "update" | "remove", ...}: add carries "scryfall_id" and "settings",
-    update "key" and "settings", remove "key". Returns the new text and one result per op
-    ({"id", "ok", "message"}); a failed op changes nothing."""
+    {"id", "op": "add" | "update" | "remove" | "bought", ...}: add carries "scryfall_id" and
+    "settings", update "key" and "settings", remove "key", bought "key" and "purchase" (one copy
+    off the wish, which goes at zero; the purchase row is appended to `bought`). Returns the new
+    text and one result per op ({"id", "ok", "message"}); a failed op changes nothing."""
     rows = read_csv_rows(text) if text.strip() else []
     results = []
     for op in ops:
@@ -255,6 +297,25 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
                 continue
             rows.append(row)
             results.append({"id": op.get("id"), "ok": True, "message": f"added {row['name']}", "key": key})
+        elif kind == "bought":
+            index = keys.get(str(op.get("key")))
+            if index is None:
+                results.append({"id": op.get("id"), "ok": False, "message": "this wish is no longer on the want-list"})
+                continue
+            row = {**rows[index], "scryfall_id": table[index]["scryfall_id"] or ""}
+            purchase, problem = _purchase(row, op.get("purchase") or {})
+            if problem:
+                results.append({"id": op.get("id"), "ok": False, "message": problem})
+                continue
+            if bought is not None:
+                bought.append(purchase)
+            left = max(int(rows[index].get("quantity") or 1) - 1, 0)
+            if left:
+                rows[index] = rows[index] | {"quantity": str(left)}
+            else:
+                del rows[index]
+            results.append({"id": op.get("id"), "ok": True, "message": f"bought {row.get('name')}"
+                            + (f", {left} more wanted" if left else ", off the want-list")})
         elif kind in ("update", "remove"):
             index = keys.get(str(op.get("key")))
             if index is None:
@@ -277,3 +338,13 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
         else:
             results.append({"id": op.get("id"), "ok": False, "message": f"unknown edit {kind!r}"})
     return write_csv(rows), results
+
+
+def append_purchases(text: str, rows: list[dict[str, str]]) -> str:
+    """The purchases CSV with these rows added at the end."""
+    old = read_csv_rows(text) if text.strip() else []
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=PURCHASE_COLUMNS, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    writer.writerows({c: r.get(c, "") for c in PURCHASE_COLUMNS} for r in old + rows)
+    return out.getvalue()

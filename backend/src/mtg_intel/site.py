@@ -95,6 +95,35 @@ def scryfall_small(image_url: str | None) -> str | None:
     return image_url.replace("/normal/", "/small/") if image_url else None
 
 
+def purchases_doc(text: str, cards: pa.Table, now: datetime) -> dict[str, Any]:
+    """Cards I bought ("Bought it", 3c), newest first, with what each saved against Cardmarket's
+    trend on the day (spec principle 5)."""
+    import pyarrow.compute as pc
+
+    from mtg_intel.tables import mycards
+
+    rows = mycards.read_csv_rows(text) if text.strip() else []
+    ids = {r["scryfall_id"] for r in rows if r.get("scryfall_id")}
+    images = {c["scryfall_id"]: c for c in cards.filter(pc.is_in(cards["scryfall_id"], pa.array(sorted(ids))))
+              .select(["scryfall_id", "image_url", "rarity", "special_tags", "set_name"]).to_pylist()} if ids else {}
+    out = []
+    for i, r in enumerate(rows):
+        card = images.get(r.get("scryfall_id") or "", {})
+        price = float(r["price_eur"])
+        trend = float(r["cardmarket_trend_eur"]) if r.get("cardmarket_trend_eur") else None
+        out.append({
+            "n": i, "date": r["date"], "name": r["name"], "set": r.get("set_code") or None,
+            "number": r.get("collector_number") or None, "scryfall_id": r.get("scryfall_id") or None,
+            "language": r.get("language") or None, "foil": r.get("foil") == "yes", "condition": r["condition"],
+            "price": price, "market": r["market"], "cardmarket": trend,
+            "saved": round(trend - price, 2) if trend is not None else None,
+            "thumb": scryfall_small(card.get("image_url")), "rarity": card.get("rarity"),
+            "tags": card.get("special_tags") or [], "set_name": card.get("set_name"), "lists": [x for x in (r.get("list") or "").split("; ") if x],
+        })
+    out.reverse()
+    return {"built_at": now.isoformat(), "purchases": out}
+
+
 def cardmarket_link(cardmarket_id: int | None, wish: dict[str, Any]) -> str | None:
     """Cardmarket product page filtered to Dutch sellers and the wish's language, condition and foil (D17)."""
     if not cardmarket_id:
