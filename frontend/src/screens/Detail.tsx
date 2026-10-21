@@ -109,8 +109,8 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           </div>
         )}
 
-        <div class="group-title">Prices{bothFinishes && " · "}{bothFinishes && (
-          <span class="seg" role="group" aria-label="Finish" style={{ verticalAlign: "middle" }}>
+        <div class="group-title row-title">Prices{bothFinishes && (
+          <span class="seg" role="group" aria-label="Finish">
             <button type="button" aria-pressed={!foil} onClick={() => setFoil(false)}>Non-foil</button>
             <button type="button" aria-pressed={foil} onClick={() => setFoil(true)}>Foil</button>
           </span>

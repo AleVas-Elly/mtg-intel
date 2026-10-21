@@ -39,7 +39,7 @@ export const versionText = (w: Wish) => (w.tags.length ? w.tags.map(tagName).joi
 /** The card's own collector line: SET · number · language · version. */
 export function collectorLine(w: Wish): string {
   if (!w.set) return w.ct ? `CardTrader only · ${w.ct.expansion ?? ""} #${w.ct.number ?? ""}` : "No exact version";
-  return [w.set.toUpperCase(), w.number, langShort(w.language), versionText(w)].join(" · ");
+  return [versionText(w), `${w.set.toUpperCase()} ${w.number}`, langShort(w.language)].join(" · ");
 }
 
 export function wishLine(w: Wish): string {

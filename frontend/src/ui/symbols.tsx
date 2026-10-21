@@ -23,7 +23,8 @@ export function ManaCost({ cost, large, front }: { cost: string | null | undefin
           {i > 0 && <span class="sep">//</span>}
           {[...face.matchAll(/\{([^}]+)\}/g)].map((m) => {
             const code = m[1].replace(/\//g, "").toUpperCase();
-            return <img src={`https://svgs.scryfall.io/card-symbols/${encodeURIComponent(code)}.svg`} alt={`{${m[1]}}`} loading="lazy" decoding="async" />;
+            return <img src={`https://svgs.scryfall.io/card-symbols/${encodeURIComponent(code)}.svg`} alt={`{${m[1]}}`}
+              decoding="async" onLoad={(e) => (e.currentTarget as HTMLImageElement).classList.add("ok")} />;
           })}
         </>
       ))}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { whenSignedOut } from "./api";
-import { useAppData } from "./data";
+import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
 import { IconCheck, IconDeals, IconSearch, IconSettings, IconWants } from "./ui/icons";
 import { Gate, useAuth } from "./screens/Gate";
@@ -39,7 +39,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
     path === "/check" ? <Check data={data} /> :
     path === "/settings" ? <Settings data={data} /> :
     <Deals data={data} card={card} />;
-  const counts: Record<string, number | undefined> = { "/": dealCount || undefined, "/check": flagged || undefined, "/wants": data.wants?.wishes.length };
+  const counts: Record<string, number | undefined> = { "/": dealCount || undefined, "/check": flagged || undefined, "/wants": data.wants ? wishCount(data.wants.wishes) : undefined };
   return (
     <div class={`shell${card ? " has-detail" : ""}`}>
       <nav class="rail" aria-label="Main">

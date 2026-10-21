@@ -59,7 +59,7 @@ export function Check({ data }: { data: AppData }) {
         {spot.map((w) => {
           const live = data.liveOf(w.key);
           return (
-            <button class="tile" type="button" onClick={() => openCard(w.key)}>
+            <button class="tile" type="button" data-key={w.key} onClick={() => openCard(w.key)}>
               <CardImage src={w.image} alt={w.name} foil={showsFoil(w)} placeholder={w.thumb} />
               <b>{w.name}{data.flagsOf(w).length > 0 && <span class="flag-dot" title="Flagged" />}</b>
               <span class="ours"><SetSymbol set={w.set} rarity={w.rarity} />{collectorLine(w)}</span>

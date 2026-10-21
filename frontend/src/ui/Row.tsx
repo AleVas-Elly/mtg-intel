@@ -17,11 +17,12 @@ export function WishRow({ w, data, current, extra, ctPrice, gone }: {
   return (
     <a
       class={`row${gone ? " gone" : ""}`}
+      data-key={w.key}
       href={`?card=${encodeURIComponent(w.key)}`}
       aria-current={current ? "true" : undefined}
       onClick={(e) => { e.preventDefault(); openCard(w.key); }}
     >
-      <CardImage src={w.thumb} alt="" foil={showsFoil(w)} name={current ? undefined : undefined} />
+      <CardImage src={w.thumb} alt="" foil={showsFoil(w)} />
       <div class="r-main">
         <div class="r-name"><span>{w.name}</span><ManaCost cost={w.mana_cost} front />{flagged && <span class="flag-dot" title="Needs a look" />}</div>
         <div class="r-line"><SetSymbol set={w.set} rarity={w.rarity} /><span>{collectorLine(w)}</span></div>

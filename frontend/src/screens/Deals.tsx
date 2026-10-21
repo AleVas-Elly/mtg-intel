@@ -30,7 +30,7 @@ export function Status({ data }: { data: AppData }) {
   const next = Math.max(0, Math.ceil(10 - (minutes % 10)));
   return (
     <p class="sub">
-      <span class={`dot ${stale ? "stale" : "live"}`} />
+      <span key={at} class={`dot ${stale ? "stale" : "live"}`} />
       <span>Checked {ago(at, now)}{!stale && ` · next in ${next} min`}{data.live!.failed > 0 && ` · ${data.live!.failed} cards failed`}</span>
     </p>
   );
