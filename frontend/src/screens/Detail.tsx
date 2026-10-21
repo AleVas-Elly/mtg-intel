@@ -51,6 +51,10 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const [foil, setFoil] = useState(false);
   useEffect(() => { if (w) setFoil(live?.foil ?? showsFoil(w)); }, [wishKey, w?.key]);
   const [copied, setCopied] = useState(false);
+  // Opened by a view transition: that already animated the pane, so its own entrance stays off
+  // (switching it back on when the transition ends would play it a second time).
+  const [quiet] = useState(() => document.documentElement.classList.contains("vt"));
+  const q = quiet ? " quiet" : "";
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && closeCard();
     addEventListener("keydown", esc);
@@ -62,8 +66,8 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   if (!w) {
     return (
       <>
-        <div class="detail-backdrop" onClick={closeCard} />
-        <aside class="detail" aria-label="Card"><div class="d-top"><button class="icon-btn" onClick={closeCard} aria-label="Close"><IconClose /></button></div>
+        <div class={`detail-backdrop${q}`} onClick={closeCard} />
+        <aside class={`detail${q}`} aria-label="Card"><div class="d-top"><button class="icon-btn" onClick={closeCard} aria-label="Close"><IconClose /></button></div>
           <div class="empty"><h2>Card not found</h2><p>It may have been removed from the want-list.</p></div></aside>
       </>
     );
@@ -78,8 +82,8 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
 
   return (
     <>
-      <div class="detail-backdrop" onClick={closeCard} />
-      <aside class="detail" aria-label={w.name}>
+      <div class={`detail-backdrop${q}`} onClick={closeCard} />
+      <aside class={`detail${q}`} aria-label={w.name}>
         <div class="d-top">
           <button class="icon-btn" onClick={closeCard} aria-label="Back"><IconBack /></button>
           {w.links.scryfall && <a class="icon-btn" href={w.links.scryfall} target="_blank" rel="noopener" aria-label="Open on Scryfall"><IconOut /></a>}

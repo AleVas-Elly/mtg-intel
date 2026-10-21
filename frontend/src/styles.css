@@ -466,7 +466,7 @@ img { display: block; }
 html.vt-card::view-transition-old(root) { animation: none; opacity: 0; }
 html.vt-card::view-transition-new(root) { animation: none; }
 ::view-transition-old(card-open), ::view-transition-new(card-open) { height: 100%; object-fit: cover; }
-html.vt .detail, html.vt .detail-backdrop { animation: none; }
+html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, html:root .detail-backdrop.quiet { animation: none; }
 .btn.sm { height: 32px; padding: 0 12px; font-size: 13.5px; border-radius: 9px; }
 .btn.sm svg { width: 15px; height: 15px; }
 
