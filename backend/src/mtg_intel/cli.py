@@ -441,11 +441,12 @@ def apply_site_edits() -> int:
             if str(row["external_id"]).isdigit():
                 blueprint = int(row["external_id"])
                 blueprint_of[row["scryfall_id"]] = min(blueprint_of.get(row["scryfall_id"], blueprint), blueprint)
+        before = text
         text, results = mycards.apply_edits(text, ops, cards, blueprint_of)
         for r in results:
             print(f"{'     ok' if r['ok'] else ' FAILED'}  {r['message']}")
         status = 0
-        if any(r["ok"] for r in results):
+        if text != before:
             out = REPO_ROOT / "data" / "my" / "wantlist.csv"
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(text)
