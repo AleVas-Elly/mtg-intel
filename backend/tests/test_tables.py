@@ -253,7 +253,7 @@ def test_site_edits_add_change_and_remove_wishes(tmp_path: Path):
         ("sf-new", "ja", "any", "", ""),
     ]
     assert (rows[1]["set_code"], rows[1]["collector_number"], rows[1]["cardtrader_blueprint_id"]) == ("j25", "5", "777")
-    assert (rows[1]["min_condition"], rows[1]["via_zero"]) == ("NM", "yes")  # the defaults
+    assert (rows[1]["min_condition"], rows[1]["via_zero"]) == ("NM", "no")  # the defaults
 
 
 def test_collection_reads_manabox_headers(tmp_path: Path):

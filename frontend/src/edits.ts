@@ -3,8 +3,9 @@
 import { send, setLocal, useDoc } from "./api";
 import type { Edit, EditsDoc, Settings, Wish } from "./types";
 
-/** What a new wish starts with (user, 2026-10-21): English, any finish, NM or better, Zero only. */
-export const NEW_WISH: Settings = { language: "en", foil: "any", min_condition: "NM", via_zero: "yes", quantity: "1" };
+/** What a new wish starts with (user, 2026-10-22): English, any finish, NM or better, any CardTrader
+ *  seller, on the Showcase list. */
+export const NEW_WISH: Settings = { language: "en", foil: "any", min_condition: "NM", via_zero: "no", quantity: "1", list: "Showcase" };
 
 export function settingsOf(w: Wish): Settings {
   return {

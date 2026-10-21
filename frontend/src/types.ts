@@ -16,7 +16,8 @@ export interface Wish {
   ct: { name: string; version: string | null; code: string | null; expansion: string | null; number: string | null } | null;
   links: { cardmarket: string | null; cardtrader: string | null; scryfall: string | null };
   flags: Flag[];
-  pending?: "add" | "update" | "remove";  // a change made on the site, not yet in the want-list file
+  pending?: "add" | "update" | "remove";
+  prints?: string;  // a card being added: where Scryfall lists its other printings  // a change made on the site, not yet in the want-list file
 }
 
 export interface WantsDoc { built_at: string; price_date: string | null; languages: Record<string, string>; wishes: Wish[] }

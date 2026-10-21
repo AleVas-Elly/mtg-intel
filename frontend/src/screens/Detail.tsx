@@ -55,6 +55,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   useEffect(() => { if (w) setFoil(live?.foil ?? showsFoil(w)); }, [wishKey, w?.key]);
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   // Opened by a view transition: that already animated the pane, so its own entrance stays off
   // (switching it back on when the transition ends would play it a second time).
   const [quiet] = useState(() => document.documentElement.classList.contains("vt"));
@@ -96,7 +97,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         <h2 class="d-name">{w.name}<ManaCost cost={w.mana_cost} large /></h2>
         {w.type_line && <p class="d-type">{w.type_line}</p>}
         {w.pending && (
-          <div class="notice soft">{w.pending === "add"
+          <div class="notice saving">{w.pending === "add"
             ? "Being added to your want-list. CardTrader prices arrive with the next check, within about 10 minutes."
             : "Saving your change to the want-list. The next check uses it."}</div>
         )}
@@ -155,7 +156,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         <div class="group-title row-title">My wish
           <span style={{ display: "flex", gap: "6px" }}>
             <button class="btn sm" type="button" onClick={() => setEditing(true)}><IconEdit />Edit</button>
-            <button class="btn sm" type="button" onClick={() => remove(w, data)} aria-label="Remove from want-list"><IconTrash /></button>
+            <button class="btn sm" type="button" onClick={() => setConfirming(true)} aria-label="Remove from want-list"><IconTrash /></button>
           </span>
         </div>
         <dl class="group">
@@ -185,8 +186,36 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           }}><IconCopy />{copied ? "Copied" : "Copy details for Claude"}</button>
         </div>
       </aside>
-      {editing && <WishSheet wish={w} adding={false} lists={allLists(data)} onClose={() => setEditing(false)} />}
+      {editing && <WishSheet wish={w} adding={false} lists={allLists(data)} data={data} onClose={() => setEditing(false)} />}
+      {confirming && (
+        <Confirm title={`Remove ${w.name} from the want-list?`}
+          text={w.pending === "add" ? "It hasn't been saved yet, so it's simply not added." : "Its settings go with it. You can add it again from Search."}
+          action="Remove" onCancel={() => setConfirming(false)} onConfirm={() => { setConfirming(false); remove(w, data); }} />
+      )}
     </>
+  );
+}
+
+/** A small question before something hard to take back. */
+function Confirm({ title, text, action, onCancel, onConfirm }: {
+  title: string; text: string; action: string; onCancel: () => void; onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
+    addEventListener("keydown", esc);
+    return () => removeEventListener("keydown", esc);
+  }, []);
+  return (
+    <div class="sheet-wrap center" role="presentation" onClick={(e) => e.target === e.currentTarget && onCancel()}>
+      <div class="confirm" role="alertdialog" aria-modal="true" aria-label={title}>
+        <h2>{title}</h2>
+        <p>{text}</p>
+        <div class="confirm-actions">
+          <button class="btn" type="button" onClick={onCancel} autoFocus>Cancel</button>
+          <button class="btn danger" type="button" onClick={onConfirm}>{action}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 

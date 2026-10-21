@@ -1,7 +1,9 @@
 // The settings of one wish, for a card being added (from Search) or an existing wish (card page).
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { changed, NEW_WISH, saveEdit, settingsOf } from "../edits";
-import { condName, langName } from "../format";
+import type { AppData } from "../data";
+import { condName, langName, versionText } from "../format";
+import { preview, printings, type ScryCard } from "../scry";
 import { toast } from "../toast";
 import type { Settings, Wish } from "../types";
 import { CardImage } from "./CardImage";
@@ -23,9 +25,45 @@ function Seg<T extends string>({ label, value, options, onChange }: {
   );
 }
 
+/** Every printing of the card being added, to pick the exact one; printings already on the
+ *  want-list can't be picked again. */
+function Versions({ wish, data, onPick }: { wish: Wish; data?: AppData; onPick: (w: Wish) => void }) {
+  const [cards, setCards] = useState<ScryCard[] | null>(null);
+  useEffect(() => {
+    // the printing I tapped in Search comes first, then the rest newest first
+    if (wish.prints) printings(wish.prints).then((all) => setCards([...all.filter((c) => c.id === wish.scryfall_id),
+      ...all.filter((c) => c.id !== wish.scryfall_id)])).catch(() => setCards([]));
+  }, []);
+  const mine = new Set((data?.wants?.wishes ?? []).map((w) => w.scryfall_id));
+  if (!wish.prints) return null;
+  return (
+    <div class="f-row stack"><span>Version{cards && cards.length > 1 ? <small>{cards.length} printings</small> : null}</span>
+      <div class="versions" role="radiogroup" aria-label="Version">
+        {cards === null
+          ? Array.from({ length: 4 }, () => <span class="version"><span class="thumb skeleton" /></span>)
+          : cards.map((c) => {
+              const v = preview(c);
+              const on = mine.has(c.id);
+              return (
+                <button type="button" class="version" role="radio" aria-checked={wish.scryfall_id === c.id} disabled={on}
+                  onClick={() => onPick({ ...v, prints: wish.prints })} title={`${c.set_name} #${c.collector_number}`}>
+                  <CardImage src={v.thumb} alt="" foil={false} />
+                  <b>{c.set.toUpperCase()} {c.collector_number}</b>
+                  <small>{on ? "on the list" : versionText(v)}</small>
+                </button>
+              );
+            })}
+      </div>
+    </div>
+  );
+}
+
 /** `wish` is the existing wish, or a card preview to add (then `adding` is true). */
-export function WishSheet({ wish, adding, lists, onClose }: { wish: Wish; adding: boolean; lists: string[]; onClose: () => void }) {
-  const start = useMemo<Settings>(() => (adding ? { ...settingsOf(wish), ...NEW_WISH, list: "" } : settingsOf(wish)), [wish.key]);
+export function WishSheet({ wish: given, adding, lists, data, onClose }: {
+  wish: Wish; adding: boolean; lists: string[]; data?: AppData; onClose: () => void;
+}) {
+  const [wish, setWish] = useState(given);
+  const start = useMemo<Settings>(() => (adding ? { ...settingsOf(given), ...NEW_WISH } : settingsOf(given)), [given.key]);
   const [s, setS] = useState<Settings>(start);
   const [newList, setNewList] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,7 +95,7 @@ export function WishSheet({ wish, adding, lists, onClose }: { wish: Wish; adding
     setError(null);
     try {
       if (adding) {
-        const card: Partial<Wish> = { ...wish, key: undefined, pending: undefined };
+        const card: Partial<Wish> = { ...wish, key: undefined, pending: undefined, prints: undefined };
         await saveEdit({ op: "add", scryfall_id: wish.scryfall_id!, settings: out, card });
         toast(`Added ${wish.name}. CardTrader prices follow within about 10 minutes.`);
       } else {
@@ -88,6 +126,11 @@ export function WishSheet({ wish, adding, lists, onClose }: { wish: Wish; adding
         <div class="sheet-body">
           <div class="group-title">Which copy counts</div>
           <div class="group form">
+            {adding && <Versions wish={wish} data={data} onPick={(w) => {
+              setWish(w);
+              const has = (f: string) => (w.finishes.length ? w.finishes : ["nonfoil", "foil"]).some((x) => (f === "no" ? x === "nonfoil" : x !== "nonfoil"));
+              if (s.foil !== "any" && !has(s.foil ?? "any")) set("foil")("any");
+            }} />}
             <label class="f-row"><span>Language</span>
               <select class="select" value={s.language} onChange={(e) => set("language")((e.target as HTMLSelectElement).value)}>
                 {LANGUAGES.map((l) => <option value={l}>{langName(l)}</option>)}

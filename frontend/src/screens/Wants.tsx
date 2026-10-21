@@ -4,6 +4,7 @@ import type { AppData } from "../data";
 import { dealRatio, wishCount } from "../data";
 import { cmTrend, day, foilOnly, showsFoil } from "../format";
 import { dismissFailed } from "../edits";
+import { LOCAL } from "../env";
 import { IconSearch, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton } from "../ui/Row";
 import type { HistoryDoc, Wish } from "../types";
@@ -117,7 +118,9 @@ function EditsStatus({ data }: { data: AppData }) {
   return (
     <>
       {ops.length > 0 && (
-        <div class="notice soft">{ops.length === 1 ? "1 change is" : `${ops.length} changes are`} being saved to the want-list. It usually takes a minute or two.</div>
+        <div class="notice saving">{LOCAL
+          ? "This is the local test copy: changes stay here and are never saved to your real want-list."
+          : `Saving ${ops.length === 1 ? "1 change" : `${ops.length} changes`} to the want-list. It usually takes a minute or two.`}</div>
       )}
       {failed.length > 0 && (
         <div class="notice">

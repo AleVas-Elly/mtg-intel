@@ -13,8 +13,7 @@ import { Detail } from "./screens/Detail";
 import { Lab } from "./ui/Lab";
 import { dismissToast, useToast } from "./toast";
 
-// The development copy runs on test data; say so, so it is never mistaken for the real site.
-const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
+import { LOCAL } from "./env";
 import { setLabOpen, useLabOpen } from "./labstate";
 
 const TABS = [

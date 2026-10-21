@@ -174,7 +174,7 @@ def write_csv(rows: list[dict[str, str]]) -> str:
 # --- edits made on the website (3c, D50) ------------------------------------------------------
 
 EDITABLE = ["language", "foil", "min_condition", "via_zero", "max_price_eur", "deal_pct", "quantity", "list", "note"]
-ADD_DEFAULTS = {"language": "en", "foil": "any", "min_condition": "NM", "via_zero": "yes", "quantity": "1"}
+ADD_DEFAULTS = {"language": "en", "foil": "any", "min_condition": "NM", "via_zero": "no", "quantity": "1"}  # user, 2026-10-22
 
 
 def _setting_problem(column: str, value: str) -> str | None:

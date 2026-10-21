@@ -78,7 +78,7 @@ def main(argv: list[str] | None = None) -> int:
     want_add.add_argument("--lang", default="en", help="en, ja, it, … or any")
     want_add.add_argument("--foil", choices=["yes", "no", "any"], default="any")
     want_add.add_argument("--cond", choices=["NM", "SP", "MP", "PL", "PO"], default="NM", help="worst condition I accept")
-    want_add.add_argument("--zero", choices=["yes", "no"], default="yes", help="CardTrader Zero only")
+    want_add.add_argument("--zero", choices=["yes", "no"], default="no", help="CardTrader Zero only")
     want_add.add_argument("--max-price", default="", help="target price in EUR")
     want_add.add_argument("--one-of", default="", help="group name: buying any one of the group fulfils the wish")
     want_add.add_argument("--note", default="")
