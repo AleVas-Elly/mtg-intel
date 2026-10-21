@@ -124,3 +124,22 @@ export async function post<T>(path: string, body: unknown = {}): Promise<T> {
   if (!response.ok) throw new Error((data as { error?: string }).error || `Request failed (${response.status})`);
   return data as T;
 }
+
+/** Replace a document in the cache (and on screen) with what the Worker just answered. */
+export function setLocal<T>(key: string, doc: T) {
+  write(key, { etag: null, at: Date.now(), doc });
+}
+
+export async function send<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method, credentials: "same-origin",
+    ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+  });
+  if (response.status === 401) {
+    onSignedOut();
+    throw new SignedOut();
+  }
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error((data as { error?: string }).error || `Request failed (${response.status})`);
+  return data as T;
+}

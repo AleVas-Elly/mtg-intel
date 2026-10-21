@@ -24,6 +24,16 @@ async function dispatch(env, workflow) {
   return response.status === 204 ? null : `${workflow}: GitHub answered ${response.status} ${await response.text()}`;
 }
 
+// Want-list edits made on the website (D50) wait in the site's KV; a run that missed them (KV is
+// only eventually consistent across places) is caught up on the next 10-minute tick.
+const EDITS_LATE_MS = 3 * 60 * 1000;
+
+async function editsWaiting(env) {
+  if (!env.DATA) return false;
+  const listed = await env.DATA.list({ prefix: "edit:" });
+  return listed.keys.some((k) => Date.now() - Date.parse(k.name.slice(5, 29)) > EDITS_LATE_MS);
+}
+
 async function telegram(env, text) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
   await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -37,7 +47,9 @@ export default {
   async scheduled(event, env) {
     if (!env.GITHUB_TOKEN) return; // not set up yet
     const problems = [];
-    for (const workflow of SCHEDULE[event.cron] || []) {
+    const workflows = [...(SCHEDULE[event.cron] || [])];
+    if (workflows.includes("deals.yml") && (await editsWaiting(env))) workflows.push("wantlist.yml");
+    for (const workflow of workflows) {
       const problem = await dispatch(env, workflow);
       if (problem) problems.push(problem);
     }
@@ -48,7 +60,13 @@ export default {
     }
   },
 
-  async fetch() {
-    return new Response("Not found", { status: 404 });
+  // No public URL: only the website Worker reaches this, through its service binding, right after
+  // I edit the want-list there.
+  async fetch(request, env) {
+    if (request.method !== "POST" || new URL(request.url).pathname !== "/wantlist" || !env.GITHUB_TOKEN) {
+      return new Response("Not found", { status: 404 });
+    }
+    const problem = await dispatch(env, "wantlist.yml");
+    return new Response(problem || "started", { status: problem ? 502 : 202 });
   },
 };

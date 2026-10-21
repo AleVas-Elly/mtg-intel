@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
-import type { AppData } from "../data";
+import { allLists, type AppData } from "../data";
 import { ago, cmTrend, condName, countryName, day, eur, foilOnly, langName, showsFoil, TIERS, versionText } from "../format";
 import { closeCard } from "../router";
+import { saveEdit, undoEdit } from "../edits";
+import { toast } from "../toast";
+import { WishSheet } from "../ui/WishSheet";
 import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
-import { IconBack, IconClose, IconCopy, IconOut, IconWarn } from "../ui/icons";
+import { IconBack, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import type { CtHistoryDoc, HistoryDoc, RecentDoc, Wish } from "../types";
 
@@ -51,6 +54,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const [foil, setFoil] = useState(false);
   useEffect(() => { if (w) setFoil(live?.foil ?? showsFoil(w)); }, [wishKey, w?.key]);
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
   // Opened by a view transition: that already animated the pane, so its own entrance stays off
   // (switching it back on when the transition ends would play it a second time).
   const [quiet] = useState(() => document.documentElement.classList.contains("vt"));
@@ -91,6 +95,11 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         <BigCard src={w.image} alt={w.name} foil={foil} placeholder={w.thumb} />
         <h2 class="d-name">{w.name}<ManaCost cost={w.mana_cost} large /></h2>
         {w.type_line && <p class="d-type">{w.type_line}</p>}
+        {w.pending && (
+          <div class="notice soft">{w.pending === "add"
+            ? "Being added to your want-list. CardTrader prices arrive with the next check, within about 10 minutes."
+            : "Saving your change to the want-list. The next check uses it."}</div>
+        )}
         <div class="d-version">
           <SetSymbol set={w.set} rarity={w.rarity} />
           <span>{w.set_name ?? "CardTrader only"}{w.number ? ` · #${w.number}` : ""}</span>
@@ -143,7 +152,12 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         <div class="group-title">History</div>
         <div class="group"><PriceChart ct={ct} cm={cm} finishLabel={foil ? "foil" : "non-foil"} /></div>
 
-        <div class="group-title">My wish</div>
+        <div class="group-title row-title">My wish
+          <span style={{ display: "flex", gap: "6px" }}>
+            <button class="btn sm" type="button" onClick={() => setEditing(true)}><IconEdit />Edit</button>
+            <button class="btn sm" type="button" onClick={() => remove(w, data)} aria-label="Remove from want-list"><IconTrash /></button>
+          </span>
+        </div>
         <dl class="group">
           <div class="kv"><dt>List</dt><dd>{w.lists.join(", ") || "–"}</dd></div>
           <div class="kv"><dt>Language</dt><dd>{langName(w.language)}</dd></div>
@@ -171,6 +185,26 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           }}><IconCopy />{copied ? "Copied" : "Copy details for Claude"}</button>
         </div>
       </aside>
+      {editing && <WishSheet wish={w} adding={false} lists={allLists(data)} onClose={() => setEditing(false)} />}
     </>
   );
+}
+
+/** Remove a wish (undo for a few seconds); a wish still being added just has its addition undone. */
+async function remove(w: Wish, data: AppData) {
+  try {
+    if (w.pending === "add") {
+      const op = data.edits.ops.find((o) => o.op === "add" && o.scryfall_id === w.scryfall_id);
+      if (op) await undoEdit(op.id);
+      closeCard();
+      toast(`${w.name} is no longer being added.`);
+      return;
+    }
+    const doc = await saveEdit({ op: "remove", key: w.key });
+    const op = [...doc.ops].reverse().find((o) => o.op === "remove" && o.key === w.key);
+    closeCard();
+    toast(`Removed ${w.name} from the want-list.`, op && { label: "Undo", run: () => { undoEdit(op.id).catch(() => toast("Too late to undo: it's already removed.")); } });
+  } catch (err) {
+    toast(err instanceof Error ? err.message : "Couldn't remove it. Try again.");
+  }
 }

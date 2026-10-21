@@ -46,7 +46,7 @@ const FILTERS = [
 
 export function Deals({ data, card }: { data: AppData; card: string | null }) {
   const [filter, setFilter] = useState("all");
-  const deals = [...(data.live?.deals ?? [])].sort((a, b) => (b.below_pct ?? 0) - (a.below_pct ?? 0));
+  const deals = (data.live?.deals ?? []).filter((d) => data.byKey.has(d.key)).sort((a, b) => (b.below_pct ?? 0) - (a.below_pct ?? 0));
   const match = (d: Deal) => filter === "all" || (filter === "target" ? !d.tier : String(d.tier) === filter);
   const shown = deals.filter(match);
   const gone = data.live?.gone ?? [];

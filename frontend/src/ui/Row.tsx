@@ -29,11 +29,13 @@ export function WishRow({ w, data, current, extra, ctPrice, gone, n }: {
       <div class="r-main">
         <div class="r-name"><span>{w.name}</span><ManaCost cost={w.mana_cost} front />{flagged && <span class="flag-dot" title="Needs a look" />}</div>
         <div class="r-line"><SetSymbol set={w.set} rarity={w.rarity} /><span>{collectorLine(w)}</span></div>
-        {extra ?? <div class="r-wish">{wishLine(w)}{w.one_of ? ", either version" : ""}</div>}
+        {extra ?? <div class="r-wish">{w.pending && <span class="pending">{w.pending === "add" ? "Adding" : "Saving"}</span>}{wishLine(w)}{w.one_of ? ", either version" : ""}</div>}
       </div>
       <div class="r-price">
-        {ct != null ? <span class="p-ct">{eur(ct)}</span> : <span class="p-none">{w.blueprint_id ? "no copy" : "not on CardTrader"}</span>}
-        {cm != null ? <span class="p-cm">{eur(cm)}</span> : <span class="p-none">no CM price</span>}
+        {w.pending === "add" ? <span class="p-none">prices soon</span> : <>
+          {ct != null ? <span class="p-ct">{eur(ct)}</span> : <span class="p-none">{w.blueprint_id ? "no copy" : "not on CardTrader"}</span>}
+          {cm != null ? <span class="p-cm">{eur(cm)}</span> : <span class="p-none">no CM price</span>}
+        </>}
       </div>
     </a>
   );

@@ -1,0 +1,36 @@
+name: wantlist
+
+# Want-list edits made on the website (D50): the site asks the timer Worker to start this right
+# after an edit, and the timer starts it again on its 10-minute tick while edits are waiting.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: wantlist
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run mtg-intel apply-edits
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DATASET: ${{ secrets.HF_DATASET }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MTG_INTEL_TABLES_STAGING: ${{ runner.temp }}/tables-staging
+          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_INGEST_TOKEN: ${{ secrets.SITE_INGEST_TOKEN }}
+          HF_HUB_DISABLE_PROGRESS_BARS: "1"

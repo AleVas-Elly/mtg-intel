@@ -17,3 +17,9 @@ id = "fe194e1ee4754791801ac6024a93905a"
 
 # Secrets (wrangler secret put): SESSION_SECRET (signs sign-in cookies), INGEST_TOKEN (lets the
 # GitHub jobs send data; the same value is the SITE_INGEST_TOKEN GitHub secret).
+
+# The timer Worker (infra/trigger), reached only through this binding: starts the GitHub workflow
+# that applies want-list edits made on the site (D50).
+[[services]]
+binding = "TRIGGER"
+service = "mtg-intel-trigger"

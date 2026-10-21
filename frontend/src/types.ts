@@ -16,6 +16,7 @@ export interface Wish {
   ct: { name: string; version: string | null; code: string | null; expansion: string | null; number: string | null } | null;
   links: { cardmarket: string | null; cardtrader: string | null; scryfall: string | null };
   flags: Flag[];
+  pending?: "add" | "update" | "remove";  // a change made on the site, not yet in the want-list file
 }
 
 export interface WantsDoc { built_at: string; price_date: string | null; languages: Record<string, string>; wishes: Wish[] }
@@ -39,3 +40,16 @@ export interface HistoryDoc { base: string | null; cards: Record<string, Record<
 export interface RecentDoc { t: string[]; p: Record<string, (number | null)[]> }
 
 export type CtHistoryDoc = Record<string, [string, number][]>;
+
+/** Wish settings as the want-list CSV spells them (backend mycards.EDITABLE). */
+export interface Settings {
+  language?: string; foil?: string; min_condition?: string; via_zero?: string; max_price_eur?: string;
+  deal_pct?: string; quantity?: string; list?: string; note?: string;
+}
+
+export interface Edit {
+  id: string; at: string; op: "add" | "update" | "remove"; key?: string; scryfall_id?: string;
+  settings?: Settings; card?: Partial<Wish>; message?: string;
+}
+
+export interface EditsDoc { ops: Edit[]; failed: Edit[] }

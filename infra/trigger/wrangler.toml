@@ -6,6 +6,11 @@ workers_dev = false
 [triggers]
 crons = ["7,17,27,37,47,57 * * * *", "17 2,8,14 * * *"]
 
+# The website's KV (frontend/wrangler.toml): read only, to see want-list edits waiting (D50).
+[[kv_namespaces]]
+binding = "DATA"
+id = "fe194e1ee4754791801ac6024a93905a"
+
 [vars]
 GITHUB_REPO = "AleVas-Elly/mtg-intel"
 

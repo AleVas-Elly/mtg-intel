@@ -11,6 +11,7 @@ import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
 import { Detail } from "./screens/Detail";
 import { Lab } from "./ui/Lab";
+import { dismissToast, useToast } from "./toast";
 
 // The development copy runs on test data; say so, so it is never mistaken for the real site.
 const LOCAL = ["localhost", "127.0.0.1"].includes(location.hostname);
@@ -36,7 +37,7 @@ export function App() {
 
 function Signed({ path, card }: { path: string; card: string | null }) {
   const data = useAppData();
-  const dealCount = data.live?.deals.length ?? 0;
+  const dealCount = data.live?.deals.filter((d) => data.byKey.has(d.key)).length ?? 0;  // a removed wish's deal drops out
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
   const screen =
     path === "/wants" ? <Wants data={data} card={card} /> :
@@ -63,6 +64,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       </main>
       {card && <Detail data={data} wishKey={card} />}
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
+      <ToastView />
       <nav class="tabbar" aria-label="Main">
         {TABS.map(({ path: p, label, Icon }) => (
           <a class="tab" href={p} onClick={link(p)} aria-current={path === p ? "page" : undefined}><Icon />{label}</a>
@@ -72,3 +74,14 @@ function Signed({ path, card }: { path: string; card: string | null }) {
   );
 }
 
+
+function ToastView() {
+  const t = useToast();
+  if (!t) return null;
+  return (
+    <div class="toast" role="status" key={t.id}>
+      <span>{t.text}</span>
+      {t.action && <button type="button" onClick={() => { t.action!.run(); dismissToast(); }}>{t.action.label}</button>}
+    </div>
+  );
+}

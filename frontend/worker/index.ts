@@ -15,6 +15,7 @@ interface Env {
   ASSETS: Fetcher;
   SESSION_SECRET: string;
   INGEST_TOKEN: string;
+  TRIGGER?: Fetcher; // the timer Worker (service binding): starts the GitHub workflow that applies edits
 }
 
 interface Passkey {
@@ -30,6 +31,11 @@ const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
 const INVITE_MINUTES = 15;
 const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|prices-\d{1,2})$/;
+// Want-list edits made on the site (D50): one KV key per waiting edit, so writes from different
+// places never overwrite each other; the GitHub job reads them all and reports which are done.
+const EDIT_PREFIX = "edit:";
+const EDITS_FAILED = "edits:failed";
+const MAX_EDITS = 200;
 const PASSKEYS = "auth:passkeys";
 
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
@@ -183,7 +189,52 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
   return json({ error: "Not found" }, 404);
 }
 
+interface Edit { id: string; at: string; op: "add" | "update" | "remove"; key?: string; scryfall_id?: string;
+  settings?: Record<string, string>; card?: Record<string, unknown> }
+
+async function waitingEdits(env: Env): Promise<Edit[]> {
+  const listed = await env.DATA.list({ prefix: EDIT_PREFIX });
+  const edits = await Promise.all(listed.keys.map((k) => env.DATA.get<Edit>(k.name, "json")));
+  return edits.filter((e): e is Edit => !!e).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+async function editsDoc(env: Env) {
+  return { ops: await waitingEdits(env), failed: (await env.DATA.get(EDITS_FAILED, "json")) ?? [] };
+}
+
+/** POST /api/edits (one edit), DELETE /api/edits/<id> (undo a waiting edit), DELETE /api/edits/failed. */
+async function edits(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
+  if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
+  if (request.method === "DELETE" && rest === "failed") {
+    await env.DATA.delete(EDITS_FAILED);
+    return json(await editsDoc(env));
+  }
+  if (request.method === "DELETE" && /^[A-Za-z0-9_-]{8,40}$/.test(rest)) {
+    const listed = await env.DATA.list({ prefix: EDIT_PREFIX });
+    const found = listed.keys.find((k) => k.name.endsWith(`:${rest}`));
+    if (found) await env.DATA.delete(found.name);
+    return json(await editsDoc(env));
+  }
+  if (request.method !== "POST" || rest) return json({ error: "Not found" }, 404);
+  const body = (await request.json().catch(() => null)) as Partial<Edit> | null;
+  const ok = body && (body.op === "add" ? typeof body.scryfall_id === "string" : (body.op === "update" || body.op === "remove") && typeof body.key === "string");
+  if (!ok || JSON.stringify(body).length > 4000) return json({ error: "That change isn't valid." }, 400);
+  if ((await env.DATA.list({ prefix: EDIT_PREFIX })).keys.length >= MAX_EDITS) {
+    return json({ error: "Too many changes are waiting. Try again in a few minutes." }, 429);
+  }
+  const at = new Date().toISOString();
+  const edit: Edit = { id: randomToken(12), at, op: body.op!, key: body.key, scryfall_id: body.scryfall_id,
+    settings: body.settings ?? {}, card: body.card };
+  await env.DATA.put(`${EDIT_PREFIX}${at}:${edit.id}`, JSON.stringify(edit));
+  if (env.TRIGGER) ctx.waitUntil(env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined));
+  return json(await editsDoc(env));
+}
+
 async function data(request: Request, env: Env, key: string): Promise<Response> {
+  if (key === "edits") {
+    if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
+    return json(await editsDoc(env));
+  }
   if (!DATA_KEY.test(key)) return json({ error: "Not found" }, 404);
   if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
   const { value, metadata } = await env.DATA.getWithMetadata<{ etag: string; at: string }>(key, "stream");
@@ -204,6 +255,21 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
   const header = request.headers.get("Authorization") || "";
   if (!env.INGEST_TOKEN || !sameSecret(header, `Bearer ${env.INGEST_TOKEN}`)) return json({ error: "Forbidden" }, 403);
   if (path === "invite" && request.method === "POST") return json(await invite(env, url.origin));
+  if (path === "edits" && request.method === "GET") return json(await editsDoc(env));
+  if (path === "edits-applied" && request.method === "POST") {
+    // The GitHub job's report: done edits leave the queue, failed ones are kept to show on the site.
+    const { results } = (await request.json()) as { results: { id: string; ok: boolean; message: string }[] };
+    const waiting = await env.DATA.list({ prefix: EDIT_PREFIX });
+    const byId = new Map(waiting.keys.map((k) => [k.name.split(":").pop()!, k.name]));
+    const failed: unknown[] = (await env.DATA.get(EDITS_FAILED, "json")) ?? [];
+    for (const r of results) {
+      const name = byId.get(r.id);
+      if (!r.ok && name) failed.push({ ...(await env.DATA.get<Edit>(name, "json")), message: r.message });
+      if (name) await env.DATA.delete(name);
+    }
+    if (results.some((r) => !r.ok)) await env.DATA.put(EDITS_FAILED, JSON.stringify(failed.slice(-20)));
+    return json({ ok: true });
+  }
   if (!DATA_KEY.test(path)) return json({ error: "Unknown key" }, 404);
   if (request.method === "GET") {
     const value = await env.DATA.get(path, "stream");
@@ -250,6 +316,7 @@ export default {
       if (path.startsWith("/api/auth/")) return await auth(request, env, path.slice(10), url);
       if (path.startsWith("/api/data/")) return await data(request, env, path.slice(10));
       if (path.startsWith("/api/ingest/")) return await ingest(request, env, path.slice(12), url);
+      if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
       if (path.startsWith("/sym/")) return await symbol(request, path.slice(5), ctx);
       if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     } catch (e) {

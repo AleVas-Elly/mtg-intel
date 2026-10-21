@@ -228,6 +228,34 @@ def test_wantlist_matches_by_number_and_id_and_needs_a_version(tmp_path: Path):
     assert (rows[0]["min_condition"], rows[1]["foil"], rows[1]["via_zero"], rows[1]["language"]) == ("NM", "any", "yes", "any")
 
 
+def test_site_edits_add_change_and_remove_wishes(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    text = mycards.write_csv([{"name": "Elvish Archdruid", "scryfall_id": "sf-1", "language": "en", "foil": "any",
+                               "min_condition": "NM", "via_zero": "yes", "quantity": "1", "list": "Showcase"}])
+    ops = [
+        {"id": "a", "op": "add", "scryfall_id": "sf-new", "settings": {"max_price_eur": "4.5", "list": "Showcase"}},
+        {"id": "b", "op": "add", "scryfall_id": "sf-new", "settings": {}},  # same version again
+        {"id": "c", "op": "update", "key": "sf-1|en|any", "settings": {"foil": "Yes", "deal_pct": "30", "note": "for the deck"}},
+        {"id": "d", "op": "update", "key": "sf-1|en|any", "settings": {}},  # its key changed with "c"
+        {"id": "e", "op": "update", "key": "sf-1|en|yes", "settings": {"min_condition": "XX"}},
+        {"id": "f", "op": "remove", "key": "sf-new|en|any"},
+        {"id": "g", "op": "add", "scryfall_id": "sf-new", "settings": {"language": "ja"}},
+    ]
+
+    text, results = mycards.apply_edits(text, ops, cards, {"sf-new": 777})
+
+    assert [(r["id"], r["ok"]) for r in results] == [
+        ("a", True), ("b", False), ("c", True), ("d", False), ("e", False), ("f", True), ("g", True)]
+    assert results[1]["message"] == "already on the want-list"
+    rows = mycards.read_csv_rows(text)
+    assert [(r["scryfall_id"], r["language"], r["foil"], r["deal_pct"], r["note"]) for r in rows] == [
+        ("sf-1", "en", "yes", "30", "for the deck"),
+        ("sf-new", "ja", "any", "", ""),
+    ]
+    assert (rows[1]["set_code"], rows[1]["collector_number"], rows[1]["cardtrader_blueprint_id"]) == ("j25", "5", "777")
+    assert (rows[1]["min_condition"], rows[1]["via_zero"]) == ("NM", "yes")  # the defaults
+
+
 def test_collection_reads_manabox_headers(tmp_path: Path):
     cards = two_printings(tmp_path)
     text = (

@@ -85,6 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     want_remove = want_commands.add_parser("remove", help="remove printings by Scryfall ID")
     want_remove.add_argument("ids", nargs="+")
     want_remove.add_argument("--list", help="only from this list")
+    commands.add_parser("apply-edits", help="apply the want-list edits waiting on the website, then rebuild the tables")
     deal_check = commands.add_parser("check-deals", help="check CardTrader for want-list deals and alert (phase 3)")
     deal_check.add_argument("--dry-run", action="store_true", help="print deals; send and save nothing")
     args = parser.parse_args(argv)
@@ -113,6 +114,8 @@ def main(argv: list[str] | None = None) -> int:
         return edit_wantlist(args)
     if args.command == "check-deals":
         return check_deals(args)
+    if args.command == "apply-edits":
+        return apply_site_edits()
     store: Store
     if args.local:
         store = LocalStore(args.local)
@@ -407,6 +410,49 @@ def edit_wantlist(args: argparse.Namespace) -> int:
     # Rebuild now so the want-list table (and anything reading it) is current right away.
     status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
     return status or sync_tables()
+
+
+def apply_site_edits() -> int:
+    """Want-list edits made on the website (D50): apply them to the CSV, upload it, rebuild the tables
+    (which sends the new `wants` document), then tell the site which edits are done."""
+    import pyarrow.compute as pc
+    import pyarrow.parquet as pq
+
+    from mtg_intel.site import Site
+    from mtg_intel.tables import build, mycards
+
+    with httpx.Client() as client:
+        site_store = Site.from_env(client)
+        if not site_store:
+            print("SITE_URL and SITE_INGEST_TOKEN must be set", file=sys.stderr)
+            return 2
+        ops = (site_store.get("edits") or {}).get("ops") or []
+        if not ops:
+            print("no edits waiting")
+            return 0
+        store = tables_store(None)
+        current = store.fetch(build.MY_INPUTS["wantlist"])
+        text = mycards.read_text(current) if current else ""
+        cards = pq.read_table(store.fetch("reference/cards.parquet", fresh=False))
+        ids = pq.read_table(store.fetch("reference/card_ids.parquet", fresh=False))
+        ids = ids.filter(pc.equal(ids["source"], "cardtrader")).to_pylist()
+        blueprint_of: dict[str, int] = {}
+        for row in ids:
+            if str(row["external_id"]).isdigit():
+                blueprint = int(row["external_id"])
+                blueprint_of[row["scryfall_id"]] = min(blueprint_of.get(row["scryfall_id"], blueprint), blueprint)
+        text, results = mycards.apply_edits(text, ops, cards, blueprint_of)
+        for r in results:
+            print(f"{'     ok' if r['ok'] else ' FAILED'}  {r['message']}")
+        status = 0
+        if any(r["ok"] for r in results):
+            out = REPO_ROOT / "data" / "my" / "wantlist.csv"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(text)
+            store.put([(build.MY_INPUTS["wantlist"], out)], f"want-list: {sum(r['ok'] for r in results)} edits from the site")
+            status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
+        site_store.put("edits-applied", {"results": results})
+        return status
 
 
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary

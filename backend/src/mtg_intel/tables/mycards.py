@@ -12,6 +12,7 @@ from pathlib import Path
 
 import duckdb
 import pyarrow as pa
+import pyarrow.compute as pc
 
 CONDITIONS = ["NM", "SP", "MP", "PL", "PO"]  # CardTrader: Near Mint … Poor (Mint counts as NM)
 
@@ -168,3 +169,111 @@ def write_csv(rows: list[dict[str, str]]) -> str:
     writer.writeheader()
     writer.writerows({c: row.get(c, "") for c in WANTLIST_COLUMNS} for row in rows)
     return out.getvalue()
+
+
+# --- edits made on the website (3c, D50) ------------------------------------------------------
+
+EDITABLE = ["language", "foil", "min_condition", "via_zero", "max_price_eur", "deal_pct", "quantity", "list", "note"]
+ADD_DEFAULTS = {"language": "en", "foil": "any", "min_condition": "NM", "via_zero": "yes", "quantity": "1"}
+
+
+def _setting_problem(column: str, value: str) -> str | None:
+    """Why a value can't go into the CSV, or None when it can."""
+    if "\n" in value or "\r" in value:
+        return f"{column} can't hold a line break"
+    if column == "language" and not (value == "any" or value.isalpha() and 2 <= len(value) <= 3):
+        return f"unknown language {value!r}"
+    if column == "foil" and value not in ("yes", "no", "any"):
+        return f"foil must be yes, no or any, not {value!r}"
+    if column == "min_condition" and value not in CONDITIONS:
+        return f"condition must be one of {', '.join(CONDITIONS)}"
+    if column == "via_zero" and value not in ("yes", "no"):
+        return "Zero only must be yes or no"
+    if column in ("max_price_eur", "deal_pct") and value:
+        try:
+            number = float(value)
+        except ValueError:
+            return f"{column} must be a number"
+        if number <= 0 or column == "deal_pct" and number >= 100:
+            return f"{column} is out of range"
+    if column == "quantity" and not (value.isdigit() and int(value) >= 1):
+        return "quantity must be a whole number from 1"
+    return None
+
+
+def _clean(settings: dict[str, object]) -> tuple[dict[str, str], str | None]:
+    out: dict[str, str] = {}
+    for column, value in settings.items():
+        if column not in EDITABLE:
+            return out, f"{column} can't be edited"
+        text = "" if value is None else str(value).strip()
+        if column in ("language", "foil", "via_zero"):
+            text = text.lower()
+        if column == "min_condition":
+            text = text.upper()
+        problem = _setting_problem(column, text)
+        if problem:
+            return out, problem
+        out[column] = text
+    return out, None
+
+
+def wish_key_of(row: dict[str, object]) -> str:
+    """The key the site uses for a wish (deals.wish_key over a want-list table row)."""
+    sid = row.get("scryfall_id") or None
+    blueprint = row.get("cardtrader_blueprint_id") or None
+    return f"{sid or (int(blueprint) if blueprint else None)}|{row['language']}|{row['foil']}"
+
+
+def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[str, int]) -> tuple[str, list[dict]]:
+    """Apply the site's waiting edits, oldest first, to the want-list CSV text. Each op is
+    {"id", "op": "add" | "update" | "remove", ...}: add carries "scryfall_id" and "settings",
+    update "key" and "settings", remove "key". Returns the new text and one result per op
+    ({"id", "ok", "message"}); a failed op changes nothing."""
+    rows = read_csv_rows(text) if text.strip() else []
+    results = []
+    for op in ops:
+        table = wantlist_table(write_csv(rows), cards).to_pylist() if rows else []
+        keys = {wish_key_of(r): r["line"] - 2 for r in table}  # site key -> index into rows
+        kind = op.get("op")
+        settings, problem = _clean(op.get("settings") or {})
+        if problem:
+            results.append({"id": op.get("id"), "ok": False, "message": problem})
+            continue
+        if kind == "add":
+            sid = str(op.get("scryfall_id") or "")
+            card = cards.filter(pc.equal(cards["scryfall_id"], sid)).slice(0, 1).to_pylist() if sid else []
+            if not card:
+                results.append({"id": op.get("id"), "ok": False, "message": "card not found in the card table"})
+                continue
+            row = {c: "" for c in WANTLIST_COLUMNS} | ADD_DEFAULTS | settings
+            row |= {"name": card[0]["name"], "set_code": card[0]["set_code"], "collector_number": card[0]["collector_number"],
+                    "scryfall_id": sid, "cardtrader_blueprint_id": str(blueprint_of.get(sid) or "")}
+            key = wish_key_of(row)
+            if key in keys:
+                results.append({"id": op.get("id"), "ok": False, "message": "already on the want-list"})
+                continue
+            rows.append(row)
+            results.append({"id": op.get("id"), "ok": True, "message": f"added {row['name']}", "key": key})
+        elif kind in ("update", "remove"):
+            index = keys.get(str(op.get("key")))
+            if index is None:
+                results.append({"id": op.get("id"), "ok": False, "message": "this wish is no longer on the want-list"})
+                continue
+            if kind == "remove":
+                results.append({"id": op.get("id"), "ok": True, "message": f"removed {rows[index].get('name')}"})
+                del rows[index]
+                continue
+            row = rows[index] | settings
+            normalized = {**table[index], **{c: row.get(c, "") for c in ("language", "foil")}}
+            normalized["language"] = (normalized["language"] or "any").lower()
+            normalized["foil"] = (normalized["foil"] or "any").lower()
+            key = wish_key_of(normalized)
+            if key != op.get("key") and key in keys:
+                results.append({"id": op.get("id"), "ok": False, "message": "the want-list already has that version"})
+                continue
+            rows[index] = row
+            results.append({"id": op.get("id"), "ok": True, "message": f"changed {row.get('name')}", "key": key})
+        else:
+            results.append({"id": op.get("id"), "ok": False, "message": f"unknown edit {kind!r}"})
+    return write_csv(rows), results

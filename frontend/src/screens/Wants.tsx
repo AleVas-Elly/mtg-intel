@@ -3,7 +3,8 @@ import { useDoc } from "../api";
 import type { AppData } from "../data";
 import { dealRatio, wishCount } from "../data";
 import { cmTrend, day, foilOnly, showsFoil } from "../format";
-import { IconSearch } from "../ui/icons";
+import { dismissFailed } from "../edits";
+import { IconSearch, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton } from "../ui/Row";
 import type { HistoryDoc, Wish } from "../types";
 
@@ -76,6 +77,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
           </p>
         </div>
       </header>
+      <EditsStatus data={data} />
       <div class="toolbar">
         <div class="seg" role="group" aria-label="List">
           {lists.map((l) => (
@@ -105,5 +107,26 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
       )}
       <p class="hint">Green dot: CardTrader's cheapest copy that fits the wish, right now. Blue square: Cardmarket's trend for that finish (all sellers, all conditions, once a day).</p>
     </div>
+  );
+}
+
+/** Changes made here that are still on their way into the want-list file, or that failed. */
+function EditsStatus({ data }: { data: AppData }) {
+  const { ops, failed } = data.edits;
+  if (!ops.length && !failed.length) return null;
+  return (
+    <>
+      {ops.length > 0 && (
+        <div class="notice soft">{ops.length === 1 ? "1 change is" : `${ops.length} changes are`} being saved to the want-list. It usually takes a minute or two.</div>
+      )}
+      {failed.length > 0 && (
+        <div class="notice">
+          <IconWarn />
+          <span>{failed.length === 1 ? "1 change couldn't be saved" : `${failed.length} changes couldn't be saved`}:{" "}
+            {failed.map((f) => `${(f.card?.name as string | undefined) ?? f.key?.split("|")[0] ?? "a card"} (${f.message})`).join("; ")}.</span>
+          <button class="btn sm" type="button" onClick={() => dismissFailed()}>Dismiss</button>
+        </div>
+      )}
+    </>
   );
 }
