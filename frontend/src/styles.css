@@ -337,9 +337,9 @@ img { display: block; }
 }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
+@keyframes slide { from { transform: translateX(48px); opacity: 0; } }
 @media (min-width: 900px) {
   .detail { left: auto; width: min(var(--detail), 100vw); border-left: 0.5px solid var(--line); box-shadow: var(--shadow-2); animation: slide 0.42s var(--ease); }
-  @keyframes slide { from { transform: translateX(48px); opacity: 0; } }
 }
 @media (min-width: 1280px) {
   .shell.has-detail { grid-template-columns: var(--rail) minmax(0, 1fr) var(--detail); }
@@ -449,7 +449,22 @@ img { display: block; }
   .head { padding-top: 34px; }
 }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.3s; animation-timing-function: var(--ease); }
-::view-transition-group(card-open) { animation-duration: 0.45s; animation-timing-function: var(--ease); }
+::view-transition-group(card-open) { animation-duration: 0.45s; animation-timing-function: var(--ease); z-index: 3; }
+/* Opening or closing a card: the page underneath swaps at once (no ghosted double list while the
+   columns resize), the detail pane slides on its own and the picture flies above it. */
+.detail { view-transition-name: detail-pane; }
+.detail-backdrop { view-transition-name: detail-backdrop; }
+::view-transition-group(detail-pane) { z-index: 2; animation-duration: 0.4s; animation-timing-function: var(--ease); }
+::view-transition-new(detail-pane):only-child { animation: rise 0.4s var(--ease) both; }
+::view-transition-old(detail-pane):only-child { animation: rise 0.3s var(--ease) reverse both; }
+::view-transition-new(detail-backdrop):only-child { animation: fade 0.3s var(--ease) both; }
+::view-transition-old(detail-backdrop):only-child { animation: fade 0.25s var(--ease) reverse both; }
+@media (min-width: 900px) {
+  ::view-transition-new(detail-pane):only-child { animation-name: slide; }
+  ::view-transition-old(detail-pane):only-child { animation-name: slide; }
+}
+html.vt-card::view-transition-old(root) { animation: none; opacity: 0; }
+html.vt-card::view-transition-new(root) { animation: none; }
 ::view-transition-old(card-open), ::view-transition-new(card-open) { height: 100%; object-fit: cover; }
 html.vt .detail, html.vt .detail-backdrop { animation: none; }
 .btn.sm { height: 32px; padding: 0 12px; font-size: 13.5px; border-radius: 9px; }
@@ -591,11 +606,13 @@ html.vt .detail, html.vt .detail-backdrop { animation: none; }
 :root[data-motion="calm"] .card-big { transform: none !important; }
 :root[data-motion="calm"]::view-transition-group(card-open) { animation-duration: 0s; }
 :root[data-motion="calm"]::view-transition-old(root), :root[data-motion="calm"]::view-transition-new(root) { animation-duration: 0.15s; }
+:root[data-motion="calm"]::view-transition-new(detail-pane):only-child, :root[data-motion="calm"]::view-transition-new(detail-backdrop):only-child { animation: fade 0.15s linear both; }
+:root[data-motion="calm"]::view-transition-old(detail-pane):only-child, :root[data-motion="calm"]::view-transition-old(detail-backdrop):only-child { animation: fade 0.15s linear reverse both; }
 
 :root[data-motion="smooth"] .list, :root[data-motion="smooth"] .gallery { animation: fade 0.35s var(--ease) both; }
 
 :root[data-motion="lively"] { --spring: cubic-bezier(0.34, 1.45, 0.64, 1); }
-:root[data-motion="lively"]::view-transition-group(card-open) { animation-duration: 0.62s; animation-timing-function: var(--spring); }
+:root[data-motion="lively"]::view-transition-group(card-open) { animation-duration: 0.5s; animation-timing-function: cubic-bezier(0.3, 1.16, 0.55, 1); }
 :root[data-motion="lively"] .detail { animation-duration: 0.55s; animation-timing-function: var(--spring); }
 :root[data-motion="lively"] .foil::after { opacity: 0.95; animation-duration: 3s; }
 :root[data-motion="lively"] .row .thumb, :root[data-motion="lively"] .g-card .thumb { transition: transform 0.45s var(--spring); }

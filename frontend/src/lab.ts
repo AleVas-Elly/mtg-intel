@@ -39,7 +39,8 @@ export const OPTIONS: { [K in keyof Look]: { id: string; label: string; mana?: s
   ],
 };
 
-const KEY = "look";
+// Versioned: a new default look replaces what the lab saved in each browser before it.
+const KEY = "look-v2";
 const subscribers = new Set<() => void>();
 
 export function readLook(): Look {

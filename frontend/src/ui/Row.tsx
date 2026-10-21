@@ -3,7 +3,7 @@ import type { AppData } from "../data";
 import { cmTrend, collectorLine, eur, showsFoil, wishLine } from "../format";
 import { openCard } from "../router";
 import type { Wish } from "../types";
-import { CardImage } from "./CardImage";
+import { CardImage, preloadImage } from "./CardImage";
 import { ManaCost, SetSymbol } from "./symbols";
 import { useLook } from "../lab";
 
@@ -23,6 +23,7 @@ export function WishRow({ w, data, current, extra, ctPrice, gone, n }: {
       aria-current={current ? "true" : undefined}
       style={n != null ? { "--n": n } : undefined}
       onClick={(e) => { e.preventDefault(); openCard(w.key); }}
+      onPointerEnter={() => preloadImage(w.image, 0)} onPointerDown={() => preloadImage(w.image, 0)}
     >
       <CardImage src={w.thumb} alt="" foil={showsFoil(w)} />
       <div class="r-main">
@@ -61,7 +62,8 @@ function GalleryCard({ w, data, extra, ctPrice, gone, n }: Item & { data: AppDat
   const cm = cmTrend(w, live?.foil);
   return (
     <a class={`g-card${gone ? " gone" : ""}`} data-key={w.key} href={`?card=${encodeURIComponent(w.key)}`} style={{ "--n": n }}
-      onClick={(e) => { e.preventDefault(); openCard(w.key); }}>
+      onClick={(e) => { e.preventDefault(); openCard(w.key); }}
+      onPointerEnter={() => preloadImage(w.image, 0)} onPointerDown={() => preloadImage(w.image, 0)}>
       <CardImage src={w.image} alt={w.name} foil={showsFoil(w)} placeholder={w.thumb} />
       <div class="g-name"><span>{w.name}</span>{data.flagsOf(w).length > 0 && <span class="flag-dot" title="Needs a look" />}</div>
       <div class="g-line"><SetSymbol set={w.set} rarity={w.rarity} /><span>{collectorLine(w)}</span></div>

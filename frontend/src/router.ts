@@ -1,4 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
+import { peek } from "./api";
+import type { WantsDoc } from "./types";
+import { preloadImage } from "./ui/CardImage";
 
 export interface Route { path: string; card: string | null }
 
@@ -31,7 +34,10 @@ export function go(path: string, card: string | null = null, replace = false, mo
   const clear = () => document.querySelectorAll<HTMLElement>(".thumb").forEach((el) => { el.style.viewTransitionName = ""; });
   clear();
   name(card ? (morph ? thumbOf(morph) : null) : big());
-  document.documentElement.classList.add("vt");
+  const root = document.documentElement.classList;
+  const cardMove = !!card || !!morph;
+  root.add("vt");
+  if (cardMove) root.add("vt-card");
   let started = false;
   const vt = doc.startViewTransition(async () => {
     started = true;
@@ -43,12 +49,16 @@ export function go(path: string, card: string | null = null, replace = false, mo
   // A throttled page (background tab) may not reach the transition's first frame: open directly.
   setTimeout(() => { if (!started) vt.skipTransition(); }, 400);
   vt.finished.finally(() => {
-    document.documentElement.classList.remove("vt");
+    root.remove("vt", "vt-card");
     clear();
   });
 }
 
-export const openCard = (key: string) => go(location.pathname, key, false, key);
+/** Open a card's detail; its big picture is fetched first (briefly) so it flies in sharp. */
+export const openCard = (key: string) => {
+  const image = peek<WantsDoc>("wants")?.wishes.find((w) => w.key === key)?.image;
+  preloadImage(image, 200).then(() => go(location.pathname, key, false, key));
+};
 export const closeCard = () => go(location.pathname, null, false, new URLSearchParams(location.search).get("card") ?? undefined);
 
 export function useRoute(): Route {

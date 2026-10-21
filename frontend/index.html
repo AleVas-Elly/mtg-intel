@@ -18,7 +18,7 @@
     <script>
       try {
         var t = localStorage.getItem("theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
-        var look = JSON.parse(localStorage.getItem("look") || "{}");
+        var look = JSON.parse(localStorage.getItem("look-v2") || "{}");
         for (var k in look) document.documentElement.dataset[k] = look[k];
       } catch (e) {}
     </script>
