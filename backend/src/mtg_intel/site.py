@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta
 from typing import Any
@@ -33,13 +34,14 @@ RECENT_HOURS = 48  # ct-recent keeps every check this far back; ct-history cover
 HISTORY_DAYS = 30  # days of CardTrader history in ct-history
 GONE_HOURS = 24  # a deal that disappeared stays listed (struck through) this long
 LIVE_FLAG_RATIO = 2.5  # CardTrader and Cardmarket this far apart is worth a look (frontend check)
+RETRY_WAITS = (2, 8)  # seconds before the second and third try of an upload
 
 
 class Site:
     """The site Worker's ingest endpoint: `POST /api/ingest/<key>` stores a document, `GET` reads it."""
 
-    def __init__(self, client: httpx.Client, url: str, token: str) -> None:
-        self.client, self.url, self.token = client, url.rstrip("/"), token
+    def __init__(self, client: httpx.Client, url: str, token: str, sleep: Callable[[float], None] = time.sleep) -> None:
+        self.client, self.url, self.token, self.sleep = client, url.rstrip("/"), token, sleep
 
     @classmethod
     def from_env(cls, client: httpx.Client) -> Site | None:
@@ -49,14 +51,27 @@ class Site:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.token}", "User-Agent": "mtg-intel"}
 
+    def _send(self, method: str, key: str, **kwargs: Any) -> httpx.Response:
+        """One request, retried on network errors and server errors (RETRY_WAITS)."""
+        for attempt in range(len(RETRY_WAITS) + 1):
+            try:
+                response = self.client.request(method, f"{self.url}/api/ingest/{key}", timeout=60, **kwargs)
+                if response.status_code < 500:
+                    return response
+            except httpx.TransportError:
+                if attempt == len(RETRY_WAITS):
+                    raise
+            if attempt < len(RETRY_WAITS):
+                self.sleep(RETRY_WAITS[attempt])
+        return response
+
     def put(self, key: str, doc: Any) -> None:
         body = json.dumps(doc, separators=(",", ":"), default=str)
-        response = self.client.post(f"{self.url}/api/ingest/{key}", content=body.encode(),
-                                    headers=self._headers() | {"Content-Type": "application/json"}, timeout=60)
-        response.raise_for_status()
+        self._send("POST", key, content=body.encode(),
+                   headers=self._headers() | {"Content-Type": "application/json"}).raise_for_status()
 
     def get(self, key: str) -> Any | None:
-        response = self.client.get(f"{self.url}/api/ingest/{key}", headers=self._headers(), timeout=60)
+        response = self._send("GET", key, headers=self._headers())
         if response.status_code == 404:
             return None
         response.raise_for_status()

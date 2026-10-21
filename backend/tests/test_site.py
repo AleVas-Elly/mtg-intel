@@ -1,5 +1,6 @@
 from datetime import UTC, date, datetime, timedelta
 
+import httpx
 import pyarrow as pa
 
 from mtg_intel import deals, site
@@ -101,3 +102,19 @@ def test_price_shards_split_by_the_id_prefix():
     shards = site.price_shards(cards, day)
     assert shards[0] == {"00aa": [0.5, None]} and shards[1] == {"21bb": [None, 3.0]}
     assert sum(len(s) for s in shards.values()) == 2
+
+
+def test_uploads_retry_network_and_server_errors():
+    calls = []
+
+    def handler(request):
+        calls.append(request.method)
+        if len(calls) == 1:
+            raise httpx.ConnectError("reset")
+        if len(calls) == 2:
+            return httpx.Response(502)
+        return httpx.Response(200, json={"ok": True})
+
+    target = site.Site(httpx.Client(transport=httpx.MockTransport(handler)), "https://x", "t", sleep=lambda s: None)
+    target.put("wants", {"a": 1})
+    assert calls == ["POST", "POST", "POST"]
