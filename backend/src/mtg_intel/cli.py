@@ -457,6 +457,13 @@ def check_deals(args: argparse.Namespace) -> int:
     # The first check of a day also rebuilds the site's CardTrader history from a month of daily files.
     to_site = not args.dry_run and bool(os.environ.get("SITE_URL"))
     packing = store.fetch(daily_checks_path((now - timedelta(days=1)).date())) is None
+    if to_site and not packing:  # the site has no CardTrader history yet (first run, or lost)
+        with httpx.Client() as client:
+            target = Site.from_env(client)
+            try:
+                packing = target is not None and target.get("ct-history") is None
+            except httpx.HTTPError:
+                pass
     site_history: dict[int, list[dict]] = {}
     for days_back in range(1, (site.HISTORY_DAYS if packing and to_site else deals.USUAL_DAYS) + 1):
         day = (now - timedelta(days=days_back)).date()
