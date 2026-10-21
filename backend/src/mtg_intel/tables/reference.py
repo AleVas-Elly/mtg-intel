@@ -175,3 +175,38 @@ def cardtrader_blueprints(catalog_jsonl_zst: Path):
             market_ids = bp.get("card_market_ids") or [None]
             for market_id in market_ids:
                 yield scryfall_id, bp["id"], market_id
+
+
+def build_cardtrader_blueprints(catalog_jsonl_zst: Path) -> pa.Table:
+    """CardTrader's own description of every Magic blueprint (name, version label, expansion,
+    collector number, picture), so a want-list row can be checked against what CardTrader calls it."""
+    expansions: dict[int, dict] = {}
+    rows = []
+    for line in read_bytes(catalog_jsonl_zst).decode().splitlines():
+        record = json.loads(line)
+        if not record.get("body") or record.get("error"):
+            continue
+        try:
+            body = json.loads(record["body"])
+        except ValueError:
+            continue
+        if record.get("path") == "/expansions":
+            items = body.get("array", body) if isinstance(body, dict) else body
+            expansions |= {e["id"]: e for e in items if isinstance(e, dict) and e.get("game_id") == 1}
+        elif record.get("path") == "/blueprints/export" and isinstance(body, list):
+            rows += [bp for bp in body if bp.get("game_id") == 1]
+    image = lambda bp: bp.get("image_url") or ((bp.get("image") or {}).get("preview") or {}).get("url")
+    return pa.table({
+        "blueprint_id": pa.array([bp["id"] for bp in rows], pa.int64()),
+        "name": pa.array([bp.get("name") for bp in rows], pa.string()),
+        "version": pa.array([(bp.get("version") or "").strip() or None for bp in rows], pa.string()),
+        "expansion_id": pa.array([bp.get("expansion_id") for bp in rows], pa.int64()),
+        "expansion_code": pa.array([expansions.get(bp.get("expansion_id"), {}).get("code") for bp in rows], pa.string()),
+        "expansion_name": pa.array([expansions.get(bp.get("expansion_id"), {}).get("name") for bp in rows], pa.string()),
+        "collector_number": pa.array([(bp.get("fixed_properties") or {}).get("collector_number") for bp in rows],
+                                     pa.string()),
+        "rarity": pa.array([(bp.get("fixed_properties") or {}).get("mtg_rarity") for bp in rows], pa.string()),
+        "scryfall_id": pa.array([bp.get("scryfall_id") for bp in rows], pa.string()),
+        "card_market_ids": pa.array([bp.get("card_market_ids") or [] for bp in rows], pa.list_(pa.int64())),
+        "image_url": pa.array([image(bp) for bp in rows], pa.string()),
+    })

@@ -296,17 +296,25 @@ def test_build_picks_up_my_wantlist_and_rebuilds_only_when_it_changes(tmp_path: 
     want.write_text("name,set_code,collector_number,cardtrader_blueprint_id\nElvish Archdruid,fdn,219,77\n")
     store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
     report = build.build(raw, store, tmp_path / "staging", NOW)
-    assert report.written == ["my/wantlist.parquet (1 rows)", "my/watch.parquet (1 rows)"]
+    assert report.written == ["my/wantlist.parquet (1 rows)", "my/watch.parquet (1 rows)",
+                              "my/price_history.parquet (6 rows)"]
     [watch] = pq.read_table(tmp_path / "tables/my/watch.parquet").to_pylist()
     assert (watch["blueprint_id"], watch["cardmarket_id"]) == (77, 795130)
     assert watch["trend"] is not None  # latest Cardmarket price day
+    # The site's price history: both Cardmarket days and the four MTGJSON days, for my printing only.
+    history = pq.read_table(tmp_path / "tables/my/price_history.parquet").to_pylist()
+    assert [(r["source"], str(r["price_date"]), r["trend"]) for r in history] == [
+        ("cardmarket", "2026-10-17", 0.6), ("cardmarket", "2026-10-18", 0.6),
+        ("mtgjson", "2026-10-15", 0.5), ("mtgjson", "2026-10-16", 0.55),
+        ("mtgjson", "2026-10-17", 0.6), ("mtgjson", "2026-10-18", 0.61)]
 
     assert build.build(raw, store, tmp_path / "staging", NOW).written == []
 
     want.write_text("name,set_code,collector_number\nElvish Archdruid,fdn,219\nTypo Card,,\n")
     store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
     report = build.build(raw, store, tmp_path / "staging", NOW)
-    assert report.written == ["my/wantlist.parquet (2 rows)", "my/watch.parquet (0 rows)"]
+    assert report.written == ["my/wantlist.parquet (2 rows)", "my/watch.parquet (0 rows)",
+                              "my/price_history.parquet (0 rows)"]
     assert report.problems == ["wantlist: 1 row(s) not matched to a card"]
 
 

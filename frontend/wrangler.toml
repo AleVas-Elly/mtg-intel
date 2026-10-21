@@ -1,0 +1,19 @@
+# The mtg-intel website (phase 3b, spec D49): static app + passkey sign-in + data from KV.
+name = "mtg-intel"
+main = "worker/index.ts"
+compatibility_date = "2025-06-01"
+workers_dev = true
+preview_urls = false
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true
+
+[[kv_namespaces]]
+binding = "DATA"
+id = "fe194e1ee4754791801ac6024a93905a"
+
+# Secrets (wrangler secret put): SESSION_SECRET (signs sign-in cookies), INGEST_TOKEN (lets the
+# GitHub jobs send data; the same value is the SITE_INGEST_TOKEN GitHub secret).

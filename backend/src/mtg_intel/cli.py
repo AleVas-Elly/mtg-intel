@@ -43,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     tables.add_argument("--local-archive", type=Path, help="read raw files from this folder")
     tables.add_argument("--local-out", type=Path, help="write tables to this folder instead of Hugging Face")
     tables.add_argument("--dry-run", action="store_true", help="build, publish nothing")
+    tables.add_argument("--site", action="store_true", help="send every website document, changed or not")
     mine = commands.add_parser("my-cards", help="upload my collection / want-list CSV for the next table build")
     mine.add_argument("--collection", type=Path, help="ManaBox CSV export")
     mine.add_argument("--wantlist", type=Path, help="want-list CSV (see backend/templates/wantlist.csv)")
@@ -178,11 +179,39 @@ def build_tables(args: argparse.Namespace) -> int:
         print(f"   note  {line}")
     for line in report.problems:
         print(f"PROBLEM  {line}")
+    if not args.dry_run:
+        export_site(store, staging / "out", [w.split(" ")[0] for w in report.written], now,
+                    force=getattr(args, "site", False))
     if report.problems:
         with httpx.Client() as client:
             alert(client, "mtg-intel tables need a look", "\n".join(report.problems))
         return 1
     return 0
+
+
+def export_site(store, staged: Path, written: list[str], now: datetime, force: bool = False) -> None:
+    """Send the website's documents for the tables this build changed (D49); skipped without SITE_URL."""
+    import pyarrow.parquet as pq
+
+    from mtg_intel import site
+
+    def load(path: str):
+        local = staged / path
+        found = local if local.exists() else store.fetch(path, fresh=False)
+        return pq.read_table(found) if found else None
+
+    with httpx.Client() as client:
+        target = site.Site.from_env(client)
+        if target is None:
+            return
+        try:
+            days = (store.read_state().get("days") or {}).get("cardmarket") or {}
+            sent = site.export_tables(target, load, written, now, force=force, latest_day=max(days, default=None))
+        except httpx.HTTPError as e:
+            print(f"WARNING  site not updated: {e}", file=sys.stderr)
+            return
+    if sent:
+        print(f"   site  sent {', '.join(sent)}")
 
 
 def tables_store(local_out: Path | None):
@@ -376,7 +405,7 @@ def edit_wantlist(args: argparse.Namespace) -> int:
     out.write_text(text)
     store.put([(build.MY_INPUTS["wantlist"], out)], message)
     # Rebuild now so the want-list table (and anything reading it) is current right away.
-    status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False))
+    status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
     return status or sync_tables()
 
 
@@ -393,9 +422,10 @@ def check_deals(args: argparse.Namespace) -> int:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    from mtg_intel import deals
+    from mtg_intel import deals, site
     from mtg_intel.archive.cardtrader import Session
     from mtg_intel.archive.sources import InvalidDownload
+    from mtg_intel.site import Site
 
     token = os.environ.get("CARDTRADER_TOKEN")
     if not token:
@@ -424,7 +454,11 @@ def check_deals(args: argparse.Namespace) -> int:
     work.mkdir(parents=True)
     files: list[tuple[str, Path]] = []
     history: dict[int, list[dict]] = {}
-    for days_back in range(1, deals.USUAL_DAYS + 1):
+    # The first check of a day also rebuilds the site's CardTrader history from a month of daily files.
+    to_site = not args.dry_run and bool(os.environ.get("SITE_URL"))
+    packing = store.fetch(daily_checks_path((now - timedelta(days=1)).date())) is None
+    site_history: dict[int, list[dict]] = {}
+    for days_back in range(1, (site.HISTORY_DAYS if packing and to_site else deals.USUAL_DAYS) + 1):
         day = (now - timedelta(days=days_back)).date()
         daily = store.fetch(daily_checks_path(day))
         if daily is None and days_back == 1:
@@ -432,9 +466,12 @@ def check_deals(args: argparse.Namespace) -> int:
             if daily:
                 files.append((daily_checks_path(day), daily))
         for row in pq.read_table(daily).to_pylist() if daily else []:
-            history.setdefault(row["blueprint_id"], []).append(row)
+            site_history.setdefault(row["blueprint_id"], []).append(row)
+            if days_back <= deals.USUAL_DAYS:
+                history.setdefault(row["blueprint_id"], []).append(row)
 
     with httpx.Client(timeout=60) as client:
+        site_store = Site.from_env(client) if to_site else None
         session = Session(client, token, out=None)
         result = deals.check(session, watch, alerted, now, history)
         targets = deals.cardmarket_targets(watch, alerted, now)
@@ -458,6 +495,15 @@ def check_deals(args: argparse.Namespace) -> int:
             sent.append(alert(client, f"{len(rest)} more deals", "\n".join(rest)))
         if sent:
             print(f"alerts sent: {sum(sent)} of {len(sent)}")
+        if site_store:
+            try:  # the website's copy (D49); a failure here never stops the alerts or the saved check
+                site_store.put("live", site.live_doc(result, watch, now, site_store.get("live")))
+                site_store.put("ct-recent", site.ct_recent_doc(site_store.get("ct-recent"), result, now))
+                if packing:
+                    site_store.put("ct-history", site.ct_history_doc(watch, site_history))
+                print("site updated")
+            except httpx.HTTPError as e:
+                print(f"WARNING  site not updated: {e}", file=sys.stderr)
 
     took = datetime.now(UTC) - now
     if took > SLOW_CHECK:

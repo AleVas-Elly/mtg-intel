@@ -182,6 +182,9 @@ class CheckResult:
     new: list[Deal] = field(default_factory=list)  # the ones to alert about now
     summary: list[dict[str, Any]] = field(default_factory=list)
     failed_blueprints: list[int] = field(default_factory=list)
+    cheapest: dict[str, Listing] = field(default_factory=dict)  # wish key -> cheapest fitting listing
+    counts: dict[str, int] = field(default_factory=dict)  # wish key -> fitting listings
+    usual: dict[str, tuple[float | None, str]] = field(default_factory=dict)  # wish key -> CardTrader reference
 
 
 def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) -> list[dict[str, Any]]:
@@ -206,7 +209,6 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
     so a later deal on the same wish alerts again.
     """
     result = CheckResult()
-    cheapest: dict[str, float] = {}  # wish key -> cheapest fitting listing, deal or not
     by_blueprint: dict[int, list[dict[str, Any]]] = {}
     for wish in watch:
         by_blueprint.setdefault(wish["blueprint_id"], []).append(wish)
@@ -218,10 +220,15 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
         listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or []) if x]
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:
-            fitting = [x.price for x in listings if fits(x, wish)]
+            fitting = sorted((x for x in listings if fits(x, wish)), key=lambda x: x.price)
+            key = wish_key(wish)
             if fitting:
-                cheapest[wish_key(wish)] = min(fitting)
+                result.cheapest[key], result.counts[key] = fitting[0], len(fitting)
             usual = usual_zero_price(wish, (history or {}).get(blueprint_id, []), now)
+            if usual is not None:
+                result.usual[key] = (usual, "usual price")
+            elif len(fitting) > 1:
+                result.usual[key] = (fitting[1].price, "next cheapest copy")
             deal = best_deal(wish, listings, usual)
             if deal:
                 result.deals.append(deal)
@@ -232,7 +239,7 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
             groups.setdefault(w["one_of"], []).append(wish_key(w))
     result.deals = [
         d for d in result.deals
-        if not any(cheapest.get(k, float("inf")) < d.listing.price - 0.005
+        if not any((result.cheapest[k].price if k in result.cheapest else float("inf")) < d.listing.price - 0.005
                    for k in groups.get(d.wish.get("one_of") or "", []) if k != d.key)
     ]
     current = {d.key for d in result.deals}

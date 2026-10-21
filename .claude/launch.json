@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site-local",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--prefix", "frontend", "wrangler", "dev", "--config", "frontend/wrangler.toml", "--port", "8787", "--local"],
+      "port": 8787
+    }
+  ]
+}

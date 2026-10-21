@@ -21,3 +21,9 @@ data/
 # Design docs and project instructions: private repo mtg-intel-docs, nested in docs/
 docs/
 CLAUDE.md
+
+# Impeccable design files (live in the private docs repo, symlinked here)
+PRODUCT.md
+DESIGN.md
+.impeccable
+node_modules/

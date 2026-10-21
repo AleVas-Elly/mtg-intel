@@ -34,4 +34,6 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_INGEST_TOKEN: ${{ secrets.SITE_INGEST_TOKEN }}
           HF_HUB_DISABLE_PROGRESS_BARS: "1"

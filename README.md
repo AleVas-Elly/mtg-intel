@@ -30,5 +30,21 @@ In Claude Code, ask in plain words instead ("which of my wants have a dragon in 
 ## On-time timer
 
 GitHub starts scheduled workflows late or skips them, so a Cloudflare Worker (`infra/trigger`) starts
-`deals` every 30 minutes and `grab` three times a day through `workflow_dispatch`. Deploy with
+`deals` every 10 minutes and `grab` three times a day through `workflow_dispatch`. Deploy with
 `npx wrangler deploy` from `infra/trigger`; its secrets are listed in `wrangler.toml`.
+
+## Website
+
+`frontend/` is a private web app (Preact + Vite + TypeScript) served by one Cloudflare Worker,
+which also does passkey sign-in and serves the data from Cloudflare KV. The GitHub jobs send small
+JSON documents to it after every table build and deal check (`backend/src/mtg_intel/site.py`,
+`SITE_URL` and `SITE_INGEST_TOKEN` secrets).
+
+```
+cd frontend
+npm install
+npm run check    # type-check app and Worker
+npm run deploy   # build and deploy
+```
+
+The Worker's secrets (`SESSION_SECRET`, `INGEST_TOKEN`) are listed in `wrangler.toml`.

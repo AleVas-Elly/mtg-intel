@@ -73,8 +73,9 @@ class HfRaw:
 class TableStore(Protocol):
     def read_state(self) -> dict: ...
 
-    def fetch(self, path: str) -> Path | None:
-        """A file already in the store (e.g. my uploaded CSVs), or None."""
+    def fetch(self, path: str, fresh: bool = True) -> Path | None:
+        """A file already in the store (e.g. my uploaded CSVs), or None. `fresh=False` may reuse a
+        local copy (for files that never change once written, such as a price day)."""
         ...
 
     def put(self, files: list[tuple[str, Path]], message: str) -> None: ...
@@ -90,7 +91,7 @@ class LocalTables:
         path = self.root / STATE_PATH
         return json.loads(path.read_text()) if path.exists() else {}
 
-    def fetch(self, path: str) -> Path | None:
+    def fetch(self, path: str, fresh: bool = True) -> Path | None:
         local = self.root / path
         return local if local.exists() else None
 
@@ -128,13 +129,13 @@ class HfTables:
             return {}
         return json.loads(Path(path).read_text())
 
-    def fetch(self, path: str) -> Path | None:
+    def fetch(self, path: str, fresh: bool = True) -> Path | None:
         from huggingface_hub import hf_hub_download
         from huggingface_hub.errors import EntryNotFoundError
 
         try:
             return Path(
-                hf_hub_download(self.repo_id, path, repo_type="dataset", token=self.token, force_download=True)
+                hf_hub_download(self.repo_id, path, repo_type="dataset", token=self.token, force_download=fresh)
             )
         except EntryNotFoundError:
             return None
@@ -201,6 +202,11 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
         stage("reference/cards.parquet", cards)
         stage("reference/card_ids.parquet", card_ids)
         built_from["cards"] = card_inputs
+    if latest["cardtrader_catalog"] and built_from.get("blueprints") != latest["cardtrader_catalog"]:
+        # CardTrader's own names and version labels, to check my wishes against (3b).
+        stage("reference/cardtrader_blueprints.parquet",
+              reference.build_cardtrader_blueprints(raw.fetch(latest["cardtrader_catalog"])))
+        built_from["blueprints"] = latest["cardtrader_catalog"]
     if latest["cardmarket_products_singles"] and built_from.get("products") != product_inputs:
         nonsingles = latest["cardmarket_products_nonsingles"]
         stage(
@@ -276,6 +282,15 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
             stage("my/watch.parquet", deals.watch_table(wantlist, card_table, cardmarket))
             state["watch_inputs"] = watch_inputs
 
+    # Price history of my wished printings (3b): all Cardmarket and MTGJSON days, kept small so the
+    # site export never has to read the full price files. New days are appended; a changed set of
+    # printings rebuilds it from every day.
+    watch_table = current("my/watch.parquet")
+    if watch_table is not None:
+        history = update_price_history(store, state, out, watch_table, cards, current, cm_days, mj_days)
+        if history is not None:
+            stage("my/price_history.parquet", history)
+
     report.problems += check_days("Cardmarket", cm_days, now)
     report.problems += check_days("MTGJSON", mj_days, now, ignore_before=first_daily_date(processed))
 
@@ -285,6 +300,70 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
     elif publish:
         report.notes.append("nothing new to build")
     return report
+
+
+def update_price_history(store: TableStore, state: dict, out: Path, watch: pa.Table, cards: pa.Table | None,
+                         current, cm_days: dict, mj_days: dict) -> pa.Table | None:
+    """`my/price_history` (scryfall_id, price_date, source, finish, trend, low, avg7), or None when
+    nothing changed. Cardmarket rows follow the printing's own Cardmarket ID (as the watch table
+    does); MTGJSON rows follow its uuid."""
+    import duckdb
+
+    ids = sorted({i for i in watch.column("scryfall_id").to_pylist() if i})
+    fingerprint = hashlib.sha256("\n".join(ids).encode()).hexdigest()
+    done = state.get("price_history") or {}
+    full = done.get("ids") != fingerprint
+    todo = {
+        "cardmarket": sorted(set(cm_days) - (set() if full else set(done.get("cardmarket", [])))),
+        "mtgjson": sorted(set(mj_days) - (set() if full else set(done.get("mtgjson", [])))),
+    }
+    if not (todo["cardmarket"] or todo["mtgjson"] or full):
+        return None
+    cards = cards if cards is not None else current("reference/cards.parquet")
+    card_ids = current("reference/card_ids.parquet")
+    if cards is None or card_ids is None:
+        return None
+
+    def day_file(source: str, day: str) -> Path | None:
+        path = f"prices/{source}/{day[:4]}/{day}.parquet"
+        local = out / path
+        return local if local.exists() else store.fetch(path, fresh=False)
+
+    con = duckdb.connect()
+    con.register("cards", cards)
+    con.register("card_ids", card_ids)
+    con.register("wanted", pa.table({"scryfall_id": pa.array(ids, pa.string())}))
+    con.execute("""create table cm_map as select scryfall_id, cardmarket_id as id_product from cards
+                   where scryfall_id in (select scryfall_id from wanted) and cardmarket_id is not null""")
+    con.execute("""create table mj_map as select scryfall_id, external_id as uuid from card_ids
+                   where source = 'mtgjson' and scryfall_id in (select scryfall_id from wanted)""")
+    parts = []
+    for day in todo["cardmarket"]:
+        if (f := day_file("cardmarket", day)) is not None:
+            parts.append(con.execute(
+                """select m.scryfall_id, p.price_date, 'cardmarket' as source, f.finish,
+                       case f.finish when 'foil' then p.trend_foil else p.trend end as trend,
+                       case f.finish when 'foil' then p.low_foil else p.low end as low,
+                       case f.finish when 'foil' then p.avg7_foil else p.avg7 end as avg7
+                   from read_parquet(?) p join cm_map m using (id_product)
+                   cross join (values ('normal'), ('foil')) f(finish)""", [str(f)]).to_arrow_table())
+    for day in todo["mtgjson"]:
+        if (f := day_file("mtgjson", day)) is not None:
+            parts.append(con.execute(
+                """select m.scryfall_id, p.price_date, 'mtgjson' as source, p.finish, p.price as trend,
+                       null::double as low, null::double as avg7
+                   from read_parquet(?) p join mj_map m using (uuid)
+                   where p.provider = 'cardmarket' and p.price_type = 'retail'""", [str(f)]).to_arrow_table())
+    previous = None if full else current("my/price_history.parquet")
+    tables = ([previous] if previous is not None else []) + parts
+    if not tables:
+        return None
+    con.register("rows", pa.concat_tables(tables, promote_options="default"))
+    history = con.execute(
+        """select distinct * from rows where trend is not null or low is not null
+           order by scryfall_id, source, finish, price_date""").to_arrow_table()
+    state["price_history"] = {"ids": fingerprint, "cardmarket": sorted(cm_days), "mtgjson": sorted(mj_days)}
+    return history
 
 
 MY_INPUTS = {"wantlist": "my/inputs/wantlist.csv", "collection": "my/inputs/collection.csv"}
