@@ -43,7 +43,7 @@ export function BigCard({ src, alt, foil, placeholder }: { src: string | null; a
   };
   return (
     <div ref={el} class={`card-big${foil ? " foil" : ""}`} onPointerMove={move} onPointerLeave={leave}>
-      <CardImage src={src} alt={alt} eager name="card-open" placeholder={placeholder} />
+      <CardImage src={src} alt={alt} eager placeholder={placeholder} />
     </div>
   );
 }

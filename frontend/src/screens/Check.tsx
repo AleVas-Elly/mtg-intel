@@ -47,7 +47,7 @@ export function Check({ data }: { data: AppData }) {
       <header class="head">
         <div>
           <h1 class="title">Check</h1>
-          <p class="sub">{data.wants ? `${flagged.size} flagged · ${wishes.length - flagged.size} look fine` : "Loading…"}</p>
+          <p class="sub">{data.wants ? `${flagged.size} of ${wishes.length} versions flagged` : "Loading…"}</p>
         </div>
       </header>
       <p class="hint" style={{ marginTop: 0 }}>Look at a few cards at random and at everything the automatic checks flagged. Something wrong? Tap the card, use “Copy details for Claude”, and paste it to Claude: it gets fixed where the data comes from.</p>

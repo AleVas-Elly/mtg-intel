@@ -100,15 +100,6 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           </p>
         )}
 
-        {deal && (
-          <div class="group" style={{ padding: "14px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <span class={`tier ${tier?.cls ?? "target"}`}>{tier?.label ?? "Target price"}{deal.below_pct != null && <small>{Math.round(deal.below_pct)}% under</small>}</span>
-            <span style={{ fontSize: "13.5px", color: "var(--ink-2)" }}>
-              Lower market price {eur(Math.min(...[deal.cardmarket, deal.cardtrader].filter((v): v is number => !!v)))} · first seen {ago(deal.since)}
-            </span>
-          </div>
-        )}
-
         <div class="group-title row-title">Prices{bothFinishes && (
           <span class="seg" role="group" aria-label="Finish">
             <button type="button" aria-pressed={!foil} onClick={() => setFoil(false)}>Non-foil</button>
@@ -135,6 +126,15 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
             {w.links.cardmarket && <a class="btn" href={w.links.cardmarket} target="_blank" rel="noopener">Dutch NM<IconOut /></a>}
           </div>
         </div>
+
+        {deal && (
+          <div class="group" style={{ padding: "14px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <span class={`tier ${tier?.cls ?? "target"}`}>{tier?.label ?? "Target price"}{deal.below_pct != null && <small>{Math.round(deal.below_pct)}% under</small>}</span>
+            <span style={{ fontSize: "13.5px", color: "var(--ink-2)" }}>
+              Lower market price {eur(Math.min(...[deal.cardmarket, deal.cardtrader].filter((v): v is number => !!v)))} · first seen {ago(deal.since)}
+            </span>
+          </div>
+        )}
 
         <div class="group-title">History</div>
         <div class="group"><PriceChart ct={ct} cm={cm} finishLabel={foil ? "foil" : "non-foil"} /></div>

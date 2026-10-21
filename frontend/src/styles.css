@@ -221,7 +221,7 @@ img { display: block; }
   border-radius: 10px; background: var(--fill); color: var(--ink-3);
 }
 .field input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: var(--ink); font-size: 15px; }
-.field input::placeholder { color: var(--ink-3); }
+.field input::placeholder { color: var(--ink-2); }
 .field svg { width: 16px; height: 16px; flex: none; }
 .field:focus-within { box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--focus) 55%, transparent); }
 .select {
@@ -306,7 +306,7 @@ img { display: block; }
 @keyframes sheen { 0%, 100% { background-position: 100% 50%; } 50% { background-position: 0% 50%; } }
 
 .card-big {
-  width: min(100%, 320px, 28svh); margin: 0 auto; border-radius: 4.75% / 3.4%; position: relative;
+  width: min(100%, 320px, 26svh); margin: 0 auto; border-radius: 4.75% / 3.4%; position: relative;
   box-shadow: var(--shadow-2), var(--card-edge, 0 0 0 0 transparent); transform-style: preserve-3d; will-change: transform;
   transition: transform 0.6s var(--ease);
 }

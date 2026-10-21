@@ -85,7 +85,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
           ))}
         </div>
         <label class="field"><IconSearch /><span class="sr">Filter</span>
-          <input type="search" placeholder="Card, set or version" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+          <input type="search" placeholder="Search cards" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
         </label>
         <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
           {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}

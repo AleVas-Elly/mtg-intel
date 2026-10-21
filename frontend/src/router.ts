@@ -16,7 +16,8 @@ const thumbOf = (key: string) =>
   document.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"] .thumb`);
 
 /** Change the URL; animated with a view transition where the browser has them. `morph` names the
- *  card whose picture flies between its list row and the big card in the detail view. */
+ *  card whose picture flies between its list row and the big card in the detail view. Exactly one
+ *  element carries the morph name in each snapshot, or the browser drops the transition. */
 export function go(path: string, card: string | null = null, replace = false, morph?: string) {
   const url = card ? `${path}?card=${encodeURIComponent(card)}` : path;
   const apply = () => {
@@ -25,26 +26,25 @@ export function go(path: string, card: string | null = null, replace = false, mo
   };
   const doc = document as unknown as VT;
   if (!doc.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
-  const opening = !!card && !!morph;
-  const source = opening ? thumbOf(morph!) : null;
-  if (source) source.style.viewTransitionName = MORPH;
+  const big = () => document.querySelector<HTMLElement>(".card-big .thumb");
+  const name = (el: HTMLElement | null) => { if (el) el.style.viewTransitionName = MORPH; };
+  const clear = () => document.querySelectorAll<HTMLElement>(".thumb").forEach((el) => { el.style.viewTransitionName = ""; });
+  clear();
+  name(card ? (morph ? thumbOf(morph) : null) : big());
   document.documentElement.classList.add("vt");
   let started = false;
   const vt = doc.startViewTransition(async () => {
     started = true;
-    if (source) source.style.viewTransitionName = "";
+    clear();
     apply();
     await settle(); await settle();  // the new screen has rendered
-    if (!card && morph) {  // closing: the row's picture receives the big card
-      const target = thumbOf(morph);
-      if (target) target.style.viewTransitionName = MORPH;
-    }
+    name(card ? big() : morph ? thumbOf(morph) : null);
   });
   // A throttled page (background tab) may not reach the transition's first frame: open directly.
   setTimeout(() => { if (!started) vt.skipTransition(); }, 400);
   vt.finished.finally(() => {
     document.documentElement.classList.remove("vt");
-    if (morph) { const t = thumbOf(morph); if (t) t.style.viewTransitionName = ""; }
+    clear();
   });
 }
 
