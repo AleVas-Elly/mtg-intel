@@ -38,13 +38,14 @@ export const versionText = (w: Wish) => (w.tags.length ? w.tags.map(tagName).joi
 
 /** The card's own collector line: SET · number · language · version. */
 export function collectorLine(w: Wish): string {
-  if (!w.set) return w.ct ? `CardTrader only · ${w.ct.expansion ?? ""} #${w.ct.number ?? ""}` : "No exact version";
-  return [versionText(w), `${w.set.toUpperCase()} ${w.number}`, langShort(w.language)].join(" · ");
+  if (!w.set) return w.ct ? `CardTrader only, ${w.ct.expansion ?? ""} #${w.ct.number ?? ""}` : "No exact version";
+  // as printed on the card: set and language joined by a bullet
+  return `${versionText(w)}, ${w.set.toUpperCase()} ${w.number} • ${langShort(w.language)}`;
 }
 
 export function wishLine(w: Wish): string {
   const foil = w.foil === "yes" ? "Foil" : w.foil === "no" ? "Non-foil" : "Foil or not";
-  return [`${w.condition} or better`, foil, w.zero ? "via Zero" : "any seller"].join(" · ");
+  return [`${w.condition} or better`, foil.toLowerCase(), w.zero ? "via Zero" : "any seller"].join(", ");
 }
 
 export const foilOnly = (w: Wish) => w.finishes.length > 0 && !w.finishes.includes("nonfoil");

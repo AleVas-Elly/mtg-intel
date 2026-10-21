@@ -3,8 +3,9 @@ import type { AppData } from "../data";
 import { dealRatio } from "../data";
 import { ago, time, TIERS } from "../format";
 import { link } from "../router";
-import { IconSettings, IconWarn } from "../ui/icons";
-import { RowSkeleton, WishRow } from "../ui/Row";
+import { IconBrush, IconSettings, IconWarn } from "../ui/icons";
+import { setLabOpen } from "../labstate";
+import { CardList, RowSkeleton, type Item } from "../ui/Row";
 import type { Deal } from "../types";
 
 const STALE_MIN = 25;
@@ -31,7 +32,7 @@ export function Status({ data }: { data: AppData }) {
   return (
     <p class="sub">
       <span key={at} class={`dot ${stale ? "stale" : "live"}`} />
-      <span>Checked {ago(at, now)}{!stale && ` · next in ${next} min`}{data.live!.failed > 0 && ` · ${data.live!.failed} cards failed`}</span>
+      <span>Checked {ago(at, now)}{!stale && `, next in ${next} min`}{data.live!.failed > 0 && `. ${data.live!.failed} cards failed`}</span>
     </p>
   );
 }
@@ -65,7 +66,10 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
           <h1 class="title">Deals</h1>
           <Status data={data} />
         </div>
-        <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button class="icon-btn" type="button" onClick={() => setLabOpen(true)} aria-label="Design lab"><IconBrush /></button>
+          <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
+        </div>
       </header>
       {data.error && <div class="notice"><IconWarn />{data.error} Showing the last copy.</div>}
       {loading ? <RowSkeleton n={4} /> : (
@@ -83,15 +87,10 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
             </div>
           )}
           {shown.length > 0 ? (
-            <div class="list">
-              {shown.map((d) => {
-                const w = data.byKey.get(d.key);
-                return w && (
-                  <WishRow w={w} data={data} current={card === d.key} ctPrice={d.listing.price}
-                    extra={<TierChip d={d} />} />
-                );
-              })}
-            </div>
+            <CardList data={data} current={card} items={shown.flatMap((d): Item[] => {
+              const w = data.byKey.get(d.key);
+              return w ? [{ w, ctPrice: d.listing.price, extra: <TierChip d={d} /> }] : [];
+            })} />
           ) : (
             <div class="empty">
               <h2>No deals right now</h2>
@@ -101,24 +100,18 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
           {closest.length > 0 && (
             <>
               <div class="list-head">Closest to a deal<span>cheapest copy vs the lower market price</span></div>
-              <div class="list">
-                {closest.map(({ w, r }) => (
-                  <WishRow w={w} data={data} current={card === w.key}
-                    extra={<div class="r-wish">{r < 1 ? `${Math.round((1 - r) * 100)}% under` : `${Math.round((r - 1) * 100)}% over`} the lower market price</div>} />
-                ))}
-              </div>
+              <CardList data={data} current={card} items={closest.map(({ w, r }) => ({
+                w, extra: <div class="r-wish">{r < 1 ? `${Math.round((1 - r) * 100)}% under` : `${Math.round((r - 1) * 100)}% over`} the lower market price</div>,
+              }))} />
             </>
           )}
           {gone.length > 0 && (
             <>
               <div class="list-head">Gone today<span>sold or no longer cheap</span></div>
-              <div class="list">
-                {gone.map((d) => {
-                  const w = data.byKey.get(d.key);
-                  return w && <WishRow w={w} data={data} gone ctPrice={d.listing.price}
-                    extra={<div class="r-wish">Gone at {time(d.gone_at!)}</div>} />;
-                })}
-              </div>
+              <CardList data={data} items={gone.flatMap((d): Item[] => {
+                const w = data.byKey.get(d.key);
+                return w ? [{ w, gone: true, ctPrice: d.listing.price, extra: <div class="r-wish">Gone at {time(d.gone_at!)}</div> }] : [];
+              })} />
             </>
           )}
         </>

@@ -256,7 +256,12 @@ export default {
       return json({ error: "Something went wrong on the server.", detail: String(e) }, 500);
     }
     const response = await env.ASSETS.fetch(request);
-    if (/^\/assets\//.test(path) && response.ok) {
+    if (/^\/assets\//.test(path)) {
+      // A missing build file gets the app page from the single-page fallback; answer "not found"
+      // instead, and never let a browser keep that answer (it would show a blank page for a year).
+      if (!response.ok || (response.headers.get("Content-Type") || "").startsWith("text/html")) {
+        return new Response("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
+      }
       const headers = new Headers(response.headers);
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
       return new Response(response.body, { status: response.status, headers });

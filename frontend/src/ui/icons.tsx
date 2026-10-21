@@ -17,3 +17,4 @@ export const IconShuffle = (p: P) => <svg {...base} {...p}><path d="M16 3h5v5M4 
 export const IconCopy = (p: P) => <svg {...base} {...p}><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" /></svg>;
 export const IconKey = (p: P) => <svg {...base} {...p}><circle cx="8" cy="15" r="4" /><path d="m10.8 12.2 9.2-9.2M17 6l3 3M14.5 8.5l2 2" /></svg>;
 export const IconSun = (p: P) => <svg {...base} {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></svg>;
+export const IconBrush = (p: P) => <svg {...base} {...p}><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12l9.2-9.4Z" /><path d="M9.2 12c-2.2 0-4 1.8-4 4 0 1.5-1 2.5-2.2 3 1 .7 2.4 1 3.7 1a5.2 5.2 0 0 0 5.3-5.2" /></svg>;

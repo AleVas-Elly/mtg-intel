@@ -6,7 +6,7 @@ import { cmTrend, collectorLine, eur, showsFoil } from "../format";
 import { openCard } from "../router";
 import { CardImage } from "../ui/CardImage";
 import { IconCopy, IconShuffle } from "../ui/icons";
-import { WishRow } from "../ui/Row";
+import { CardList } from "../ui/Row";
 import { SetSymbol } from "../ui/symbols";
 import type { Wish } from "../types";
 
@@ -78,13 +78,11 @@ export function Check({ data }: { data: AppData }) {
           {groups.map(([code, ws]) => (
             <>
               <div class="list-head">{REASONS[code] ?? code}<span>{ws.length}</span></div>
-              <div class="list">
-                {ws.map((w) => (
-                  <WishRow w={w} data={data} extra={<div class="r-wish" style={{ whiteSpace: "normal", color: "var(--warn)" }}>
-                    {data.flagsOf(w).filter((f) => f.code === code).map((f) => f.text).join(" ")}
-                  </div>} />
-                ))}
-              </div>
+              <CardList data={data} items={ws.map((w) => ({
+                w, extra: <div class="r-wish" style={{ whiteSpace: "normal", color: "var(--warn)" }}>
+                  {data.flagsOf(w).filter((f) => f.code === code).map((f) => f.text).join(" ")}
+                </div>,
+              }))} />
             </>
           ))}
         </>

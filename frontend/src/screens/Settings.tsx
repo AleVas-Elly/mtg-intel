@@ -4,6 +4,7 @@ import { post } from "../api";
 import type { AppData } from "../data";
 import { ago, day } from "../format";
 import { go } from "../router";
+import { setLabOpen } from "../labstate";
 
 type Theme = "auto" | "light" | "dark";
 
@@ -45,6 +46,11 @@ export function Settings({ data }: { data: AppData }) {
             <button type="button" aria-pressed={theme === t} onClick={() => pick(t)}>{t === "auto" ? "Automatic" : t === "light" ? "Light" : "Dark"}</button>
           ))}
         </div>
+      </div>
+
+      <div class="group" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginTop: "10px" }}>
+        <span>Design lab<br /><small style={{ color: "var(--ink-2)", fontSize: "12.5px" }}>Try colours, type, motion and layout on your own cards</small></span>
+        <button class="btn sm" type="button" onClick={() => setLabOpen(true)}>Open</button>
       </div>
 
       <div class="group-title">Devices with a passkey</div>

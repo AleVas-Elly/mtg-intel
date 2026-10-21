@@ -4,7 +4,7 @@ import type { AppData } from "../data";
 import { dealRatio, wishCount } from "../data";
 import { cmTrend, day, foilOnly, showsFoil } from "../format";
 import { IconSearch } from "../ui/icons";
-import { RowSkeleton, WishRow } from "../ui/Row";
+import { CardList, RowSkeleton } from "../ui/Row";
 import type { HistoryDoc, Wish } from "../types";
 
 const SORTS = [
@@ -72,7 +72,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
         <div>
           <h1 class="title">Want-list</h1>
           <p class="sub">
-            {data.wants ? <>{wishCount(wishes)} wishes{data.wants.price_date && <> · Cardmarket prices of {day(data.wants.price_date)}</>}</> : "Loading…"}
+            {data.wants ? <>{wishCount(wishes)} wishes{data.wants.price_date && <>, Cardmarket prices of {day(data.wants.price_date)}</>}</> : "Loading…"}
           </p>
         </div>
       </header>
@@ -92,17 +92,14 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
         </select>
       </div>
       {!data.wants ? <RowSkeleton /> : shown.length ? (
-        <div class="list">
-          {shown.map((w) => {
-            const c = showChange ? change30(w, history.doc) : null;
-            return (
-              <WishRow w={w} data={data} current={card === w.key}
-                extra={showChange && c != null ? (
-                  <div class={`r-wish chg ${c <= -0.02 ? "down" : c >= 0.02 ? "up" : "flat"}`}>{c > 0 ? "+" : ""}{Math.round(c * 100)}% on Cardmarket in 30 days</div>
-                ) : undefined} />
-            );
-          })}
-        </div>
+        <CardList data={data} current={card} items={shown.map((w) => {
+          const c = showChange ? change30(w, history.doc) : null;
+          return {
+            w, extra: showChange && c != null ? (
+              <div class={`r-wish chg ${c <= -0.02 ? "down" : c >= 0.02 ? "up" : "flat"}`}>{c > 0 ? "+" : ""}{Math.round(c * 100)}% on Cardmarket in 30 days</div>
+            ) : undefined,
+          };
+        })} />
       ) : (
         <div class="empty"><h2>Nothing matches “{q}”</h2><p>Try a card name, a set code like <b>msh</b>, or a version like <b>borderless</b>.</p></div>
       )}

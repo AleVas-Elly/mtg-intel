@@ -10,6 +10,8 @@ import { Search } from "./screens/Search";
 import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
 import { Detail } from "./screens/Detail";
+import { Lab } from "./ui/Lab";
+import { setLabOpen, useLabOpen } from "./labstate";
 
 const TABS = [
   { path: "/", label: "Deals", Icon: IconDeals },
@@ -54,6 +56,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       </nav>
       <main class="main">{screen}</main>
       {card && <Detail data={data} wishKey={card} />}
+      {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <nav class="tabbar" aria-label="Main">
         {TABS.map(({ path: p, label, Icon }) => (
           <a class="tab" href={p} onClick={link(p)} aria-current={path === p ? "page" : undefined}><Icon />{label}</a>
