@@ -10,6 +10,7 @@ import { Search } from "./screens/Search";
 import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
 import { Detail } from "./screens/Detail";
+import { CardPane } from "./screens/CardPane";
 import { Lab } from "./ui/Lab";
 import { dismissToast, useToast } from "./toast";
 
@@ -61,7 +62,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
         {LOCAL && <div class="local-copy">Local test copy on Claude's machine: made-up prices, not your real deals.</div>}
         {screen}
       </main>
-      {card && <Detail data={data} wishKey={card} />}
+      {card && (card.startsWith("sf:") ? <CardPane data={data} id={card.slice(3)} /> : <Detail data={data} wishKey={card} />)}
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <ToastView />
       <nav class="tabbar" aria-label="Main">

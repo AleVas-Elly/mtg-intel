@@ -7,9 +7,8 @@ import { eur } from "../format";
 import { openCard } from "../router";
 import { CardImage } from "../ui/CardImage";
 import { IconPlus, IconSearch, IconWarn } from "../ui/icons";
-import { WishSheet } from "../ui/WishSheet";
-import { preview, type ScryCard } from "../scry";
-import { allLists } from "../data";
+import { known, type ScryCard } from "../scry";
+import { openScryCard } from "./CardPane";
 import { SetSymbol } from "../ui/symbols";
 import type { Wish } from "../types";
 
@@ -71,7 +70,6 @@ export function Search({ data }: { data: AppData }) {
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
   const [more, setMore] = useState(false);
-  const [adding, setAdding] = useState<Wish | null>(null);
   const [, setShardsLoaded] = useState(0);
   const run_id = useRef(0);
   const input = useRef<HTMLInputElement>(null);
@@ -157,9 +155,10 @@ export function Search({ data }: { data: AppData }) {
           const shard = shardDocs.current.get(parseInt(c.id.slice(0, 2), 16) % 32);
           const price = mine ? (mine.cm.trend ?? mine.cm.trend_foil) : shard?.[c.id]?.[0] ?? shard?.[c.id]?.[1];
           const img = c.image_uris?.small ?? c.card_faces?.[0]?.image_uris?.small ?? null;
-          const open = () => (mine ? openCard(mine.key) : window.open(c.scryfall_uri, "_blank", "noopener"));
+          known.set(c.id, c);
+          const open = () => (mine ? openCard(mine.key) : openScryCard(c.id));
           return (
-            <div class="tile-wrap">
+            <div class="tile-wrap" data-key={mine ? mine.key : `sf:${c.id}`}>
               <button class="tile" type="button" onClick={open}>
                 <CardImage src={img} alt={c.name} foil={!c.finishes.includes("nonfoil")} />
                 <b>{c.name}</b>
@@ -167,7 +166,7 @@ export function Search({ data }: { data: AppData }) {
                 <span>{price != null ? `Cardmarket ${eur(price)}` : "No Cardmarket price"}{mine ? " · on my list" : ""}</span>
               </button>
               {!mine && (
-                <button class="add-btn" type="button" onClick={() => setAdding(preview(c))} aria-label={`Add ${c.name} to the want-list`}>
+                <button class="add-btn" type="button" onClick={() => openScryCard(c.id, true)} aria-label={`Add ${c.name} to the want-list`}>
                   <IconPlus />
                 </button>
               )}
@@ -176,7 +175,6 @@ export function Search({ data }: { data: AppData }) {
         })}
       </div>
       {state === "busy" && <div class="cards" style={{ marginTop: "18px" }}>{Array.from({ length: 6 }, () => <div class="thumb skeleton" />)}</div>}
-      {adding && <WishSheet wish={adding} adding lists={allLists(data)} data={data} onClose={() => setAdding(null)} />}
     </div>
   );
 }

@@ -27,7 +27,7 @@ function Seg<T extends string>({ label, value, options, onChange }: {
 
 /** Every printing of the card being added, to pick the exact one; printings already on the
  *  want-list can't be picked again. */
-function Versions({ wish, data, onPick }: { wish: Wish; data?: AppData; onPick: (w: Wish) => void }) {
+export function Versions({ wish, data, onPick, bare }: { wish: Wish; data?: AppData; onPick: (w: Wish) => void; bare?: boolean }) {
   const [cards, setCards] = useState<ScryCard[] | null>(null);
   useEffect(() => {
     // the printing I tapped in Search comes first, then the rest newest first
@@ -37,7 +37,7 @@ function Versions({ wish, data, onPick }: { wish: Wish; data?: AppData; onPick: 
   const mine = new Set((data?.wants?.wishes ?? []).map((w) => w.scryfall_id));
   if (!wish.prints) return null;
   return (
-    <div class="f-row stack"><span>Version{cards && cards.length > 1 ? <small>{cards.length} printings</small> : null}</span>
+    <div class="f-row stack">{!bare && <span>Version{cards && cards.length > 1 ? <small>{cards.length} printings</small> : null}</span>}
       <div class="versions" role="radiogroup" aria-label="Version">
         {cards === null
           ? Array.from({ length: 4 }, () => <span class="version"><span class="thumb skeleton" /></span>)
@@ -58,9 +58,25 @@ function Versions({ wish, data, onPick }: { wish: Wish; data?: AppData; onPick: 
   );
 }
 
-/** `wish` is the existing wish, or a card preview to add (then `adding` is true). */
-export function WishSheet({ wish: given, adding, lists, data, onClose }: {
-  wish: Wish; adding: boolean; lists: string[]; data?: AppData; onClose: () => void;
+/** The settings of a wish as a modal sheet (editing a wish on its card page). */
+export function WishSheet(props: { wish: Wish; adding: boolean; lists: string[]; data?: AppData; onClose: () => void }) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && props.onClose();
+    addEventListener("keydown", esc);
+    return () => removeEventListener("keydown", esc);
+  }, []);
+  return (
+    <div class="sheet-wrap" role="presentation" onClick={(e) => e.target === e.currentTarget && props.onClose()}>
+      <WishForm {...props} />
+    </div>
+  );
+}
+
+/** `wish` is the existing wish, or a card preview to add (then `adding` is true). In a pane the
+ *  form fills it (no header of its own); `onPick` hears about a different printing chosen. */
+export function WishForm({ wish: given, adding, lists, data, onClose, onPick, onSaved, inPane }: {
+  wish: Wish; adding: boolean; lists: string[]; data?: AppData; onClose: () => void; onPick?: (w: Wish) => void;
+  onSaved?: (key: string) => void; inPane?: boolean;
 }) {
   const [wish, setWish] = useState(given);
   const start = useMemo<Settings>(() => (adding ? { ...settingsOf(given), ...NEW_WISH } : settingsOf(given)), [given.key]);
@@ -75,12 +91,6 @@ export function WishSheet({ wish: given, adding, lists, data, onClose }: {
     set("list")((chosen.includes(name) ? chosen.filter((l) => l !== name) : [...chosen, name]).join("; "));
   const finishes = wish.finishes.length ? wish.finishes : ["nonfoil", "foil"];
   const qty = Number(s.quantity) || 1;
-
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    addEventListener("keydown", esc);
-    return () => removeEventListener("keydown", esc);
-  }, []);
 
   const save = async (e: Event) => {
     e.preventDefault();
@@ -98,6 +108,7 @@ export function WishSheet({ wish: given, adding, lists, data, onClose }: {
         const card: Partial<Wish> = { ...wish, key: undefined, pending: undefined, prints: undefined };
         await saveEdit({ op: "add", scryfall_id: wish.scryfall_id!, settings: out, card });
         toast(`Added ${wish.name}. CardTrader prices follow within about 10 minutes.`);
+        if (onSaved) return onSaved(`${wish.scryfall_id}|${out.language}|${out.foil}`);
       } else {
         const diff = changed(wish, out);
         if (!Object.keys(diff).length) return onClose();
@@ -113,21 +124,22 @@ export function WishSheet({ wish: given, adding, lists, data, onClose }: {
   };
 
   return (
-    <div class="sheet-wrap" role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <form class="sheet" role="dialog" aria-modal="true" aria-label={adding ? "Add to want-list" : "Edit wish"} onSubmit={save}>
-        <header class="sheet-head">
+      <form class={inPane ? "pane-form" : "sheet"} role={inPane ? undefined : "dialog"} aria-modal={inPane ? undefined : "true"}
+        aria-label={adding ? "Add to want-list" : "Edit wish"} onSubmit={save}>
+        {!inPane && <header class="sheet-head">
           <CardImage src={wish.thumb} alt="" foil={false} />
           <div>
             <h2>{adding ? "Add to want-list" : "Edit wish"}</h2>
             <p>{wish.name}{wish.set ? ` · ${wish.set.toUpperCase()} ${wish.number}` : ""}</p>
           </div>
           <button class="icon-btn" type="button" onClick={onClose} aria-label="Close"><IconClose /></button>
-        </header>
+        </header>}
         <div class="sheet-body">
           <div class="group-title">Which copy counts</div>
           <div class="group form">
             {adding && <Versions wish={wish} data={data} onPick={(w) => {
               setWish(w);
+              onPick?.(w);
               const has = (f: string) => (w.finishes.length ? w.finishes : ["nonfoil", "foil"]).some((x) => (f === "no" ? x === "nonfoil" : x !== "nonfoil"));
               if (s.foil !== "any" && !has(s.foil ?? "any")) set("foil")("any");
             }} />}
@@ -194,6 +206,5 @@ export function WishSheet({ wish: given, adding, lists, data, onClose }: {
           <button class="btn primary" type="submit" disabled={busy}>{busy ? "Saving…" : adding ? "Add to want-list" : "Save changes"}</button>
         </footer>
       </form>
-    </div>
   );
 }

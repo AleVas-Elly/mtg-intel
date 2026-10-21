@@ -2,6 +2,7 @@ import { useEffect, useState } from "preact/hooks";
 import { peek } from "./api";
 import type { WantsDoc } from "./types";
 import { preloadImage } from "./ui/CardImage";
+import { known } from "./scry";
 
 export interface Route { path: string; card: string | null }
 
@@ -56,7 +57,9 @@ export function go(path: string, card: string | null = null, replace = false, mo
 
 /** Open a card's detail; its big picture is fetched first (briefly) so it flies in sharp. */
 export const openCard = (key: string) => {
-  const image = peek<WantsDoc>("wants")?.wishes.find((w) => w.key === key)?.image;
+  const c = key.startsWith("sf:") ? known.get(key.slice(3)) : undefined;
+  const image = c ? c.image_uris?.normal ?? c.card_faces?.[0]?.image_uris?.normal
+    : peek<WantsDoc>("wants")?.wishes.find((w) => w.key === key)?.image;
   preloadImage(image, 200).then(() => go(location.pathname, key, false, key));
 };
 export const closeCard = () => go(location.pathname, null, false, new URLSearchParams(location.search).get("card") ?? undefined);
