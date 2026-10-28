@@ -28,8 +28,8 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen
       - run: uv run mtg-intel alert "mtg-intel test" "GitHub Actions can reach you."
         if: inputs.test_alert
