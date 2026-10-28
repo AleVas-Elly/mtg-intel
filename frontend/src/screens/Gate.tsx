@@ -1,6 +1,7 @@
 // Sign-in with a passkey (spec D49). A new device joins through a one-time setup link: made by
 // Claude for the first device, or shown as a QR code in Settings on a device already signed in.
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
+import { LOCAL, SITE } from "../env";
 import { useEffect, useState } from "preact/hooks";
 import { post } from "../api";
 import { go } from "../router";
@@ -73,8 +74,13 @@ export function Gate({ auth, onIn }: { auth: Auth; onIn: () => void }) {
         ) : (
           <>
             <h1>mtg-intel</h1>
-            <p>{auth.passkeys ? "Your cards, deals and prices." : "Not set up yet: ask Claude for a setup link."}</p>
-            {auth.passkeys > 0 && <button class="btn primary" type="button" onClick={signIn} disabled={busy}><IconKey />{busy ? "Waiting…" : "Sign in with passkey"}</button>}
+            {LOCAL ? (
+              <>
+                <p>This is Claude's local test copy, not your site.</p>
+                <a class="btn primary" href={SITE}>Open my mtg-intel</a>
+              </>
+            ) : <p>{auth.passkeys ? "Your cards, deals and prices." : "Not set up yet: ask Claude for a setup link."}</p>}
+            {!LOCAL && auth.passkeys > 0 && <button class="btn primary" type="button" onClick={signIn} disabled={busy}><IconKey />{busy ? "Waiting…" : "Sign in with passkey"}</button>}
           </>
         )}
         {error && <p class="err" role="alert">{error}</p>}
