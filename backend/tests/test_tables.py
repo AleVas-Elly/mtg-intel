@@ -195,6 +195,7 @@ def test_check_days_reports_gaps_stale_and_shrinking():
         "Cardmarket: 2026-10-17 has 500 rows, 1,000 the day before",
     ]
     assert build.check_days("Cardmarket", {"2026-10-18": 10, "2026-10-19": 10}, NOW) == []
+    assert build.check_days("Cardmarket", counts, NOW, known_gaps={"2026-10-16"})[0].startswith("Cardmarket: latest")
 
 
 # --- my cards ----------------------------------------------------------------------------------

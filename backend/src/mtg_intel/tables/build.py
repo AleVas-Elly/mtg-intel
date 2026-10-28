@@ -291,11 +291,23 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
         if history is not None:
             stage("my/price_history.parquet", history)
 
-    report.problems += check_days("Cardmarket", cm_days, now)
-    report.problems += check_days("MTGJSON", mj_days, now, ignore_before=first_daily_date(processed))
+    # A missing day is reported once, then remembered as a known gap: once it has passed it can't be
+    # downloaded any more (e.g. Cardmarket published no price guide on 2026-10-23), and failing
+    # every later run over it only hides new problems.
+    gaps: dict[str, list[str]] = state.setdefault("known_gaps", {})
+    new_gaps = False
+    for name, counts, since in (("Cardmarket", cm_days, None), ("MTGJSON", mj_days, first_daily_date(processed))):
+        known = set(gaps.get(name, []))
+        report.problems += check_days(name, counts, now, ignore_before=since, known_gaps=known)
+        missing = {d.isoformat() for d in missing_days(counts, since)}
+        if missing - known:
+            gaps[name] = sorted(known | missing)
+            new_gaps = True
+        if known:
+            report.notes.append(f"{name}: known gaps {', '.join(sorted(known))}")
 
     state["built_at"] = now.isoformat()
-    if publish and files:
+    if publish and (files or new_gaps):
         store.publish(files, state, f"build {now:%Y-%m-%d %H:%MZ}: {len(files)} files")
     elif publish:
         report.notes.append("nothing new to build")
@@ -394,18 +406,29 @@ def first_daily_date(processed: dict[str, list[str]]) -> date | None:
     return min((date.fromisoformat(p.split("/")[2]) for p in daily), default=None)
 
 
+def missing_days(row_counts: dict[str, int], ignore_before: date | None = None) -> list[date]:
+    """Days between the first and the latest price day that have no prices."""
+    if not row_counts:
+        return []
+    known = sorted(date.fromisoformat(d) for d in row_counts)
+    if ignore_before:
+        known = [d for d in known if d >= ignore_before] or known[-1:]
+    expected = {known[0] + timedelta(days=i) for i in range((known[-1] - known[0]).days + 1)}
+    return sorted(expected - set(known))
+
+
 def check_days(
-    name: str, row_counts: dict[str, int], now: datetime, ignore_before: date | None = None
+    name: str, row_counts: dict[str, int], now: datetime, ignore_before: date | None = None,
+    known_gaps: set[str] | None = None,
 ) -> list[str]:
-    """Missing days, a stale latest day, and sudden drops in row count."""
+    """Missing days (except known gaps), a stale latest day, and sudden drops in row count."""
     if not row_counts:
         return []
     known = sorted(date.fromisoformat(d) for d in row_counts)
     if ignore_before:
         known = [d for d in known if d >= ignore_before] or known[-1:]
     problems = []
-    expected = {known[0] + timedelta(days=i) for i in range((known[-1] - known[0]).days + 1)}
-    missing = sorted(expected - set(known))
+    missing = [d for d in missing_days(row_counts, ignore_before) if d.isoformat() not in (known_gaps or set())]
     if missing:
         problems.append(f"{name}: missing price days {', '.join(d.isoformat() for d in missing)}")
     if (now.date() - known[-1]).days > 1:
