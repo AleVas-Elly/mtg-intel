@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import type { AppData } from "../data";
-import { dealRatio } from "../data";
+import { dealGap, dealRatio } from "../data";
 import { ago, time, TIERS } from "../format";
 import { link } from "../router";
 import { IconSettings, IconWarn } from "../ui/icons";
@@ -53,9 +53,9 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
   const loading = data.live === undefined || data.wants === undefined;
   const closest = data.wants && data.live && !deals.length
     ? data.wants.wishes
-        .map((w) => ({ w, r: dealRatio(w, data.liveOf(w.key)) }))
-        .filter((x): x is { w: typeof x.w; r: number } => x.r != null)
-        .sort((a, b) => a.r - b.r)
+        .map((w) => ({ w, r: dealRatio(w, data.liveOf(w.key)), gap: dealGap(w, data.liveOf(w.key)), needs: data.liveOf(w.key)?.needs }))
+        .filter((x): x is typeof x & { r: number; gap: number } => x.r != null && x.gap != null)
+        .sort((a, b) => a.gap - b.gap)
         .slice(0, 6)
     : [];
   return (
@@ -92,14 +92,14 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
           ) : (
             <div class="empty">
               <h2>No deals right now</h2>
-              <p>Every 10 minutes CardTrader is checked for a Zero copy at least 20% under the lower of Cardmarket's trend and CardTrader's usual price. A Telegram message arrives when one shows up.</p>
+              <p>Every 10 minutes CardTrader is checked for a copy at least 30% under its usual price, or 20% for cards usually over €20. The usual price is the higher of Cardmarket's trend and CardTrader's usual price. A Telegram message arrives when one shows up, and a short summary every morning.</p>
             </div>
           )}
           {closest.length > 0 && (
             <>
-              <div class="list-head">Closest to a deal<span>cheapest copy vs the lower market price</span></div>
-              <CardList data={data} current={card} items={closest.map(({ w, r }) => ({
-                w, extra: <div class="r-wish">{r < 1 ? `${Math.round((1 - r) * 100)}% under` : `${Math.round((r - 1) * 100)}% over`} the lower market price</div>,
+              <div class="list-head">Closest to a deal<span>cheapest copy vs its usual price</span></div>
+              <CardList data={data} current={card} items={closest.map(({ w, r, needs }) => ({
+                w, extra: <div class="r-wish">{r < 1 ? `${Math.round((1 - r) * 100)}% under` : `${Math.round((r - 1) * 100)}% over`} its usual price{needs != null ? ` · a deal from ${needs}%` : ""}</div>,
               }))} />
             </>
           )}

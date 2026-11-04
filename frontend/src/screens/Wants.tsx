@@ -1,7 +1,7 @@
 import { useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import type { AppData } from "../data";
-import { dealRatio, wishCount } from "../data";
+import { dealGap, wishCount } from "../data";
 import { cmTrend, day, eur, foilOnly, showsFoil, tagName } from "../format";
 import { CardImage } from "../ui/CardImage";
 import { SetSymbol } from "../ui/symbols";
@@ -58,7 +58,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
         (w.set_name ?? "").toLowerCase().includes(needle) || w.tags.some((t) => t.includes(needle))));
     const price = (w: Wish) => cmTrend(w, data.liveOf(w.key)?.foil) ?? -1;
     const by: Record<string, (a: Wish, b: Wish) => number> = {
-      deal: (a, b) => (dealRatio(a, data.liveOf(a.key)) ?? 9) - (dealRatio(b, data.liveOf(b.key)) ?? 9),
+      deal: (a, b) => (dealGap(a, data.liveOf(a.key)) ?? 999) - (dealGap(b, data.liveOf(b.key)) ?? 999),
       price: (a, b) => price(b) - price(a),
       drop: (a, b) => (change30(a, history.doc) ?? 9) - (change30(b, history.doc) ?? 9),
       rise: (a, b) => (change30(b, history.doc) ?? -9) - (change30(a, history.doc) ?? -9),

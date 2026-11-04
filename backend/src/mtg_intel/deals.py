@@ -2,13 +2,15 @@
 
 `watch_table` (built with the tables) holds each want-list wish with its Cardmarket reference
 prices. `check` asks CardTrader for the live listings of every wished card, keeps the ones that
-fit the wish (language, foil, condition, Zero), and compares the cheapest with the lower of the
-Cardmarket trend for its finish and the usual CardTrader Zero price for the same wish (D47). At
-least 20% under is a deal, in three tiers; at or under my target price is one too.
+fit the wish (language, foil, condition, Zero), and compares the cheapest with its usual price:
+the higher of the Cardmarket trend for its finish and the usual CardTrader price for the same wish
+(D52, was the lower in D47). At least 30% under is a deal, 20% for cards usually over €20, in
+three tiers; at or under my target price is one too. A daily digest says the checks are alive.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from statistics import median
@@ -19,16 +21,27 @@ import pyarrow as pa
 
 from mtg_intel.archive.cardtrader import Session
 
-# Deal tiers (D47), strongest first: % under the reference, name, what the message says.
+# Deal tiers (D47, D52), strongest first: % under the usual price for a card over PRICEY_EUR,
+# name, what the message says. The first number also names the tier on the website.
 TIERS = [
     (40.0, "🚨 Steal", "Rarely this cheap. Worth buying now."),
     (30.0, "🔥 Great deal", "Well under what this usually costs."),
     (20.0, "✅ Good deal", "Cheaper than usual, worth a look."),
 ]
-DEFAULT_DEAL_PCT = TIERS[-1][0]  # the lowest tier; a card's `deal_pct` overrides it
+PRICEY_EUR = 20.0  # a card usually over this is a deal from 20% under (user, 2026-11-04) ...
+PRICEY_DEAL_PCT = 20.0
+DEAL_PCT = 30.0  # ... any other from 30%; its tiers move up by the same 10 points (30/40/50)
+DIGEST_HOUR = 8  # the daily digest goes with the first check from this hour (TIMEZONE)
+TIMEZONE = "Europe/Amsterdam"
+DIGEST_MIN_EUR = 10.0  # the digest's "closest to a deal" lists cards usually over this
 REALERT_DAYS = 7  # the same deal at the same price is repeated after a week
 USUAL_DAYS = 7  # the usual CardTrader Zero price: median of the cheapest per check over this window
 USUAL_MIN_DAYS = 3  # with less history, the next-cheapest listing stands in
+# A Cardmarket trend this many times under CardTrader's own usual price is a data error, not a
+# market (e.g. €0.02 for Counterspell SLD #7123 against €12.66): taking the lower of the two would
+# block every deal on the card, so the trend is shown but not used.
+REFERENCE_RATIO = 2.5
+PROBLEM_REALERT = timedelta(hours=6)  # the same check problem is repeated at most this often
 
 # CardTrader condition words, best first, and the want-list grade each one meets.
 CONDITIONS = ["Mint", "Near Mint", "Slightly Played", "Moderately Played", "Played", "Heavily Played", "Poor"]
@@ -132,15 +145,33 @@ def usual_zero_price(wish: dict[str, Any], history: list[dict[str, Any]], now: d
 
 
 @dataclass
+class Assessment:
+    """How the cheapest fitting copy of a wish compares with its usual price."""
+
+    listing: Listing  # the cheapest fitting copy
+    cardmarket: float | None  # Cardmarket trend for the listing's finish
+    cardtrader: float | None  # usual (or next-cheapest) CardTrader price for the wish
+    cardtrader_kind: str  # "usual price" | "next cheapest copy" | ""
+    cardmarket_trusted: bool  # False: the trend looks wrong (REFERENCE_RATIO) and is not used
+    reference: float | None  # the usual price the copy is judged against
+    below_pct: float | None  # how far under `reference`, in %
+    floor: float  # % under needed for a deal
+    tier: tuple[float, str, str] | None
+
+
+@dataclass
 class Deal:
     wish: dict[str, Any]
     listing: Listing
     cardmarket: float | None  # Cardmarket trend for the listing's finish
     cardtrader: float | None  # usual (or next-cheapest) CardTrader price for the wish
     cardtrader_kind: str  # "usual price" | "next cheapest copy" | ""
-    below_pct: float | None  # how far under the lower reference, in %
+    below_pct: float | None  # how far under the usual price, in %
     tier: tuple[float, str, str] | None
     reasons: list[str]
+    cardmarket_trusted: bool = True  # False: the trend looks wrong (REFERENCE_RATIO) and was not used
+    reference: float | None = None  # the usual price the copy was judged against
+    floor: float = DEAL_PCT
 
     @property
     def key(self) -> str:
@@ -152,7 +183,11 @@ def wish_key(wish: dict[str, Any]) -> str:
     return f"{wish['scryfall_id'] or wish['blueprint_id']}|{wish['language']}|{wish['foil']}"
 
 
-def best_deal(wish: dict[str, Any], listings: list[Listing], usual: float | None = None) -> Deal | None:
+def assess(wish: dict[str, Any], listings: list[Listing], usual: float | None = None) -> Assessment | None:
+    """Judge the cheapest fitting copy against the usual price (D52): the higher of the Cardmarket
+    trend and CardTrader's usual price, so a copy cheap on either market counts. CardTrader's next
+    cheapest copy (before 3 days of history) is only used without a Cardmarket trend: one pricey
+    listing must not make an ordinary copy look like a steal."""
     matching = sorted((x for x in listings if fits(x, wish)), key=lambda x: x.price)
     if not matching:
         return None
@@ -164,16 +199,34 @@ def best_deal(wish: dict[str, Any], listings: list[Listing], usual: float | None
         cardtrader, kind = matching[1].price, "next cheapest copy"
     else:
         cardtrader, kind = None, ""
-    references = [r for r in (cardmarket, cardtrader) if r]
-    below = round((1 - best.price / min(references)) * 100, 6) if references else None  # exact 20% stays 20
-    floor = wish.get("deal_pct") if wish.get("deal_pct") is not None else DEFAULT_DEAL_PCT
+    trusted = not (cardmarket and cardtrader and max(cardmarket, cardtrader) > REFERENCE_RATIO * min(cardmarket, cardtrader))
+    references = [cardmarket] if cardmarket and trusted else []
+    if cardtrader and (kind == "usual price" or not references):
+        references.append(cardtrader)
+    reference = max(references) if references else None
+    below = round((1 - best.price / reference) * 100, 6) if reference else None  # exact 20% stays 20
+    base = PRICEY_DEAL_PCT if reference and reference > PRICEY_EUR else DEAL_PCT
+    floor = wish.get("deal_pct") if wish.get("deal_pct") is not None else base
     tier = None
     if below is not None and below >= floor:
-        tier = next((t for t in TIERS if below >= t[0]), TIERS[-1])
-    reasons = [f"{below:.0f}% under the lower market price"] if tier else []
-    if wish.get("max_price_eur") is not None and best.price <= wish["max_price_eur"]:
+        offset = base - TIERS[-1][0]
+        tier = next((t for t in TIERS if below >= t[0] + offset), TIERS[-1])
+    return Assessment(best, cardmarket, cardtrader, kind, trusted, reference, below, floor, tier)
+
+
+def deal_of(wish: dict[str, Any], a: Assessment) -> Deal | None:
+    reasons = [f"{a.below_pct:.0f}% under its usual €{a.reference:.2f} (a deal from {a.floor:.0f}%)"] if a.tier else []
+    if wish.get("max_price_eur") is not None and a.listing.price <= wish["max_price_eur"]:
         reasons.append(f"at or under my €{wish['max_price_eur']:.2f} target")
-    return Deal(wish, best, cardmarket, cardtrader, kind, below, tier, reasons) if reasons else None
+    if not reasons:
+        return None
+    return Deal(wish, a.listing, a.cardmarket, a.cardtrader, a.cardtrader_kind, a.below_pct, a.tier, reasons,
+                a.cardmarket_trusted, a.reference, a.floor)
+
+
+def best_deal(wish: dict[str, Any], listings: list[Listing], usual: float | None = None) -> Deal | None:
+    a = assess(wish, listings, usual)
+    return deal_of(wish, a) if a else None
 
 
 @dataclass
@@ -181,10 +234,12 @@ class CheckResult:
     deals: list[Deal] = field(default_factory=list)  # all current deals
     new: list[Deal] = field(default_factory=list)  # the ones to alert about now
     summary: list[dict[str, Any]] = field(default_factory=list)
-    failed_blueprints: list[int] = field(default_factory=list)
+    failed_blueprints: list[int] = field(default_factory=list)  # not checked: request failed or out of time
+    late_blueprints: list[int] = field(default_factory=list)  # the part of failed_blueprints left for lack of time
     cheapest: dict[str, Listing] = field(default_factory=dict)  # wish key -> cheapest fitting listing
     counts: dict[str, int] = field(default_factory=dict)  # wish key -> fitting listings
     usual: dict[str, tuple[float | None, str]] = field(default_factory=dict)  # wish key -> CardTrader reference
+    assessed: dict[str, Assessment] = field(default_factory=dict)  # wish key -> how close to a deal
 
 
 def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) -> list[dict[str, Any]]:
@@ -201,9 +256,12 @@ def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) 
 
 
 def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime,
-          history: dict[int, list[dict[str, Any]]] | None = None) -> CheckResult:
+          history: dict[int, list[dict[str, Any]]] | None = None,
+          out_of_time: Callable[[], bool] = lambda: False) -> CheckResult:
     """Ask CardTrader about every wished card once, find deals, decide which are new.
     `history` holds earlier check summaries per blueprint, for the usual CardTrader price.
+    Once `out_of_time()` says so, the cards still to ask count as failed: a slow CardTrader must
+    not stretch one check over the next ones (two hung for 25 minutes on 2026-11-03).
 
     `alerted` (key -> {listing, price, at}) is updated in place: deals that are gone are forgotten,
     so a later deal on the same wish alerts again.
@@ -213,6 +271,10 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
     for wish in watch:
         by_blueprint.setdefault(wish["blueprint_id"], []).append(wish)
     for blueprint_id, wishes in by_blueprint.items():
+        if out_of_time():
+            result.failed_blueprints.append(blueprint_id)
+            result.late_blueprints.append(blueprint_id)
+            continue
         body = session.get("/marketplace/products", {"blueprint_id": blueprint_id})
         if not isinstance(body, dict):
             result.failed_blueprints.append(blueprint_id)
@@ -220,16 +282,16 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
         listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or []) if x]
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:
-            fitting = sorted((x for x in listings if fits(x, wish)), key=lambda x: x.price)
             key = wish_key(wish)
-            if fitting:
-                result.cheapest[key], result.counts[key] = fitting[0], len(fitting)
             usual = usual_zero_price(wish, (history or {}).get(blueprint_id, []), now)
-            if usual is not None:
-                result.usual[key] = (usual, "usual price")
-            elif len(fitting) > 1:
-                result.usual[key] = (fitting[1].price, "next cheapest copy")
-            deal = best_deal(wish, listings, usual)
+            a = assess(wish, listings, usual)
+            if a is None:
+                continue
+            result.assessed[key] = a
+            result.cheapest[key], result.counts[key] = a.listing, sum(fits(x, wish) for x in listings)
+            if a.cardtrader is not None:
+                result.usual[key] = (a.cardtrader, a.cardtrader_kind)
+            deal = deal_of(wish, a)
             if deal:
                 result.deals.append(deal)
     # Alternatives (`one_of`): a deal on one version is no deal when another is cheaper right now.
@@ -276,7 +338,8 @@ def message(deal: Deal) -> tuple[str, str]:
         pct = (1 - x.price / reference) * 100
         return f"{pct:.0f}% less" if pct >= 0 else f"{-pct:.0f}% more"
 
-    compared = [f"Cardmarket trend €{deal.cardmarket:.2f} ({off(deal.cardmarket)})" if deal.cardmarket else "",
+    compared = [(f"Cardmarket trend €{deal.cardmarket:.2f} ({off(deal.cardmarket)})" if deal.cardmarket_trusted
+                 else f"Cardmarket trend €{deal.cardmarket:.2f} (looks wrong, not used)") if deal.cardmarket else "",
                 f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f} ({off(deal.cardtrader)})"
                 if deal.cardtrader else ""]
     lines = [
@@ -327,3 +390,72 @@ def cardmarket_targets(watch: list[dict[str, Any]], alerted: dict[str, dict], no
             f"{w['name']}: Cardmarket trend €{trend:.2f} is at or under my €{w['max_price_eur']:.2f} target.\n{link}".strip(),
         ))
     return messages
+
+
+def problem_alert(state: dict[str, Any], problems: list[str], now: datetime) -> tuple[str, str] | None:
+    """The alert to send about this check's problems, if any: the first time, again after
+    `PROBLEM_REALERT` while it lasts, and once when it is over. Remembered in `state["problem"]`,
+    so an outage (CardTrader down, an expired token) is one message, not one every 10 minutes."""
+    last = state.get("problem")
+    if problems:
+        text = "\n".join(problems)
+        if last and now - datetime.fromisoformat(last["at"]) < PROBLEM_REALERT:
+            return None
+        state["problem"] = {"at": now.isoformat(), "since": (last or {}).get("since", now.isoformat()), "text": text}
+        return "mtg-intel deal check needs a look", text
+    if last:
+        del state["problem"]
+        return "mtg-intel deal check is fine again", f"The problem seen since {last['since']} is gone."
+    return None
+
+
+def record_check(state: dict[str, Any], now: datetime, failed: int, alerts: int) -> None:
+    """Keep a day of check results in the state, for the digest."""
+    since = now - timedelta(hours=24)
+    recent = [r for r in state.get("recent", []) if datetime.fromisoformat(r["at"]) > since]
+    state["recent"] = recent + [{"at": now.isoformat(), "failed": failed, "alerts": alerts}]
+
+
+def digest(state: dict[str, Any], result: CheckResult, watch: list[dict[str, Any]], now: datetime,
+           site_url: str | None = None) -> tuple[str, str] | None:
+    """The daily note (user, 2026-11-04), sent with the first check from DIGEST_HOUR: that checks
+    run, what they found, and the three cards over DIGEST_MIN_EUR closest to a deal, so a quiet bot
+    is never mistaken for a broken one."""
+    from zoneinfo import ZoneInfo
+
+    local = now.astimezone(ZoneInfo(TIMEZONE))
+    if local.hour < DIGEST_HOUR or state.get("digest_on") == local.date().isoformat():
+        return None
+    state["digest_on"] = local.date().isoformat()
+    recent = state.get("recent", [])
+    first = datetime.fromisoformat(recent[0]["at"]) if recent else now
+    span = "Last 24 h" if now - first > timedelta(hours=23) else f"Since {first.astimezone(ZoneInfo(TIMEZONE)):%H:%M}"
+    lines = [(f"{span}: {len(recent)} checks (one every 10 minutes is 144 a day), "
+              f"{sum(r['alerts'] for r in recent)} alerts sent, "
+              f"{sum(1 for r in recent if r['failed'])} checks with cards not reached.")]
+    if state.get("problem"):
+        lines.append(f"⚠️ Problem since {state['problem']['since'][:16]}Z: {state['problem']['text']}")
+    names = {wish_key(w): w for w in watch}
+    if result.deals:
+        lines.append("")
+        lines.append(f"Deals right now ({len(result.deals)}):")
+        lines += [f"• {d.wish['name']} €{d.listing.price:.2f}" + (f", {d.below_pct:.0f}% under" if d.tier else ", target")
+                  for d in sorted(result.deals, key=lambda d: -(d.below_pct or 0))[:5]]
+    dealt = {d.key for d in result.deals}
+    close = sorted(
+        ((k, a) for k, a in result.assessed.items()
+         if k not in dealt and k in names and a.reference and a.reference > DIGEST_MIN_EUR and a.below_pct is not None),
+        key=lambda ka: ka[1].floor - ka[1].below_pct)[:3]
+    if close:
+        lines.append("")
+        lines.append(f"Closest to a deal (usually over €{DIGEST_MIN_EUR:.0f}):")
+        for k, a in close:
+            w = names[k]
+            where = f" ({(w.get('set_code') or '').upper()} #{w.get('collector_number')})" if w.get("set_code") else ""
+            gap = f"{a.below_pct:.0f}% under" if a.below_pct >= 0 else f"{-a.below_pct:.0f}% over"
+            lines.append(f"• {w['name']}{where}: €{a.listing.price:.2f}, {gap} its usual €{a.reference:.2f}, "
+                         f"a deal from {a.floor:.0f}%")
+    if site_url:
+        lines += ["", site_url.rstrip("/") + "/"]
+    title = "☀️ mtg-intel: " + (f"{len(result.deals)} deals live" if result.deals else "all quiet, checks running")
+    return title, "\n".join(lines)

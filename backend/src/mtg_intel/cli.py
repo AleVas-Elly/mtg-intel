@@ -6,6 +6,7 @@ import argparse
 import os
 import shutil
 import sys
+import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import httpx
 from mtg_intel.archive import grabber
 from mtg_intel.archive.notify import alert
 from mtg_intel.archive.sources import SOURCES
-from mtg_intel.archive.store import HfStore, LocalStore, Store
+from mtg_intel.archive.store import HfStore, LocalStore, Store, hf_retry
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -471,6 +472,8 @@ PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c)
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
 SKIP_AFTER = timedelta(minutes=8)  # a scheduled (fallback) run this soon after a check is redundant
 SLOW_CHECK = timedelta(minutes=8)  # checks start every 10 minutes (D48)
+CARDTRADER_BUDGET = timedelta(minutes=7)  # past this, a check stops asking and saves what it has
+CARDTRADER_TIMEOUT = 20  # seconds per CardTrader request (each is retried twice)
 
 
 def check_deals(args: argparse.Namespace) -> int:
@@ -536,18 +539,27 @@ def check_deals(args: argparse.Namespace) -> int:
             if days_back <= deals.USUAL_DAYS:
                 history.setdefault(row["blueprint_id"], []).append(row)
 
-    with httpx.Client(timeout=60) as client:
+    with httpx.Client(timeout=CARDTRADER_TIMEOUT) as client:
         site_store = Site.from_env(client) if to_site else None
         session = Session(client, token, out=None)
-        result = deals.check(session, watch, alerted, now, history)
+        started = time.monotonic()
+        result = deals.check(session, watch, alerted, now, history,
+                             out_of_time=lambda: time.monotonic() - started > CARDTRADER_BUDGET.total_seconds())
         targets = deals.cardmarket_targets(watch, alerted, now)
         messages = [deals.message(d) for d in result.new] + targets
+        problems = []
         try:
             session.summary()
         except InvalidDownload as e:
-            if not args.dry_run:
-                alert(client, "mtg-intel deal check needs a look", f"CardTrader: {e}")
-            print(f"PROBLEM  CardTrader: {e}", file=sys.stderr)
+            problems.append(f"CardTrader: {e} (HTTP {session.last_status})")
+        if result.late_blueprints:
+            problems.append(f"CardTrader is slow: {len(result.late_blueprints)} cards not checked within "
+                            f"{CARDTRADER_BUDGET.seconds // 60} minutes")
+        for problem in problems:
+            print(f"PROBLEM  {problem}", file=sys.stderr)
+        problem = deals.problem_alert(state, problems, now)
+        if problem and not args.dry_run:
+            alert(client, *problem)
         for d in result.deals:
             title, _ = deals.message(d)
             print(f"{'NEW ' if d in result.new else '    '}{title}  ({'; '.join(d.reasons)})")
@@ -561,6 +573,10 @@ def check_deals(args: argparse.Namespace) -> int:
             sent.append(alert(client, f"{len(rest)} more deals", "\n".join(rest)))
         if sent:
             print(f"alerts sent: {sum(sent)} of {len(sent)}")
+        deals.record_check(state, now, len(result.failed_blueprints), sum(sent))
+        note = deals.digest(state, result, watch, now, os.environ.get("SITE_URL"))
+        if note:
+            print(f"daily digest sent: {alert(client, *note)}")
         if site_store:
             try:  # the website's copy (D49); a failure here never stops the alerts or the saved check
                 site_store.put("live", site.live_doc(result, watch, now, site_store.get("live")))
@@ -597,10 +613,10 @@ def pack_day(store, day, work: Path) -> Path | None:
 
     if not hasattr(store, "repo_id"):
         return None
-    folder = snapshot_download(
+    folder = hf_retry(lambda: snapshot_download(
         store.repo_id, repo_type="dataset", token=store.token, local_dir=work / "pack",
         allow_patterns=[f"checks/{day:%Y/%m/%d}/*.parquet", f"checks/{day:%Y/%m}/{day.isoformat()}.parquet"],
-    )
+    ))
     parts = sorted(Path(folder).glob("checks/**/*.parquet"))
     if not parts:
         return None

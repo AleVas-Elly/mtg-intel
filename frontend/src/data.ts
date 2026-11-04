@@ -36,10 +36,19 @@ export function useAppData(): AppData {
 }
 
 /** How close the cheapest CardTrader copy is to a deal: price over the lower reference. */
+/** Cheapest copy / its usual price (the higher of Cardmarket's trend and CardTrader's usual, D52). */
 export function dealRatio(w: Wish, l: LiveWish | undefined): number | null {
   if (!l) return null;
+  if (l.ref) return l.price / l.ref;
   const refs = [cmTrend(w, l.foil), l.usual].filter((v): v is number => !!v);
-  return refs.length ? l.price / Math.min(...refs) : null;
+  return refs.length ? l.price / Math.max(...refs) : null;
+}
+
+/** Percentage points still missing before the cheapest copy is a deal (0 or less: it is one). */
+export function dealGap(w: Wish, l: LiveWish | undefined): number | null {
+  if (l?.below != null && l.needs != null) return l.needs - l.below;
+  const r = dealRatio(w, l);
+  return r == null ? null : 30 - (1 - r) * 100;
 }
 
 /** Alternatives (`one_of`) count as one wish. */

@@ -381,6 +381,9 @@ def live_doc(result: deals.CheckResult, watch: list[dict[str, Any]], now: dateti
     for key, listing in result.cheapest.items():
         usual, kind = result.usual.get(key, (None, ""))
         wishes[key] = listing_doc(listing) | {"count": result.counts.get(key, 0), "usual": usual, "usual_kind": kind}
+        if key in result.assessed:  # the bot's own judgement (D52), so the site ranks closeness the same way
+            a = result.assessed[key]
+            wishes[key] |= {"ref": a.reference, "below": a.below_pct, "needs": a.floor}
     return {"checked_at": now.isoformat(), "cards_checked": len({w["blueprint_id"] for w in watch}),
             "failed": len(result.failed_blueprints), "wishes": wishes,
             "empty": sorted(checked - set(wishes)), "deals": list(current.values()), "gone": gone}

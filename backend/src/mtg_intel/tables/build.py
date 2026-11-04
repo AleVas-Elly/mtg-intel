@@ -20,6 +20,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from mtg_intel import deals
+from mtg_intel.archive.store import hf_retry
 from mtg_intel.tables import mycards, prices, reference
 
 STATE_PATH = "_build.json"
@@ -54,7 +55,7 @@ class HfRaw:
         from huggingface_hub import HfApi
 
         self.repo_id, self.token, self.cache_dir = repo_id, token, cache_dir
-        self.files = HfApi(token=token).list_repo_files(repo_id, repo_type="dataset")
+        self.files = hf_retry(lambda: HfApi(token=token).list_repo_files(repo_id, repo_type="dataset"))
 
     def list(self, source: str) -> list[str]:
         return sorted(f for f in self.files if f.startswith(f"raw/{source}/"))
@@ -62,9 +63,8 @@ class HfRaw:
     def fetch(self, path: str) -> Path:
         from huggingface_hub import hf_hub_download
 
-        return Path(
-            hf_hub_download(self.repo_id, path, repo_type="dataset", token=self.token, local_dir=self.cache_dir)
-        )
+        return Path(hf_retry(lambda: hf_hub_download(
+            self.repo_id, path, repo_type="dataset", token=self.token, local_dir=self.cache_dir)))
 
 
 # --- where tables go ------------------------------------------------------------------------
@@ -122,9 +122,8 @@ class HfTables:
         from huggingface_hub.errors import EntryNotFoundError
 
         try:
-            path = hf_hub_download(
-                self.repo_id, STATE_PATH, repo_type="dataset", token=self.token, force_download=True
-            )
+            path = hf_retry(lambda: hf_hub_download(
+                self.repo_id, STATE_PATH, repo_type="dataset", token=self.token, force_download=True))
         except EntryNotFoundError:
             return {}
         return json.loads(Path(path).read_text())
@@ -134,9 +133,8 @@ class HfTables:
         from huggingface_hub.errors import EntryNotFoundError
 
         try:
-            return Path(
-                hf_hub_download(self.repo_id, path, repo_type="dataset", token=self.token, force_download=fresh)
-            )
+            return Path(hf_retry(lambda: hf_hub_download(
+                self.repo_id, path, repo_type="dataset", token=self.token, force_download=fresh)))
         except EntryNotFoundError:
             return None
 
@@ -144,7 +142,7 @@ class HfTables:
         from huggingface_hub import CommitOperationAdd
 
         operations = [CommitOperationAdd(path_in_repo=p, path_or_fileobj=str(local)) for p, local in files]
-        self.api.create_commit(self.repo_id, operations, commit_message=message, repo_type="dataset")
+        hf_retry(lambda: self.api.create_commit(self.repo_id, operations, commit_message=message, repo_type="dataset"))
 
     def publish(self, files: list[tuple[str, Path]], state: dict, message: str) -> None:
         from huggingface_hub import CommitOperationAdd
@@ -153,7 +151,7 @@ class HfTables:
         operations.append(
             CommitOperationAdd(path_in_repo=STATE_PATH, path_or_fileobj=(json.dumps(state, indent=2) + "\n").encode())
         )
-        self.api.create_commit(self.repo_id, operations, commit_message=message, repo_type="dataset")
+        hf_retry(lambda: self.api.create_commit(self.repo_id, operations, commit_message=message, repo_type="dataset"))
 
 
 # --- the build ---------------------------------------------------------------------------------

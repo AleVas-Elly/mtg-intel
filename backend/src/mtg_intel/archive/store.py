@@ -3,12 +3,46 @@
 from __future__ import annotations
 
 import shutil
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
 from mtg_intel.archive.manifest import Manifest
 
 MANIFEST_PATH = "manifest.json"
+HF_RETRY_WAITS = (5, 20)  # seconds before the second and third try of a Hugging Face call
+
+
+def _transient(error: BaseException) -> bool:
+    """A Hugging Face error worth retrying: network trouble, 429 or a 5xx, also when the library
+    wraps it (a failed forced download raises ValueError from the HTTP error)."""
+    import httpx
+    from huggingface_hub.errors import HfHubHTTPError
+
+    seen: BaseException | None = error
+    while seen is not None:
+        if isinstance(seen, httpx.TransportError):
+            return True
+        if isinstance(seen, HfHubHTTPError):
+            response = getattr(seen, "response", None)
+            status = getattr(response, "status_code", None)
+            return status is not None and (status == 429 or status >= 500)
+        seen = seen.__cause__ or seen.__context__
+    return False
+
+
+def hf_retry[T](call: Callable[[], T], sleep: Callable[[float], None] = time.sleep) -> T:
+    """Run one Hugging Face call, retrying passing outages (a 504 crashed a deal check on 2026-11-02)."""
+    for wait in HF_RETRY_WAITS:
+        try:
+            return call()
+        except Exception as e:
+            if not _transient(e):
+                raise
+            print(f"Hugging Face hiccup ({type(e).__name__}), trying again in {wait} s")
+            sleep(wait)
+    return call()
 
 
 class Store(Protocol):
@@ -53,13 +87,13 @@ class HfStore:
         from huggingface_hub.errors import EntryNotFoundError
 
         try:
-            path = hf_hub_download(
+            path = hf_retry(lambda: hf_hub_download(
                 self.repo_id,
                 MANIFEST_PATH,
                 repo_type="dataset",
                 token=self.token,
                 force_download=True,
-            )
+            ))
         except EntryNotFoundError:
             return Manifest()
         return Manifest.from_json(Path(path).read_text())
@@ -71,9 +105,9 @@ class HfStore:
         operations.append(
             CommitOperationAdd(path_in_repo=MANIFEST_PATH, path_or_fileobj=manifest.to_json().encode())
         )
-        self.api.create_commit(
+        hf_retry(lambda: self.api.create_commit(
             self.repo_id,
             operations,
             commit_message=message,
             repo_type="dataset",
-        )
+        ))

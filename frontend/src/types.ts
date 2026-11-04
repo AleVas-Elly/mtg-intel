@@ -24,7 +24,11 @@ export interface WantsDoc { built_at: string; price_date: string | null; languag
 
 export interface Listing { id: number; price: number; condition: string; language: string; foil: boolean; zero: boolean; country: string }
 
-export interface LiveWish extends Listing { count: number; usual: number | null; usual_kind: string }
+export interface LiveWish extends Listing {
+  count: number; usual: number | null; usual_kind: string;
+  /** The bot's judgement (D52): usual price, % under it, % under needed for a deal. */
+  ref?: number | null; below?: number | null; needs?: number;
+}
 
 export interface Deal {
   key: string; listing: Listing; cardmarket: number | null; cardtrader: number | null; cardtrader_kind: string;
