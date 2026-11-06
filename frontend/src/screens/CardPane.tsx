@@ -7,6 +7,7 @@ import { eur, versionText } from "../format";
 import { closeCard, openCard } from "../router";
 import { fetchCard, known, preview, type ScryCard } from "../scry";
 import { BigCard, CardImage } from "../ui/CardImage";
+import { useArtColour } from "../drop";
 import { IconBack, IconClose, IconOut, IconPlus, IconWarn } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { Versions, WishForm } from "../ui/WishSheet";
@@ -42,11 +43,12 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
   const mine = w && (data.wants?.wishes ?? []).find((x) => x.scryfall_id === w.scryfall_id);
   const [trend, trendFoil] = (card && shard?.[card.id]) || [null, null];
   const pick = (v: Wish) => { fetchCard(v.scryfall_id!).then(setCard); };
+  const colour = useArtColour(w?.image);
 
   return (
     <>
       <div class={`detail-backdrop${q}`} onClick={closeCard} />
-      <aside class={`detail${q}`} aria-label={card?.name ?? "Card"}>
+      <aside class={`detail${q}`} aria-label={card?.name ?? "Card"} style={colour ? { "--f": colour } : undefined}>
         <div class="d-top">
           {adding
             ? <button class="icon-btn" onClick={() => setAdding(false)} aria-label="Back to the card"><IconBack /></button>
@@ -58,6 +60,7 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
         {!w && !error && <div class="card-big"><div class="thumb skeleton" /></div>}
         {w && !adding && (
           <div class="pane-mode" key="info">
+            <div class="d-stage">
             <BigCard src={w.image} alt={w.name} foil={!w.finishes.includes("nonfoil")} placeholder={w.thumb} />
             <h2 class="d-name">{w.name}<ManaCost cost={w.mana_cost} large /></h2>
             {w.type_line && <p class="d-type">{w.type_line}</p>}
@@ -68,6 +71,7 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
               {w.rarity && <span class="chip">{w.rarity}</span>}
             </div>
             {w.artist && <p class="hint" style={{ textAlign: "center" }}>Illustrated by {w.artist}{w.released ? ` · ${w.released.slice(0, 4)}` : ""}</p>}
+            </div>
 
             {mine ? (
               <div class="notice saving" style={{ marginTop: "18px" }}>

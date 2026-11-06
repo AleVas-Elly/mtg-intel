@@ -77,7 +77,7 @@ export function Settings({ data }: { data: AppData }) {
       </div>
 
       <div class="group" style={{ padding: "12px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", marginTop: "10px" }}>
-        <span>Design lab<br /><small style={{ color: "var(--ink-2)", fontSize: "12.5px" }}>Try colours, type, motion and layout on your own cards</small></span>
+        <span>Motion and layout<br /><small style={{ color: "var(--ink-2)", fontSize: "12.5px" }}>How lively the site moves, and rows or big pictures</small></span>
         <button class="btn sm" type="button" onClick={() => setLabOpen(true)}>Open</button>
       </div>
 

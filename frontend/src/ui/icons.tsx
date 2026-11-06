@@ -4,6 +4,7 @@ import type { JSX } from "preact";
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": true } as const;
 type P = JSX.SVGAttributes<SVGSVGElement>;
 
+export const IconHome = (p: P) => <svg {...base} {...p}><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1v-8.5Z" /></svg>;
 export const IconDeals = (p: P) => <svg {...base} {...p}><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" /><circle cx="7.5" cy="7.5" r="1.4" /></svg>;
 export const IconWants = (p: P) => <svg {...base} {...p}><rect x="4" y="3" width="11.5" height="15.5" rx="2" /><path d="M8.5 21H18a2 2 0 0 0 2-2V8" /></svg>;
 export const IconSearch = (p: P) => <svg {...base} {...p}><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></svg>;

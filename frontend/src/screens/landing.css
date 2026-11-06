@@ -1,0 +1,112 @@
+/* The public landing page (D57), in The Drop's world: big expanded type, flat fields, stamps. */
+.landing { min-height: 100dvh; overflow-x: clip; }
+.l-bar {
+  display: flex; justify-content: space-between; align-items: center; gap: 16px;
+  max-width: 1320px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top)) 20px 18px;
+}
+.l-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; font-stretch: 122%; font-size: 18px; letter-spacing: -0.02em; text-decoration: none; }
+.l-mark img { width: 26px; height: 26px; border-radius: 7px; }
+.l-bar nav { display: flex; align-items: center; gap: 20px; }
+.l-bar nav > a { font-weight: 600; color: var(--ink-2); text-decoration: none; font-size: 15px; }
+.l-bar nav > a:hover { color: var(--ink); }
+.btn.lg { height: 52px; padding: 0 24px; font-size: 16px; }
+
+.l-hero {
+  max-width: 1320px; margin: 0 auto; padding: 32px 20px 96px;
+  display: grid; gap: 48px; grid-template-columns: minmax(0, 1fr); align-items: center;
+}
+.l-hero h1 { font-weight: 800; font-stretch: 118%; font-size: clamp(44px, 7vw, 100px); line-height: 0.92; letter-spacing: -0.045em; text-wrap: balance; }
+.l-lead { margin-top: 28px; font-size: clamp(17px, 1.5vw, 20px); line-height: 1.5; max-width: 40ch; }
+.l-acts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 32px; }
+.l-note { margin-top: 16px; font-size: 14px; color: var(--ink-2); }
+.l-hero .err { margin-top: 12px; }
+
+/* the live example */
+.ex { margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.ex-drop { grid-template-columns: minmax(0, 1fr); border-radius: 30px; animation: ex-in 700ms var(--smooth) both; }
+@keyframes ex-in { from { opacity: 0; transform: translateY(18px) scale(0.98); } }
+.ex-art { aspect-ratio: 626 / 457; overflow: hidden; background: color-mix(in srgb, var(--f) 70%, #000); }
+.ex-art img { width: 100%; height: 100%; object-fit: cover; animation: ex-art 5s var(--out) both; }
+@keyframes ex-art { from { transform: scale(1.08); } }
+.ex-body { padding: 22px 26px 26px; display: flex; flex-direction: column; gap: 8px; }
+.ex-top { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+.ex-body h3 { font-weight: 800; font-stretch: 114%; font-size: clamp(24px, 2.4vw, 32px); letter-spacing: -0.03em; line-height: 1.02; }
+.ex-body p { font-size: 14.5px; }
+.ex-price { display: flex; align-items: flex-end; gap: 16px; margin-top: 10px; }
+.ex-price .big { font-size: clamp(64px, 7vw, 96px); }
+.ex-price > .d-ink { font-size: 14.5px; line-height: 1.5; padding-bottom: 6px; }
+.ex .ring .track { stroke: rgba(255, 255, 255, 0.18); }
+.ex .ring .arc { stroke: #c6ff3d; transition-property: stroke-dashoffset; transition-timing-function: linear; }
+.ex-stamp { top: 28%; right: 26px; font-size: 22px; padding: 4px 14px; border-width: 3px; animation-delay: 0ms; background: rgba(0, 0, 0, 0.25); }
+.ex figcaption { font-size: 13px; color: var(--ink-3); padding-left: 6px; }
+
+/* sections */
+.l-section {
+  max-width: 1320px; margin: 0 auto; padding: 88px 20px;
+  display: grid; gap: 40px; grid-template-columns: minmax(0, 1fr); align-items: center;
+}
+.l-copy h2 { font-weight: 800; font-stretch: 116%; font-size: clamp(32px, 3.8vw, 54px); line-height: 0.98; letter-spacing: -0.04em; text-wrap: balance; }
+.l-copy p { margin-top: 20px; font-size: 18px; line-height: 1.55; max-width: 42ch; }
+
+.l-version { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 28px; align-items: center; }
+.l-card { width: 100%; border-radius: 4.75% / 3.4%; transform: rotate(-3deg); transition: transform 0.6s var(--smooth); }
+.l-card:hover { transform: rotate(0deg) scale(1.03); }
+.l-chips { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.l-chips li { background: var(--surface); border-radius: 18px; padding: 14px 16px; font-size: 16px; font-weight: 700; display: flex; flex-direction: column; gap: 3px; }
+.l-chips b { font-size: 13px; font-weight: 500; color: var(--ink-2); }
+
+.l-markets { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.l-market { background: var(--surface); border-radius: 22px; padding: 20px 22px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--ink-2); font-weight: 600; }
+.l-market b { font-size: clamp(48px, 5vw, 72px); color: var(--ink); margin-top: 10px; }
+.l-market small { font-size: 13px; font-weight: 400; color: var(--ink-3); }
+.l-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--ct); display: inline-block; }
+.l-dot.cm { border-radius: 2px; background: var(--cm); }
+.l-verdict { grid-column: 1 / -1; background: var(--ink); color: var(--bg); border-radius: 22px; padding: 20px 22px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.l-verdict .tier { height: 30px; font-size: 14px; padding: 0 14px; }
+.l-verdict p { font-size: 15px; flex: 1 1 260px; }
+.l-example { grid-column: 1 / -1; font-size: 13px; color: var(--ink-3); padding-left: 6px; }
+
+.l-states { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.l-states li { position: relative; background: var(--surface); border-radius: 22px; padding: 26px 22px 22px; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
+.l-states p { font-size: 15px; line-height: 1.45; }
+.stamp.still { position: static; translate: none; align-self: flex-start; animation: none; font-size: 17px; }
+.stamp.still.ok { border-color: var(--ink); color: var(--ink); }
+:root:not([data-motion="calm"]) .l-states li .stamp { animation: stamp 520ms var(--out) both; animation-timeline: view(); animation-range: entry 20% cover 35%; }
+
+.l-close { max-width: 1320px; margin: 0 auto; padding: 80px 20px calc(40px + env(safe-area-inset-bottom)); }
+.l-big { font-weight: 900; font-stretch: 125%; font-size: clamp(56px, 15vw, 230px); line-height: 0.85; letter-spacing: -0.06em; }
+.l-close-row { margin-top: 36px; display: flex; gap: 28px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.l-legal { font-size: 13px; color: var(--ink-3); max-width: 64ch; line-height: 1.5; }
+
+@media (min-width: 960px) {
+  .l-bar { padding: 26px 40px; }
+  .l-hero { grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); padding: 56px 40px 120px; gap: 64px; }
+  .l-section { grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr); padding: 120px 40px; gap: 72px; }
+  .l-section.flip .l-copy { order: 2; }
+  .l-close { padding: 120px 40px 48px; }
+}
+@media (max-width: 560px) {
+  .l-bar nav > a { display: none; }
+  .l-version { grid-template-columns: minmax(0, 1fr); }
+  .l-card { max-width: 240px; margin: 0 auto; }
+  .l-markets, .l-states, .l-chips { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* the ribbon: card art drifting slowly by, each on its own colour field */
+.l-ribbon { overflow: hidden; padding: 8px 0 24px; }
+.l-ribbon ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 14px; width: max-content; animation: drift 60s linear infinite; }
+.l-ribbon li { --f: var(--field); width: 300px; flex: none; border-radius: 22px; overflow: hidden; background: var(--f); color: #fff; transition: background-color 0.8s var(--smooth); }
+.l-ribbon img { width: 100%; aspect-ratio: 626 / 457; object-fit: cover; display: block; }
+.l-ribbon span { display: block; padding: 12px 16px 14px; font-weight: 700; font-stretch: 108%; font-size: 15px; letter-spacing: -0.015em; }
+.l-ribbon:hover ul { animation-play-state: paused; }
+@keyframes drift { to { transform: translateX(calc(-50% - 7px)); } }
+:root[data-motion="calm"] .l-ribbon ul { animation: none; }
+@media (prefers-reduced-motion: reduce) { .l-ribbon { overflow-x: auto; } .l-ribbon ul { animation: none; } }
+/* each section's parts arrive as it scrolls in */
+@supports (animation-timeline: view()) {
+  :root:not([data-motion="calm"]) .l-copy > *, :root:not([data-motion="calm"]) .l-figure > * {
+    animation: rise-in linear both; animation-timeline: view(); animation-range: entry 0% cover 28%;
+  }
+  :root:not([data-motion="calm"]) .l-figure > * { animation-range: entry 10% cover 34%; }
+}
+@keyframes rise-in { from { transform: translateY(36px); } }

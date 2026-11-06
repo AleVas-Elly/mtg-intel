@@ -2,9 +2,10 @@ import { useEffect, useState } from "preact/hooks";
 import { whenSignedOut } from "./api";
 import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
-import { IconBag, IconCheck, IconDeals, IconSearch, IconSettings, IconWants } from "./ui/icons";
+import { IconBag, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconWants } from "./ui/icons";
 import { Gate, useAuth } from "./screens/Gate";
 import { Deals } from "./screens/Deals";
+import { Home } from "./screens/Home";
 import { Wants } from "./screens/Wants";
 import { Search } from "./screens/Search";
 import { Bought } from "./screens/Bought";
@@ -19,19 +20,23 @@ import { LOCAL } from "./env";
 import { setLabOpen, useLabOpen } from "./labstate";
 
 const TABS = [
-  { path: "/", label: "Deals", Icon: IconDeals },
+  { path: "/", label: "Home", Icon: IconHome },
+  { path: "/deals", label: "Deals", Icon: IconDeals },
   { path: "/wants", label: "Want-list", Icon: IconWants },
   { path: "/bought", label: "Bought", Icon: IconBag },
   { path: "/search", label: "Search", Icon: IconSearch },
   { path: "/check", label: "Check", Icon: IconCheck },
 ];
+/** The phone's tab bar has room for five; Check is on Home and in the menu. */
+const PHONE_TABS = TABS.filter((t) => t.path !== "/check");
 
 export function App() {
   const auth = useAuth();
   const route = useRoute();
   const [signedOut, setSignedOut] = useState(false);
   useEffect(() => whenSignedOut(() => setSignedOut(true)), []);
-  if (route.path === "/setup" || auth.state !== "in" || signedOut) {
+  // the local test copy can show the landing page while signed in: /?landing
+  if (route.path === "/setup" || auth.state !== "in" || signedOut || (LOCAL && location.search.includes("landing"))) {
     return <Gate auth={auth} onIn={() => setSignedOut(false)} />;
   }
   return <Signed path={route.path} card={route.card} />;
@@ -47,12 +52,13 @@ function Signed({ path, card }: { path: string; card: string | null }) {
     path === "/search" ? <Search data={data} /> :
     path === "/check" ? <Check data={data} /> :
     path === "/settings" ? <Settings data={data} /> :
-    <Deals data={data} card={card} />;
-  const counts: Record<string, number | undefined> = { "/": dealCount || undefined, "/check": flagged || undefined, "/wants": data.wants ? wishCount(data.wants.wishes) : undefined };
+    path === "/deals" ? <Deals data={data} card={card} /> :
+    <Home data={data} card={card} />;
+  const counts: Record<string, number | undefined> = { "/deals": dealCount || undefined, "/check": flagged || undefined, "/wants": data.wants ? wishCount(data.wants.wishes) : undefined };
   return (
     <div class={`shell${card ? " has-detail" : ""}`}>
       <nav class="rail" aria-label="Main">
-        <div class="brand"><img src="/icon.svg" alt="" />mtg-intel</div>
+        <a class="brand" href="/" onClick={link("/")}><img src="/icon.svg" alt="" />mtg-intel</a>
         {TABS.map(({ path: p, label, Icon }) => (
           <a href={p} onClick={link(p)} aria-current={path === p ? "page" : undefined}>
             <Icon />{label}{counts[p] != null && <span class="count">{counts[p]}</span>}
@@ -69,7 +75,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <ToastView />
       <nav class="tabbar" aria-label="Main">
-        {TABS.map(({ path: p, label, Icon }) => (
+        {PHONE_TABS.map(({ path: p, label, Icon }) => (
           <a class="tab" href={p} onClick={link(p)} aria-current={path === p ? "page" : undefined}><Icon />{label}</a>
         ))}
       </nav>

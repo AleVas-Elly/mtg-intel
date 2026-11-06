@@ -1,37 +1,23 @@
-import { useEffect, useState } from "preact/hooks";
+import { useState } from "preact/hooks";
 import type { AppData } from "../data";
 import { dealGap, dealRatio } from "../data";
-import { ago, time, TIERS } from "../format";
+import { checkState, clock, useNow } from "../drop";
+import { ago } from "../format";
 import { link } from "../router";
+import { DropCard, Ring } from "../ui/Drop";
 import { IconSettings, IconWarn } from "../ui/icons";
-import { CardList, RowSkeleton, type Item } from "../ui/Row";
+import { CardList, RowSkeleton } from "../ui/Row";
 import type { Deal } from "../types";
 
-const STALE_MIN = 25;
-
-function useNow(ms = 30_000) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), ms); return () => clearInterval(t); }, []);
-  return now;
-}
-
-function TierChip({ d }: { d: Deal }) {
-  const tier = d.tier ? TIERS[d.tier] : null;
-  if (!tier) return <span class="tier target">Target price</span>;
-  return <span class={`tier ${tier.cls}`}>{tier.label}<small>{Math.round(d.below_pct ?? 0)}% under</small></span>;
-}
-
 export function Status({ data }: { data: AppData }) {
-  const now = useNow();
+  const now = useNow(1000);
   const at = data.live?.checked_at;
-  if (!at) return <p class="sub">Waiting for the first CardTrader check…</p>;
-  const minutes = (now - new Date(at).getTime()) / 60e3;
-  const stale = minutes > STALE_MIN;
-  const next = Math.max(0, Math.ceil(10 - (minutes % 10)));
+  const s = checkState(at, now);
+  if (!at || !s) return <p class="sub">Waiting for the first CardTrader check…</p>;
   return (
     <p class="sub">
-      <span key={at} class={`dot ${stale ? "stale" : "live"}`} />
-      <span>Checked {ago(at, now)}{!stale && `, next in ${next} min`}{data.live!.failed > 0 && `. ${data.live!.failed} cards failed`}</span>
+      <Ring at={at} size={18} stroke={3} />
+      <span>Checked {ago(at, now)}{!s.stale && (s.due ? ", checking now" : `, next in ${clock(s.left)}`)}{data.live!.failed > 0 && `. ${data.live!.failed} cards failed`}</span>
     </p>
   );
 }
@@ -85,10 +71,9 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
             </div>
           )}
           {shown.length > 0 ? (
-            <CardList data={data} current={card} items={shown.flatMap((d): Item[] => {
-              const w = data.byKey.get(d.key);
-              return w ? [{ w, ctPrice: d.listing.price, extra: <TierChip d={d} /> }] : [];
-            })} />
+            <div class="drops" key={filter}>
+              {shown.map((d, n) => <DropCard key={d.key} d={d} w={data.byKey.get(d.key)!} data={data} kind="line" n={n} current={card === d.key} />)}
+            </div>
           ) : (
             <div class="empty">
               <h2>No deals right now</h2>
@@ -106,10 +91,9 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
           {gone.length > 0 && (
             <>
               <div class="list-head">Gone today<span>sold or no longer cheap</span></div>
-              <CardList data={data} items={gone.flatMap((d): Item[] => {
-                const w = data.byKey.get(d.key);
-                return w ? [{ w, gone: true, ctPrice: d.listing.price, extra: <div class="r-wish">Gone at {time(d.gone_at!)}</div> }] : [];
-              })} />
+              <div class="drops">
+                {gone.filter((d) => data.byKey.has(d.key)).map((d, n) => <DropCard key={d.key + d.gone_at} d={d} w={data.byKey.get(d.key)!} data={data} kind="line" n={n} current={card === d.key} />)}
+              </div>
             </>
           )}
         </>

@@ -17,7 +17,7 @@ const MORPH = "card-open";
 // microtask), never on animation frames.
 const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 const thumbOf = (key: string) =>
-  document.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"] .thumb`);
+  document.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"] :is(.thumb, .art)`);
 
 /** Change the URL; animated with a view transition where the browser has them. `morph` names the
  *  card whose picture flies between its list row and the big card in the detail view. Exactly one
@@ -32,7 +32,7 @@ export function go(path: string, card: string | null = null, replace = false, mo
   if (!doc.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) return apply();
   const big = () => document.querySelector<HTMLElement>(".card-big .thumb");
   const name = (el: HTMLElement | null) => { if (el) el.style.viewTransitionName = MORPH; };
-  const clear = () => document.querySelectorAll<HTMLElement>(".thumb").forEach((el) => { el.style.viewTransitionName = ""; });
+  const clear = () => document.querySelectorAll<HTMLElement>(".thumb, .art").forEach((el) => { el.style.viewTransitionName = ""; });
   clear();
   name(card ? (morph ? thumbOf(morph) : null) : big());
   const root = document.documentElement.classList;

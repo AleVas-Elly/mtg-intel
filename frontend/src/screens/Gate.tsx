@@ -1,7 +1,8 @@
 // Sign-in with a passkey (spec D49). A new device joins through a one-time setup link: made by
 // Claude for the first device, or shown as a QR code in Settings on a device already signed in.
 import { startAuthentication, startRegistration } from "@simplewebauthn/browser";
-import { LOCAL, SITE } from "../env";
+import { LOCAL } from "../env";
+import { Landing } from "./Landing";
 import { useEffect, useState } from "preact/hooks";
 import { post } from "../api";
 import { go } from "../router";
@@ -69,31 +70,19 @@ export function Gate({ auth, onIn }: { auth: Auth; onIn: () => void }) {
       done();
     } catch (e) { setError(friendly(e)); } finally { setBusy(false); }
   };
-  if (auth.state === "checking" && !invite) return <div class="gate" />;
+  if (auth.state === "checking" && !invite) return <div class="landing" />;
+  if (!invite) return <Landing busy={busy} error={error} onSignIn={signIn} local={LOCAL} setupMissing={!auth.passkeys} />;
   return (
-    <div class="gate">
-      <div class="gate-in">
-        <img class="logo" src="/icon.svg" alt="" />
-        {invite ? (
-          <>
-            <h1>Set up this device</h1>
-            <p>Create a passkey for mtg-intel. Your phone or Mac keeps it, and Face ID or Touch ID unlocks it. Nothing to remember.</p>
-            <button class="btn primary" type="button" onClick={register} disabled={busy}><IconKey />{busy ? "Waiting…" : "Create passkey"}</button>
-          </>
-        ) : (
-          <>
-            <h1>mtg-intel</h1>
-            {LOCAL ? (
-              <>
-                <p>This is Claude's local test copy, not your site.</p>
-                <a class="btn primary" href={SITE}>Open my mtg-intel</a>
-              </>
-            ) : <p>{auth.passkeys ? "Your cards, deals and prices." : "Not set up yet: ask Claude for a setup link."}</p>}
-            {!LOCAL && auth.passkeys > 0 && <button class="btn primary" type="button" onClick={signIn} disabled={busy}><IconKey />{busy ? "Waiting…" : "Sign in with passkey"}</button>}
-          </>
-        )}
-        {error && <p class="err" role="alert">{error}</p>}
-      </div>
+    <div class="landing">
+      <header class="l-bar"><a class="l-mark" href="/"><img src="/icon.svg" alt="" />mtg-intel</a></header>
+      <section class="l-hero setup">
+        <div class="l-hero-copy">
+          <h1>Set up this device</h1>
+          <p class="l-lead">Create a passkey for mtg-intel. Your phone or Mac keeps it, and Face ID or Touch ID unlocks it. Nothing to remember.</p>
+          <div class="l-acts"><button class="btn primary lg" type="button" onClick={register} disabled={busy}><IconKey />{busy ? "Waiting…" : "Create passkey"}</button></div>
+          {error && <p class="err" role="alert">{error}</p>}
+        </div>
+      </section>
     </div>
   );
 }

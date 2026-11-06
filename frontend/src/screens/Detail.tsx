@@ -6,6 +6,7 @@ import { closeCard } from "../router";
 import { saveEdit, undoEdit } from "../edits";
 import { toast } from "../toast";
 import { WishSheet } from "../ui/WishSheet";
+import { useArtColour } from "../drop";
 import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
 import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
@@ -52,6 +53,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const recent = useDoc<RecentDoc>("ct-recent", 120_000);
   const suggestions = useDoc<TargetsDoc>("targets").doc;
   const live = data.liveOf(wishKey);
+  const colour = useArtColour(w?.image);
   const deal = data.dealOf(wishKey);
   const bothFinishes = !!w && w.foil === "any" && !foilOnly(w) && w.finishes.some((f) => f !== "nonfoil");
   const [foil, setFoil] = useState(false);
@@ -92,11 +94,12 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   return (
     <>
       <div class={`detail-backdrop${q}`} onClick={closeCard} />
-      <aside class={`detail${q}`} aria-label={w.name}>
+      <aside class={`detail${q}`} aria-label={w.name} style={colour ? { "--f": colour } : undefined}>
         <div class="d-top">
           <button class="icon-btn" onClick={closeCard} aria-label="Back"><IconBack /></button>
           {w.links.scryfall && <a class="icon-btn" href={w.links.scryfall} target="_blank" rel="noopener" aria-label="Open on Scryfall"><IconOut /></a>}
         </div>
+        <div class="d-stage">
         <BigCard src={w.image} alt={w.name} foil={foil} placeholder={w.thumb} />
         <h2 class="d-name">{w.name}<ManaCost cost={w.mana_cost} large /></h2>
         {w.type_line && <p class="d-type">{w.type_line}</p>}
@@ -117,6 +120,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
             CardTrader calls it {w.ct.name}{w.ct.version ? ` · ${w.ct.version}` : ""} · {w.ct.expansion} #{w.ct.number}
           </p>
         )}
+        </div>
 
         <div class="group-title row-title">Prices{bothFinishes && (
           <span class="seg" role="group" aria-label="Finish">

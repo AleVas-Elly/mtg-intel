@@ -1,17 +1,13 @@
 import { useState } from "preact/hooks";
 import { peek } from "../api";
-import { TIERS } from "../format";
 import { DEFAULT, describe, OPTIONS, setLook, useLook, type Look } from "../lab";
 import type { WantsDoc } from "../types";
 import { CardImage } from "./CardImage";
 import { IconClose, IconCopy } from "./icons";
 
 const GROUPS: { key: keyof Look; label: string }[] = [
-  { key: "palette", label: "Colours" },
-  { key: "type", label: "Typeface" },
   { key: "motion", label: "Motion" },
   { key: "density", label: "Layout" },
-  { key: "tiers", label: "Deal tiers" },
 ];
 
 /** Floating panel: switch the look live over the real screens. */
@@ -21,10 +17,10 @@ export function Lab({ onClose }: { onClose: () => void }) {
   const [plays, setPlays] = useState(0);
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
   return (
-    <section class="lab" aria-label="Design lab">
+    <section class="lab" aria-label="Look">
       <header class="lab-head">
-        <h2>Design lab</h2>
-        <button class="icon-btn" type="button" onClick={onClose} aria-label="Close the lab"><IconClose /></button>
+        <h2>Look</h2>
+        <button class="icon-btn" type="button" onClick={onClose} aria-label="Close"><IconClose /></button>
       </header>
       <div class="lab-body">
         {GROUPS.map(({ key, label }) => {
@@ -32,21 +28,15 @@ export function Lab({ onClose }: { onClose: () => void }) {
           return (
             <div class="lab-group">
               <div class="lab-label"><span>{label}</span><small>{current?.hint}</small></div>
-              <div class={`lab-options${key === "palette" ? " swatches" : ""}`} role="radiogroup" aria-label={label}>
+              <div class="lab-options" role="radiogroup" aria-label={label}>
                 {OPTIONS[key].map((o) => (
                   <button type="button" role="radio" aria-checked={look[key] === o.id}
                     onClick={() => { setLook({ [key]: o.id }); if (key === "motion") setPlays((n) => n + 1); }}
-                    class={key === "palette" ? `swatch p-${o.id}` : ""} title={o.hint}>
-                    {o.mana && <img src={`https://svgs.scryfall.io/card-symbols/${o.mana}.svg`} alt="" />}
+                    title={o.hint}>
                     <span>{o.label}</span>
                   </button>
                 ))}
               </div>
-              {key === "tiers" && (
-                <div class="lab-tiers">
-                  {[20, 30, 40].map((pct) => <span class={`tier ${TIERS[pct].cls}`}>{TIERS[pct].label}<small>{pct}% under</small></span>)}
-                </div>
-              )}
               {key === "motion" && (reduced
                 ? <p class="lab-note">Your device is set to reduce motion, so the site keeps still whatever you pick here.</p>
                 : <MotionDemo play={plays} onReplay={() => setPlays((n) => n + 1)} />)}
