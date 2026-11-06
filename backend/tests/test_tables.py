@@ -395,3 +395,25 @@ def test_a_purchase_from_telegram_waits_for_its_undo_window():
     site, early, late = {"id": "a"}, {"id": "b", "hold_until": "2026-11-06T10:04:00.000Z"}, {
         "id": "c", "hold_until": "2026-11-06T09:59:59.000Z"}
     assert mycards.ready_edits([site, early, late], now) == ([site, late], [early])
+
+
+def test_a_card_i_bought_keeps_its_price_history_after_it_leaves_the_wantlist(tmp_path: Path):
+    raw = build.LocalRaw(make_archive(tmp_path / "archive"))
+    store = build.LocalTables(tmp_path / "tables")
+    build.build(raw, store, tmp_path / "staging", NOW)
+    want = tmp_path / "want.csv"
+    want.write_text("name,set_code,collector_number\nElvish Archdruid,fdn,219\n")
+    store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
+    build.build(raw, store, tmp_path / "staging", NOW)
+
+    bought = tmp_path / "purchases.csv"
+    bought.write_text(mycards.append_purchases("", [{"date": "2026-10-18", "name": "Elvish Archdruid", "scryfall_id": "sf-1",
+                                                     "foil": "no", "condition": "NM", "price_eur": "0.4", "market": "cardtrader"}]))
+    store.put([(build.PURCHASES, bought)], "upload")
+    want.write_text("name,set_code,collector_number\nTypo Card,,\n")  # bought: off the want-list
+    store.put([(build.MY_INPUTS["wantlist"], want)], "upload")
+    report = build.build(raw, store, tmp_path / "staging", NOW)
+
+    assert "my/price_history.parquet (6 rows)" in report.written
+    history = pq.read_table(tmp_path / "tables/my/price_history.parquet").to_pylist()
+    assert {r["scryfall_id"] for r in history} == {"sf-1"}

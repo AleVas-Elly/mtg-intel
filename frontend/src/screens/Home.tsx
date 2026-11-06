@@ -7,7 +7,7 @@ import { collectorLine, eur } from "../format";
 import { link, openCard } from "../router";
 import type { Deal, Wish } from "../types";
 import { Art, DropCard, GoneItem, Pulse, Roll, TierPill, usualOf } from "../ui/Drop";
-import { IconOut, IconSettings, IconWarn } from "../ui/icons";
+import { IconChart, IconOut, IconSettings, IconWarn } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 
 const today = () => new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -86,7 +86,10 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
         <header class="home-head">
           <h1 class="title">{today()}</h1>
           <Pulse data={data} />
-          <a class="icon-btn phone-only" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
+          <span class="phone-only head-btns">
+            <a class="icon-btn" href="/dashboards" onClick={link("/dashboards")} aria-label="Dashboards"><IconChart /></a>
+            <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
+          </span>
         </header>
         {data.error && <div class="notice"><IconWarn />{data.error} Showing the last copy.</div>}
         {loading ? (

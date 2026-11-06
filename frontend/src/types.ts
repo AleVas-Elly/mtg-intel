@@ -71,6 +71,8 @@ export interface Purchase {
   n: number; date: string; name: string; set: string | null; number: string | null; scryfall_id: string | null;
   language: string | null; foil: boolean; condition: string; price: number; market: string; cardmarket: number | null;
   saved: number | null; thumb: string | null; rarity: string | null; tags: string[]; set_name: string | null; lists: string[];
+  /** Since D60, for the Collection's filters: the 488 px picture, the printed cost, type line and colours. */
+  image?: string | null; mana_cost?: string | null; type_line?: string | null; colors?: string[];
   /** Cardmarket's trend for the same finish on `PurchasesDoc.price_date` (what it is worth now). */
   now?: number | null;
   pending?: boolean;

@@ -987,3 +987,5 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .foil::after { animation: none; }
 :root:not([data-motion="calm"]) :is(.row, .tile, .g-card, .drop):hover .foil::after { animation: sheen 2.4s var(--ease) 1; }
 :root[data-motion="lively"] .tier.t3::after { animation-iteration-count: 2; }
+.head-btns { gap: 8px; }
+@media (max-width: 899px) { .head-btns.phone-only { display: flex; } }

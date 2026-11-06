@@ -19,13 +19,13 @@ function OptionIcon({ icon }: { icon: Icon }) {
 }
 
 export function FilterPanel({ groups, state, onChange, counts }: {
-  groups: Group[]; state: FilterState; onChange: (s: FilterState) => void; counts: Map<string, number>;
+  groups: Group<any>[]; state: FilterState; onChange: (s: FilterState) => void; counts: Map<string, number>;
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>(readOpen);
   const [all, setAll] = useState<Record<string, boolean>>({});
   useEffect(() => { try { localStorage.setItem(OPEN_KEY, JSON.stringify(open)); } catch { /* fine */ } }, [open]);
 
-  const toggle = (g: Group, id: string) => {
+  const toggle = (g: Group<any>, id: string) => {
     const picked = state.sel[g.id] ?? [];
     const next = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id];
     // a quick price range and a custom one would fight: picking one clears the other
@@ -87,7 +87,7 @@ export function FilterPanel({ groups, state, onChange, counts }: {
 
 /** Phone: the same filters in a sheet, with the number of cards they'd show on the button. */
 export function FilterSheet({ groups, state, onChange, counts, shown, onClose }: {
-  groups: Group[]; state: FilterState; onChange: (s: FilterState) => void; counts: Map<string, number>; shown: number; onClose: () => void;
+  groups: Group<any>[]; state: FilterState; onChange: (s: FilterState) => void; counts: Map<string, number>; shown: number; onClose: () => void;
 }) {
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();

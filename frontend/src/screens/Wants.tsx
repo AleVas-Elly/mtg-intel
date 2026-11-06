@@ -47,10 +47,10 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
     return needle ? wishes.filter((w) => w.name.toLowerCase().includes(needle) || (w.set ?? "").toLowerCase() === needle ||
       (w.set_name ?? "").toLowerCase().includes(needle) || w.tags.some((t) => t.includes(needle))) : wishes;
   }, [wishes, q]);
-  const counts = useMemo(() => optionCounts(searched, groups, filters, data), [searched, groups, filters, data]);
+  const counts = useMemo(() => optionCounts(searched, groups, filters, (w) => priceOf(data, w), wishCount), [searched, groups, filters, data]);
 
   const shown = useMemo(() => {
-    const rows = applyFilters(searched, groups, filters, data);
+    const rows = applyFilters(searched, groups, filters, (w) => priceOf(data, w));
     const price = (w: Wish) => priceOf(data, w) ?? -1;
     const by: Record<string, (a: Wish, b: Wish) => number> = {
       deal: (a, b) => (dealGap(a, data.liveOf(a.key)) ?? 999) - (dealGap(b, data.liveOf(b.key)) ?? 999),

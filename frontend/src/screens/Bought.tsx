@@ -13,15 +13,15 @@ import { SetSymbol } from "../ui/symbols";
 import type { Purchase, PurchasesDoc } from "../types";
 import "./bought.css";
 
-const MARKET: Record<string, string> = { cardtrader: "CardTrader", cardmarket: "Cardmarket", other: "Elsewhere" };
+export const MARKET: Record<string, string> = { cardtrader: "CardTrader", cardmarket: "Cardmarket", other: "Elsewhere" };
 
 const sum = (rows: Purchase[], f: (p: Purchase) => number) => rows.reduce((t, p) => t + f(p), 0);
-const pct = (v: number) => `${Math.round(Math.abs(v) * 100)}%`;
-const signed = (v: number) => `${v >= 0 ? "+" : "−"}${eur(Math.abs(v))}`;
-const tone = (v: number) => (v > 0.005 ? "good" : v < -0.005 ? "bad" : "flat");
+export const pct = (v: number) => `${Math.round(Math.abs(v) * 100)}%`;
+export const signed = (v: number) => `${v >= 0 ? "+" : "−"}${eur(Math.abs(v))}`;
+export const tone = (v: number) => (v > 0.005 ? "good" : v < -0.005 ? "bad" : "flat");
 
 /** Paid, saved against the trend that day, and what the same cards are worth now. */
-function totals(rows: Purchase[]) {
+export function totals(rows: Purchase[]) {
   const compared = rows.filter((p) => p.cardmarket != null);
   const valued = rows.filter((p) => p.now != null);
   const trend = sum(compared, (p) => p.cardmarket!);
@@ -38,7 +38,7 @@ function totals(rows: Purchase[]) {
 
 interface Month { key: string; label: string; year: number; paid: number; market: number; saved: number; cards: number }
 
-const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+export const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 
 /** The last 6 to 12 months up to this one (as far back as the first purchase, at least 6). */
 function months(rows: Purchase[], today = new Date()): Month[] {
@@ -68,7 +68,7 @@ function niceMax(v: number): number {
   return ([1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= v) ?? 10 * mag);
 }
 
-function Months({ rows }: { rows: Purchase[] }) {
+export function Months({ rows }: { rows: Purchase[] }) {
   const data = useMemo(() => months(rows), [rows]);
   const [active, setActive] = useState<number | null>(null);
   const top = niceMax(Math.max(...data.map((m) => Math.max(m.paid, m.market))));
@@ -163,7 +163,7 @@ function groups(rows: Purchase[], by: By): Group[] {
   }), { label: `${rest.length} more`, paid: 0, cards: 0, saved: 0, trend: 0 })];
 }
 
-function Breakdown({ rows }: { rows: Purchase[] }) {
+export function Breakdown({ rows }: { rows: Purchase[] }) {
   const [by, setBy] = useState<By>("market");
   const list = useMemo(() => groups(rows, by), [rows, by]);
   const max = Math.max(...list.map((g) => g.paid), 0.01);

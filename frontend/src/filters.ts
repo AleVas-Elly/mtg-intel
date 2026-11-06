@@ -1,13 +1,14 @@
 // Want-list filters (spec D55): groups of options in the sidebar. Options in one group are
 // alternatives (Rare or Mythic); groups narrow each other (Rare and Blue).
 import type { AppData } from "./data";
-import { dealGap, wishCount } from "./data";
+import { dealGap } from "./data";
 import { cmTrend, langName, tagName } from "./format";
 import type { HistoryDoc, Wish } from "./types";
 
 export type Icon = { mana: string } | { set: string; rarity?: string | null } | { rarity: string };
-export interface Option { id: string; label: string; icon?: Icon; test: (w: Wish) => boolean }
-export interface Group { id: string; label: string; open: boolean; options: Option[]; show?: number }
+// Generic over what is filtered: wishes on the Want-list, owned cards in the Collection (D60).
+export interface Option<T = Wish> { id: string; label: string; icon?: Icon; test: (x: T) => boolean }
+export interface Group<T = Wish> { id: string; label: string; open: boolean; options: Option<T>[]; show?: number }
 
 export interface FilterState { sel: Record<string, string[]>; min: string; max: string }
 export const EMPTY: FilterState = { sel: {}, min: "", max: "" };
@@ -70,7 +71,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export const priceOf = (data: AppData, w: Wish) => cmTrend(w, data.liveOf(w.key)?.foil);
 
 /** Every group, its options built from the wishes on the list. */
-export function buildGroups(wishes: Wish[], data: AppData, history: HistoryDoc | null | undefined, today = Date.now()): Group[] {
+export function buildGroups(wishes: Wish[], data: AppData, history: HistoryDoc | null | undefined, today = Date.now()): Group<Wish>[] {
   const count = <T,>(key: (w: Wish) => T[]) => {
     const m = new Map<T, number>();
     for (const w of wishes) for (const k of key(w)) m.set(k, (m.get(k) ?? 0) + 1);
@@ -82,7 +83,7 @@ export function buildGroups(wishes: Wish[], data: AppData, history: HistoryDoc |
   const languages = count((w) => [w.language]);
 
   // fixed choices nobody on the list has (no commons, no battles) stay out of the way
-  const present = (opts: Option[]) => opts.filter((o) => wishes.some(o.test));
+  const present = (opts: Option<Wish>[]) => opts.filter((o) => wishes.some(o.test));
 
   return [
     { id: "list", label: "List", open: true, options: count((w) => w.lists).map((l) => ({ id: l, label: l, test: (w) => w.lists.includes(l) })) },
@@ -135,27 +136,28 @@ const num = (s: string) => { const v = parseFloat(s.replace(",", ".")); return N
 export const customPrice = (s: FilterState) => ({ min: num(s.min), max: num(s.max) });
 const hasCustom = (s: FilterState) => { const c = customPrice(s); return c.min != null || c.max != null; };
 
-/** Does the wish pass this group's picks? A group with nothing picked lets everything through. */
-function passes(w: Wish, g: Group, s: FilterState, data: AppData): boolean {
+/** Does the item pass this group's picks? A group with nothing picked lets everything through. */
+function passes<T>(x: T, g: Group<T>, s: FilterState, price: (x: T) => number | null): boolean {
   const picked = s.sel[g.id] ?? [];
   const custom = g.id === "price" && hasCustom(s);
   if (!picked.length && !custom) return true;
-  if (g.options.some((o) => picked.includes(o.id) && o.test(w))) return true;
+  if (g.options.some((o) => picked.includes(o.id) && o.test(x))) return true;
   if (!custom) return false;
-  const v = priceOf(data, w), c = customPrice(s);
+  const v = price(x), c = customPrice(s);
   return v != null && (c.min == null || v >= c.min) && (c.max == null || v <= c.max);
 }
 
-export function applyFilters(wishes: Wish[], groups: Group[], s: FilterState, data: AppData): Wish[] {
-  return wishes.filter((w) => groups.every((g) => passes(w, g, s, data)));
+export function applyFilters<T>(items: T[], groups: Group<T>[], s: FilterState, price: (x: T) => number | null): T[] {
+  return items.filter((x) => groups.every((g) => passes(x, g, s, price)));
 }
 
-/** Wishes each option would show, given every other group's picks (alternatives count once). */
-export function optionCounts(wishes: Wish[], groups: Group[], s: FilterState, data: AppData): Map<string, number> {
+/** Items each option would show, given every other group's picks (`count` decides what counts once). */
+export function optionCounts<T>(items: T[], groups: Group<T>[], s: FilterState, price: (x: T) => number | null,
+  count: (xs: T[]) => number = (xs) => xs.length): Map<string, number> {
   const out = new Map<string, number>();
   for (const g of groups) {
-    const rest = wishes.filter((w) => groups.every((h) => h === g || passes(w, h, s, data)));
-    for (const o of g.options) out.set(`${g.id}:${o.id}`, wishCount(rest.filter(o.test)));
+    const rest = items.filter((x) => groups.every((h) => h === g || passes(x, h, s, price)));
+    for (const o of g.options) out.set(`${g.id}:${o.id}`, count(rest.filter(o.test)));
   }
   return out;
 }

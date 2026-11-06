@@ -113,7 +113,9 @@ def purchases_doc(text: str, cards: pa.Table, now: datetime, cardmarket_day: pa.
     rows = mycards.read_csv_rows(text) if text.strip() else []
     ids = {r["scryfall_id"] for r in rows if r.get("scryfall_id")}
     mine = cards.filter(pc.is_in(cards["scryfall_id"], pa.array(sorted(ids)))) if ids else None
-    images = {c["scryfall_id"]: c for c in mine.select(["scryfall_id", "image_url", "rarity", "special_tags", "set_name"])
+    # what Collection's filters need (D60), where the card table has it
+    wanted = ["scryfall_id", "image_url", "rarity", "special_tags", "set_name", "mana_cost", "type_line", "colors"]
+    images = {c["scryfall_id"]: c for c in mine.select([c for c in wanted if c in mine.column_names])
               .to_pylist()} if mine is not None else {}
     worth: dict[str, tuple[float | None, float | None]] = {}
     if mine is not None and cardmarket_day is not None and "cardmarket_id" in mine.column_names:
@@ -134,7 +136,8 @@ def purchases_doc(text: str, cards: pa.Table, now: datetime, cardmarket_day: pa.
             "language": r.get("language") or None, "foil": r.get("foil") == "yes", "condition": r["condition"],
             "price": price, "market": r["market"], "cardmarket": trend,
             "saved": round(trend - price, 2) if trend is not None else None,
-            "thumb": scryfall_small(card.get("image_url")), "rarity": card.get("rarity"),
+            "thumb": scryfall_small(card.get("image_url")), "image": card.get("image_url"), "rarity": card.get("rarity"),
+            "mana_cost": card.get("mana_cost"), "type_line": card.get("type_line"), "colors": card.get("colors") or [],
             "tags": card.get("special_tags") or [], "set_name": card.get("set_name"), "lists": [x for x in (r.get("list") or "").split("; ") if x],
             "now": round(value, 2) if value is not None else None,
         })

@@ -1,0 +1,58 @@
+/* Dashboards and Collection (D60), on The Drop's tokens and the Bought dashboard's cards (bought.css). */
+.page.dash { max-width: 760px; }
+@media (min-width: 900px) { .page.dash { max-width: 1180px; } }
+.db-grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); margin-bottom: 10px; }
+@media (min-width: 900px) {
+  .db-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .db-card.wide { grid-column: 1 / -1; }
+}
+.db-card { display: flex; flex-direction: column; gap: 14px; animation: reveal 460ms var(--smooth) both; }
+.db-card .hint { margin: 0; }
+.db-card .good, .db-set-sub .good, .bt-stat .good { color: var(--good); }
+.db-card .bad, .bt-stat .bad { color: var(--bad); }
+.db-section { font-weight: 800; font-stretch: 110%; font-size: 21px; letter-spacing: -0.02em; padding: 30px 4px 12px; }
+.db-empty { color: var(--ink-3); font-size: 14px; line-height: 1.5; padding: 4px 0; }
+
+/* one value over time */
+.db-line { margin: 0; }
+.db-line svg { display: block; width: 100%; height: 170px; overflow: visible; }
+.db-area { fill: var(--ink); opacity: 0.07; }
+.db-path { fill: none; stroke: var(--ink); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.db-dot { fill: var(--live); stroke: var(--surface); stroke-width: 3; }
+.db-line figcaption { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; flex-wrap: wrap; }
+
+/* short card lists */
+.db-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.db-rows li { animation: reveal 420ms var(--smooth) both; animation-delay: calc(var(--i) * 35ms); }
+.db-rows li + li { border-top: 1px solid var(--line); }
+.db-row {
+  display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 9px 4px;
+  border: 0; background: none; color: inherit; text-align: left; cursor: pointer; border-radius: 12px; font: inherit;
+  transition: background 0.15s var(--ease);
+}
+.db-row:hover { background: var(--fill); }
+.db-row .thumb { width: 34px; }
+.db-row-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.db-row-main b { font-weight: 700; font-stretch: 106%; font-size: 14.5px; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-row-main > span { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-row-fig { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.db-row-fig b { font-size: 24px; }
+.db-row-fig small { font-size: 12px; color: var(--ink-3); }
+
+/* set completion */
+.db-sets { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px 28px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .db-sets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.db-sets li { display: flex; flex-direction: column; gap: 6px; animation: reveal 420ms var(--smooth) both; animation-delay: calc(var(--i) * 35ms); }
+.db-set-line { display: flex; justify-content: space-between; gap: 10px; font-size: 14.5px; }
+.db-set-name { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.db-set-name .set-sym { background: var(--ink-2); filter: none; }
+.db-bar { height: 8px; border-radius: 999px; background: var(--fill-strong); overflow: hidden; }
+.db-bar span { display: block; height: 100%; border-radius: inherit; background: var(--ink); transform-origin: left; animation: grow 700ms var(--smooth) both; }
+@keyframes grow { from { transform: scaleX(0); } }
+.db-set-sub { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; color: var(--ink-3); }
+
+/* the collection's own figure in rows: what a card is worth */
+.p-worth { font-size: 24px; font-stretch: 70%; font-weight: 800; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+:root[data-motion="calm"] .db-card, :root[data-motion="calm"] .db-rows li, :root[data-motion="calm"] .db-sets li { animation: fade 0.15s linear both; }
+:root[data-motion="calm"] .db-bar span { animation: none; }
+@media (max-width: 640px) { .wide-only { display: none; } }

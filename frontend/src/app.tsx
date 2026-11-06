@@ -2,13 +2,14 @@ import { useEffect, useState } from "preact/hooks";
 import { whenSignedOut } from "./api";
 import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
-import { IconBag, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconWants } from "./ui/icons";
+import { IconChart, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconStack, IconWants } from "./ui/icons";
 import { Gate, useAuth } from "./screens/Gate";
 import { Deals } from "./screens/Deals";
 import { Home } from "./screens/Home";
 import { Wants } from "./screens/Wants";
 import { Search } from "./screens/Search";
-import { Bought } from "./screens/Bought";
+import { Collection } from "./screens/Collection";
+import { Dashboards } from "./screens/Dashboards";
 import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
 import { Detail } from "./screens/Detail";
@@ -23,7 +24,7 @@ const TABS = [
   { path: "/", label: "Home", Icon: IconHome },
   { path: "/deals", label: "Deals", Icon: IconDeals },
   { path: "/wants", label: "Want-list", Icon: IconWants },
-  { path: "/bought", label: "Bought", Icon: IconBag },
+  { path: "/collection", label: "Collection", Icon: IconStack },
   { path: "/search", label: "Search", Icon: IconSearch },
   { path: "/check", label: "Check", Icon: IconCheck },
 ];
@@ -48,7 +49,8 @@ function Signed({ path, card }: { path: string; card: string | null }) {
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
   const screen =
     path === "/wants" ? <Wants data={data} card={card} /> :
-    path === "/bought" ? <Bought data={data} /> :
+    path === "/collection" || path === "/bought" ? <Collection data={data} card={card} /> :
+    path === "/dashboards" ? <Dashboards data={data} /> :
     path === "/search" ? <Search data={data} /> :
     path === "/check" ? <Check data={data} /> :
     path === "/settings" ? <Settings data={data} /> :
@@ -65,6 +67,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
           </a>
         ))}
         <div class="grow" />
+        <a href="/dashboards" onClick={link("/dashboards")} aria-current={path === "/dashboards" ? "page" : undefined}><IconChart />Dashboards</a>
         <a href="/settings" onClick={link("/settings")} aria-current={path === "/settings" ? "page" : undefined}><IconSettings />Settings</a>
       </nav>
       <main class="main">
@@ -76,7 +79,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       <ToastView />
       <nav class="tabbar" aria-label="Main">
         {PHONE_TABS.map(({ path: p, label, Icon }) => (
-          <a class="tab" href={p} onClick={link(p)} aria-current={path === p ? "page" : undefined}><Icon />{label}</a>
+          <a class="tab" href={p} onClick={link(p)} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
         ))}
       </nav>
     </div>

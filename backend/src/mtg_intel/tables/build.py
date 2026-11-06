@@ -285,7 +285,8 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
     # printings rebuilds it from every day.
     watch_table = current("my/watch.parquet")
     if watch_table is not None:
-        history = update_price_history(store, state, out, watch_table, cards, current, cm_days, mj_days)
+        history = update_price_history(store, state, out, watch_table, cards, current, cm_days, mj_days,
+                                       owned=owned_ids(store, current))
         if history is not None:
             stage("my/price_history.parquet", history)
 
@@ -312,14 +313,30 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
     return report
 
 
+PURCHASES = "my/inputs/purchases.csv"
+
+
+def owned_ids(store: TableStore, current) -> set[str]:
+    """Printings I own (D60): every purchase, and the collection table once ManaBox is imported, so a
+    card I bought keeps its price history after it leaves the want-list."""
+    ids: set[str] = set()
+    found = store.fetch(PURCHASES)
+    if found:
+        ids |= {r["scryfall_id"] for r in mycards.read_csv_rows(mycards.read_text(found)) if r.get("scryfall_id")}
+    collection = current("my/collection.parquet")
+    if collection is not None and "scryfall_id" in collection.column_names:
+        ids |= {i for i in collection.column("scryfall_id").to_pylist() if i}
+    return ids
+
+
 def update_price_history(store: TableStore, state: dict, out: Path, watch: pa.Table, cards: pa.Table | None,
-                         current, cm_days: dict, mj_days: dict) -> pa.Table | None:
+                         current, cm_days: dict, mj_days: dict, owned: set[str] | None = None) -> pa.Table | None:
     """`my/price_history` (scryfall_id, price_date, source, finish, trend, low, avg7), or None when
     nothing changed. Cardmarket rows follow the printing's own Cardmarket ID (as the watch table
     does); MTGJSON rows follow its uuid."""
     import duckdb
 
-    ids = sorted({i for i in watch.column("scryfall_id").to_pylist() if i})
+    ids = sorted({i for i in watch.column("scryfall_id").to_pylist() if i} | (owned or set()))
     fingerprint = hashlib.sha256("\n".join(ids).encode()).hexdigest()
     done = state.get("price_history") or {}
     full = done.get("ids") != fingerprint

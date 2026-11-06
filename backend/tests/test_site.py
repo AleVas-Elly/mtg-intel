@@ -181,3 +181,18 @@ def test_a_new_cardmarket_day_resends_purchases():
 
     assert "purchases" in keys and sent["purchases"]["purchases"][0]["now"] == 2.5
     assert sent["purchases"]["price_date"] == "2026-11-06"
+
+
+def test_purchases_doc_carries_what_collection_filters_need():
+    from mtg_intel.tables import mycards
+
+    cards = pa.table({"scryfall_id": ["sf-1"], "image_url": ["https://cards.scryfall.io/normal/front/a.jpg"],
+                      "rarity": ["rare"], "special_tags": [[]], "set_name": ["A"], "mana_cost": ["{1}{U}"],
+                      "type_line": ["Legendary Creature — Halfling"], "colors": [["U"]]})
+    text = mycards.append_purchases("", [{"date": "2026-10-20", "name": "A", "scryfall_id": "sf-1", "foil": "no",
+                                          "condition": "NM", "price_eur": "3", "market": "cardtrader"}])
+
+    p = site.purchases_doc(text, cards, NOW)["purchases"][0]
+
+    assert (p["image"], p["mana_cost"], p["type_line"], p["colors"]) == (
+        "https://cards.scryfall.io/normal/front/a.jpg", "{1}{U}", "Legendary Creature — Halfling", ["U"])
