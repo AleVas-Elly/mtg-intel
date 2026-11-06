@@ -534,6 +534,12 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
     before = copy.deepcopy(book)
     since = datetime.fromisoformat(book.get("since", now.isoformat())).date() - timedelta(days=1)
     orders = account.purchases(max(since, (now - timedelta(days=lifecycle.ORDER_DAYS)).date()))
+    box = account.zero_box()
+    if orders is not None and box is not None:
+        # Zero purchases come from the live box; a Zero order is only the week's box, merged later.
+        orders = [o for o in orders if not o.get("via_cardtrader_zero")] + lifecycle.box_orders(box)
+    else:
+        orders = None
     bought: dict[int, float] = {}
     if orders is not None:
         edits, bought = lifecycle.purchase_edits(orders, watch, book, now)

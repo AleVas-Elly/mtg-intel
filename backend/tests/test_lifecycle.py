@@ -225,3 +225,17 @@ def test_a_purchase_seen_late_turns_a_missed_alert_into_bought():
     log = lifecycle.refresh(alerts, result, [wish()], {"subcarts": []}, {77: 2.5}, tg, FakeAccount(), NOW)
     assert alerts["1"]["state"] == "bought" and log == ["Loki: bought after all"]
     assert tg.edits[0][1]["media"]["media"] == "https://s/img/b.jpg"
+
+
+def test_zero_box_purchases_are_recorded_and_refunds_taken_back():
+    book = {"since": "2026-11-06T12:00:00+00:00"}
+    box = [{"id": 9, "quantity": {"pending": 1}, "product_id": 500, "blueprint_id": 10, "scryfall_id": "sf-loki",
+            "name": "Loki, God of Mischief", "buyer_price": {"cents": 288}, "paid_at": "2026-11-06T16:50:00.000Z",
+            "properties": {"condition": "Near Mint", "mtg_language": "en", "mtg_foil": False}},
+           {"id": 8, "quantity": {"ok": 1}, "product_id": 400, "scryfall_id": "sf-x", "buyer_price": {"cents": 100},
+            "paid_at": "2026-05-01T10:00:00Z", "properties": {}}]  # bought before the feature: left alone
+    edits, bought = lifecycle.purchase_edits(lifecycle.box_orders(box), [wish()], book, NOW)
+    assert [(e["op"], e["purchase"]["note"]) for e in edits] == [("bought", "Zero box 9 #500")] and bought == {500: 2.88}
+    box[0]["quantity"] = {"missing": 1}  # not available after all: refunded
+    undo, bought = lifecycle.purchase_edits(lifecycle.box_orders(box), [wish()], book, NOW + timedelta(hours=1))
+    assert [(e["op"], e["note"]) for e in undo] == [("unbought", "Zero box 9 #500")] and bought == {}

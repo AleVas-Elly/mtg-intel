@@ -282,7 +282,7 @@ def _recorded(purchases: list[dict[str, str]], row: dict[str, str]) -> str | Non
         if row["note"] and p.get("note") == row["note"]:
             return "already recorded"
         if (p.get("scryfall_id") == row["scryfall_id"] and p.get("price_eur") == row["price_eur"]
-                and p.get("market") == "cardtrader" and not (p.get("note") or "").startswith("CT order")
+                and p.get("market") == "cardtrader" and not (p.get("note") or "").startswith(("CT order", "Zero box"))
                 and p.get("date") and abs((date.fromisoformat(p["date"]) - date.fromisoformat(row["date"])).days) <= 3):
             return "already recorded by hand"
     return None
@@ -311,7 +311,7 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
             results.append({"id": op.get("id"), "ok": False, "message": problem})
             continue
         if kind == "bought" and keys.get(str(op.get("key"))) is None and \
-                str((op.get("purchase") or {}).get("note") or "").startswith("CT order"):
+                str((op.get("purchase") or {}).get("note") or "").startswith(("CT order", "Zero box")):
             # A CardTrader purchase whose wish is gone already (bought twice, removed): my collection.
             card = op.get("card") or {}
             kind, op = "collected", op | {"card_row": {"name": card.get("name"), "set_code": card.get("set"),

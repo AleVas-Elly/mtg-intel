@@ -79,6 +79,19 @@ class Account:
         r = self._call("POST", "/cart/remove", json={"product_id": product_id, "quantity": quantity})
         return r is not None and r.status_code == 200
 
+    def zero_box(self) -> list[dict] | None:
+        """My CardTrader Zero box: every copy bought via Zero and not shipped yet, live (a Zero
+        purchase only becomes an order when the week's box is merged and shipped). Only what a
+        purchase needs is kept: sellers' contact details are dropped at once."""
+        r = self._call("GET", "/ct0_box_items")
+        if r is None or r.status_code != 200:
+            return None
+        body = r.json()
+        items = body if isinstance(body, list) else body.get("array") or []
+        keep = ("id", "quantity", "product_id", "blueprint_id", "name", "expansion", "properties", "buyer_price",
+                "scryfall_id", "paid_at", "cancelled_at")
+        return [{k: i.get(k) for k in keep} for i in items]
+
     def purchases(self, since: date) -> list[dict] | None:
         """My CardTrader orders as a buyer since `since`, newest first (up to 500)."""
         out: list[dict] = []
@@ -128,7 +141,8 @@ def _matches(wish: dict[str, Any], item: dict[str, Any]) -> bool:
 
 
 def _marker(order: dict[str, Any], item: dict[str, Any]) -> str:
-    return f"CT order {order.get('code') or order['id']} #{item.get('product_id')}"
+    code = order.get("code") or order["id"]
+    return f"{code if str(code).startswith('Zero box') else 'CT order ' + str(code)} #{item.get('product_id')}"
 
 
 def _purchase(order: dict, item: dict, wish: dict | None, now: datetime) -> dict[str, str]:
@@ -163,6 +177,20 @@ def _card(wish: dict[str, Any]) -> dict[str, Any]:
             "scryfall_id": wish.get("scryfall_id"), "thumb": image.replace("/normal/", "/small/") if image else None,
             "tags": wish.get("special_tags") or [], "set_name": wish.get("set_name"),
             "lists": [x for x in (wish.get("list") or "").split("; ") if x]}
+
+
+def box_orders(box: list[dict]) -> list[dict]:
+    """My Zero box items as one-item orders: bought copies (`ok` or `pending`), or cancelled when
+    CardTrader refunded them (`missing`)."""
+    out = []
+    for b in box:
+        q = b.get("quantity") or {}
+        bought = int(q.get("ok") or 0) + int(q.get("pending") or 0)
+        state = "paid" if bought else "canceled" if q.get("missing") or b.get("cancelled_at") else None
+        if state:
+            out.append({"id": f"box{b['id']}", "code": f"Zero box {b['id']}", "state": state, "paid_at": b.get("paid_at"),
+                        "order_items": [b | {"quantity": bought or int(q.get("missing") or 1)}]})
+    return out
 
 
 def purchase_edits(orders: list[dict], watch: list[dict[str, Any]], book: dict[str, Any],
