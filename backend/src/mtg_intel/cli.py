@@ -572,9 +572,13 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
         for line in lifecycle.refresh(alerts, result, watch, cart, bought, telegram, account, now):
             print(f"ALERT  {line}")
 
-    # 3. New deals: into the cart first, then the alert.
+    # 3. New deals: into the cart first, then the alert. A deal still standing from before live alerts
+    # (announced by the old plain alerts, so not "new") gets its live alert once.
+    known = {a["key"] for a in alerts.values()}
+    before_live = [d for d in result.deals if d not in result.new and d.key not in known
+                   and alerted.get(d.key, {}).get("at", "") < LIVE_SINCE]
     sent: list[bool] = []
-    for d in result.new[:MAX_DEAL_MESSAGES]:
+    for d in (result.new + before_live)[:MAX_DEAL_MESSAGES]:
         open_alert = next((a for a in alerts.values() if not a.get("closed") and a["key"] == d.key), None)
         if open_alert and (open_alert["product_id"] == d.listing.id or d.listing.price >= open_alert["price"] - 0.005):
             continue  # already alerted and still live
@@ -673,7 +677,8 @@ CARDTRADER_BUDGET = timedelta(minutes=3, seconds=30)  # past this, a check stops
 # CardTrader allows 10 marketplace requests a second (API reference, checked 2026-11-06): half of
 # that keeps a full check of ~210 cards near 45 seconds instead of 3.5 minutes.
 CHECK_INTERVAL = 0.2
-GONE_KEEP = timedelta(days=14)  # a copy the cart said is gone is ignored this long
+GONE_KEEP = timedelta(days=14)
+LIVE_SINCE = "2026-11-06T15:23"  # live deal alerts (D54) started: deals alerted before get one live alert  # a copy the cart said is gone is ignored this long
 CARDTRADER_TIMEOUT = 20  # seconds per CardTrader request (each is retried twice)
 
 
