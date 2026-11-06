@@ -370,3 +370,13 @@ def test_details_are_spaced_trend_sections():
     assert head == "✅ Good deal · <b>Loki, God of Mischief</b> · €2.88"
     assert details == ("<blockquote expandable><b>📈 Cardmarket trend · 90 days</b>\n▁▂▃\nLowest €3.00 · 1 Oct\n\n"
                        "<b>📉 CardTrader, cheapest copy · since 20 Oct</b>\n▃▁\nLowest €2.88 · 6 Nov</blockquote>")
+
+
+def test_copies_the_cart_said_are_gone_count_for_nothing():
+    watch = [wish()]
+    listings = {10: [item(id=1, cents=150), item(id=2, cents=300)]}
+    assert [d.listing.id for d in deals.check(fake_session(listings), watch, {}, NOW).deals] == [1]
+    # The €1.50 ghost no longer hides the €3.00 copy, a deal on its own (36% under €4.67).
+    result = deals.check(fake_session(listings), watch, {}, NOW, ignore={1})
+    assert [d.listing.id for d in result.deals] == [2] and 1 not in result.seen
+    assert all(r["min_price"] == 3.0 for r in result.summary)  # nor does it lower the usual price

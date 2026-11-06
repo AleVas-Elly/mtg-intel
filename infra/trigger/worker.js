@@ -5,7 +5,7 @@
 import { telegramUpdate } from "./telegram.ts";
 
 const SCHEDULE = {
-  "7,17,27,37,47,57 * * * *": ["deals.yml"], // deal check every 10 minutes
+  "2,7,12,17,22,27,32,37,42,47,52,57 * * * *": ["deals.yml"], // deal check every 5 minutes (D55)
   "17 2,8,14 * * *": ["grab.yml"], // data grab 3 times a day
 };
 

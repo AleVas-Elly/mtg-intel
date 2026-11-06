@@ -261,11 +261,13 @@ def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) 
 
 def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime,
           history: dict[int, list[dict[str, Any]]] | None = None,
-          out_of_time: Callable[[], bool] = lambda: False) -> CheckResult:
+          out_of_time: Callable[[], bool] = lambda: False, ignore: set[int] | None = None) -> CheckResult:
     """Ask CardTrader about every wished card once, find deals, decide which are new.
     `history` holds earlier check summaries per blueprint, for the usual CardTrader price.
     Once `out_of_time()` says so, the cards still to ask count as failed: a slow CardTrader must
-    not stretch one check over the next ones (two hung for 25 minutes on 2026-11-03).
+    not stretch one check over the next ones (two hung for 25 minutes on 2026-11-03). Listings in
+    `ignore` are copies CardTrader's cart said are gone (its listing feed is cached and keeps showing
+    some for days, D54): they count for nothing, neither as a deal nor in the usual price.
 
     `alerted` (key -> {listing, price, at}) is updated in place: deals that are gone are forgotten,
     so a later deal on the same wish alerts again.
@@ -283,7 +285,8 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
         if not isinstance(body, dict):
             result.failed_blueprints.append(blueprint_id)
             continue
-        listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or []) if x]
+        listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or [])
+                    if x and x.id not in (ignore or ())]
         result.seen.update(x.id for x in listings)
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:

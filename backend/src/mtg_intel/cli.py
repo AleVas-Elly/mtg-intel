@@ -519,6 +519,7 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
     account = lifecycle.Account(client, token)
     telegram = lifecycle.Telegram(client, tg_token, chat)
     alerts: dict[str, dict] = state.setdefault("alerts", {})
+    alerted: dict[str, dict] = state.setdefault("alerted", {})
 
     # 1. My cart, then my purchases (in this order: a copy I pay for in between shows as bought, never
     # as sold to someone else). Purchases become want-list edits; the site starts the wantlist run.
@@ -562,6 +563,8 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
             cart = after or cart
         if status == "gone":
             print(f"NOT ALERTED  {d.wish['name']} €{d.listing.price:.2f}: CardTrader says this copy is gone")
+            state.setdefault("gone", {})[str(d.listing.id)] = now.isoformat()
+            alerted.pop(d.key, None)  # the next real copy of this wish alerts as new
             continue
         if open_alert:
             lifecycle.finish(open_alert, lifecycle.Verdict("replaced", "⬇️ A cheaper copy was found · see the newer alert"),
@@ -589,9 +592,13 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
 
 PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c); phase 4's collection starts here
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
-SKIP_AFTER = timedelta(minutes=8)  # a scheduled (fallback) run this soon after a check is redundant
-SLOW_CHECK = timedelta(minutes=8)  # checks start every 10 minutes (D48)
-CARDTRADER_BUDGET = timedelta(minutes=7)  # past this, a check stops asking and saves what it has
+SKIP_AFTER = timedelta(minutes=4)  # a scheduled (fallback) run this soon after a check is redundant
+SLOW_CHECK = timedelta(minutes=4)  # checks start every 5 minutes (D48, D55)
+CARDTRADER_BUDGET = timedelta(minutes=3, seconds=30)  # past this, a check stops asking and saves what it has
+# CardTrader allows 10 marketplace requests a second (API reference, checked 2026-11-06): half of
+# that keeps a full check of ~210 cards near 45 seconds instead of 3.5 minutes.
+CHECK_INTERVAL = 0.2
+GONE_KEEP = timedelta(days=14)  # a copy the cart said is gone is ignored this long
 CARDTRADER_TIMEOUT = 20  # seconds per CardTrader request (each is retried twice)
 
 
@@ -660,10 +667,14 @@ def check_deals(args: argparse.Namespace) -> int:
 
     with httpx.Client(timeout=CARDTRADER_TIMEOUT) as client:
         site_store = Site.from_env(client) if to_site else None
-        session = Session(client, token, out=None)
+        session = Session(client, token, out=None, interval=CHECK_INTERVAL)
         started = time.monotonic()
+        gone = state.setdefault("gone", {})  # copies CardTrader's cart said are gone (D54)
+        for pid in [p for p, at in gone.items() if now - datetime.fromisoformat(at) > GONE_KEEP]:
+            del gone[pid]
         result = deals.check(session, watch, alerted, now, history,
-                             out_of_time=lambda: time.monotonic() - started > CARDTRADER_BUDGET.total_seconds())
+                             out_of_time=lambda: time.monotonic() - started > CARDTRADER_BUDGET.total_seconds(),
+                             ignore={int(p) for p in gone})
         targets = deals.cardmarket_targets(watch, alerted, now)
         site_url, site_token = os.environ.get("SITE_URL"), os.environ.get("SITE_INGEST_TOKEN")
 
@@ -755,7 +766,9 @@ def check_deals(args: argparse.Namespace) -> int:
         if site_store:
             try:  # the website's copy (D49); a failure here never stops the alerts or the saved check
                 site_store.put("live", site.live_doc(result, watch, now, site_store.get("live")))
-                site_store.put("ct-recent", site.ct_recent_doc(site_store.get("ct-recent"), result, now))
+                if now.minute % 10 < 5:  # every other check: the 48-hour chart keeps 10-minute steps,
+                    # and the site's free 1,000 writes a day stay well away
+                    site_store.put("ct-recent", site.ct_recent_doc(site_store.get("ct-recent"), result, now))
                 if packing:
                     site_store.put("ct-history", site.ct_history_doc(watch, site_history))
                 print("site updated")
