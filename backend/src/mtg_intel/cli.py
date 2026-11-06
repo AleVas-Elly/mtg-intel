@@ -583,10 +583,23 @@ def check_deals(args: argparse.Namespace) -> int:
             return site.preview_url(site_url, site_token, d.key, d.wish.get("image_url"), printing or d.wish["name"],
                                     copy, now, d.wish.get("set_name") or "mtg-intel")
 
+        history_rows: dict[str, list[dict]] = {}
+        if result.new:  # the price trend shown in each alert's details
+            try:
+                path = store.fetch("my/price_history.parquet", fresh=False)
+                ids = sorted({d.wish["scryfall_id"] for d in result.new if d.wish.get("scryfall_id")})
+                if path and ids:
+                    for r in pq.read_table(path, filters=[("scryfall_id", "in", ids)]).to_pylist():
+                        history_rows.setdefault(r["scryfall_id"], []).append(r)
+            except Exception as e:  # noqa: BLE001 - the alert goes without a trend rather than not at all
+                print(f"WARNING  price history not read: {e}", file=sys.stderr)
+
         def rich(d: deals.Deal):
             # The deal's image (D53) is drawn only for alerts that go out on their own.
             image = None if args.dry_run else dealimage.deal_image(client, d)
-            return deals.telegram(d, site_url, preview(d), image)
+            foil = d.listing.foil or (bool(d.wish.get("finishes")) and "nonfoil" not in d.wish["finishes"])
+            points = deals.trend_points(history_rows.get(d.wish.get("scryfall_id") or "", []), foil)
+            return deals.telegram(d, site_url, preview(d), image, deals.price_trend(points, d.cardmarket))
 
         messages = ([(*deals.message(d), rich(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
                     + [(*deals.message(d), None) for d in result.new[MAX_DEAL_MESSAGES:]]

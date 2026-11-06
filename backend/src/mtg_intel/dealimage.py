@@ -2,7 +2,7 @@
 
 Drawn in the deal check with Pillow, in the site's typeface (Figtree, `assets/`, SIL Open Font
 License) and the site's dark colours. Telegram shows a photo at the width of the chat bubble, so
-the image is tall (4:5) and its type is large: the smallest line is about 3% of the width.
+its type is large (the smallest line is about 2.5% of the width), and it is wider than tall.
 """
 
 from __future__ import annotations
@@ -17,8 +17,9 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 from mtg_intel import deals
 
 FONT = Path(__file__).parent / "assets" / "figtree.woff2"
-W = 1080  # px; height follows the content
-PAD = 56
+W = 1080  # px; height follows the content, about 0.7 of the width
+PAD = 48
+CARD_H = 660  # px; the card is about 470 wide
 S = 2  # drawn at twice the size, then scaled down for smooth edges
 
 INK, MUTED, LINE, BG = "#f5f5f7", "#a1a1aa", "#3a3a3c", "#1c1c1e"
@@ -26,10 +27,6 @@ GOOD, BAD = "#2fcf96", "#ff8a80"
 # The site's dark tier colours (frontend styles.css), by the tier's base %: background, text.
 TIER_COLOURS = {20.0: ("#2a2150", "#c3b4ff"), 30.0: ("#5b3fd6", "#ffffff"), 40.0: ("#a58cff", "#170a3d")}
 TARGET_COLOURS = ("#3a3a3c", INK)
-CONDITION_NAMES = {"NM": "Near Mint", "SP": "Slightly Played", "MP": "Moderately Played", "PL": "Played", "PO": "Poor"}
-LANGUAGE_NAMES = {"en": "English", "ja": "Japanese", "jp": "Japanese", "it": "Italian", "fr": "French", "de": "German",
-                  "es": "Spanish", "pt": "Portuguese", "ko": "Korean", "ru": "Russian", "zhs": "Chinese",
-                  "zh-cn": "Chinese", "zht": "Chinese (trad.)", "zh-tw": "Chinese (trad.)"}
 COUNTRIES = {"IT": "Italy", "DE": "Germany", "FR": "France", "ES": "Spain", "NL": "the Netherlands", "BE": "Belgium",
              "AT": "Austria", "PT": "Portugal", "PL": "Poland", "IE": "Ireland", "LU": "Luxembourg", "DK": "Denmark",
              "SE": "Sweden", "FI": "Finland", "CZ": "Czechia", "SK": "Slovakia", "SI": "Slovenia", "HR": "Croatia",
@@ -45,8 +42,6 @@ class Panel:
     pill: str
     tier_pct: float | None
     name: str
-    printing: str
-    copy: str
     price: str
     saving: str
     markets: list[tuple[str, str, str]]  # market, its prices, how far under its usual
@@ -61,10 +56,6 @@ def panel(deal: deals.Deal) -> Panel:
     else:
         pill = "TARGET PRICE"
         saving = f"at or under your €{w['max_price_eur']:.2f} target" if w.get("max_price_eur") is not None else ""
-    printing = " · ".join(p for p in [w.get("set_name") or "", deals.version_line(deal)[0]] if p)
-    grade = deals.CONDITION_GRADE.get(x.condition, "")
-    copy = " · ".join(p for p in [CONDITION_NAMES.get(grade, x.condition), LANGUAGE_NAMES.get(x.language, x.language.upper()),
-                                  "Foil" if x.foil else "Non-foil", "Zero" if x.zero else ""] if p)
     markets = []
     if deal.cardtrader:
         usual = "usually" if deal.cardtrader_kind == "usual price" else "next copy"
@@ -80,8 +71,8 @@ def panel(deal: deals.Deal) -> Panel:
             markets.append(("Cardmarket", f"trend €{deal.cardmarket:.2f}", deals._less(x.price, deal.cardmarket)))
     footer = " · ".join(p for p in [f"Seller in {COUNTRIES.get(x.country, x.country)}" if x.country else "",
                                     f"{w['list']} list" if w.get("list") else ""] if p)
-    return Panel(pill, deal.tier[0] if deal.tier else None, deals.front_name(w["name"]), printing, copy,
-                 f"€{x.price:.2f}", saving, markets, footer)
+    return Panel(pill, deal.tier[0] if deal.tier else None, deals.front_name(w["name"]), f"€{x.price:.2f}", saving,
+                 markets, footer)
 
 
 def _font(size: int, weight: int) -> ImageFont.FreeTypeFont:
@@ -111,80 +102,72 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, wi
 
 
 def render(p: Panel, card: Image.Image) -> bytes:
-    """The image as PNG bytes."""
+    """The image as PNG bytes: the card on the left, everything else in one column beside it.
+    Wider than tall, so Telegram shows it at the bubble's full width (a taller one gets bars at
+    the sides; user, 2026-11-06)."""
     img = Image.new("RGB", (W * S, 2000 * S), BG)
     draw = ImageDraw.Draw(img)
+    ch = CARD_H * S
+    cw = round(ch * card.width / card.height)
 
-    # The card on the left, with Magic's rounded corners and a soft shadow.
-    cw = 430 * S
-    ch = round(cw * card.height / card.width)
+    # The column beside the card: strength, name, price and saving, then each market against its own
+    # usual price. Drawn first, so the image can grow when a long name needs more lines.
+    x = (PAD + 44) * S + cw
+    width = W - (x // S) - PAD
+    right = x + width * S
+    y = PAD * S
+    bg, ink = TIER_COLOURS.get(p.tier_pct, TARGET_COLOURS) if p.tier_pct else TARGET_COLOURS
+    pill = _font(28, 750)
+    pw = draw.textlength(p.pill, font=pill) + 40 * S
+    draw.rounded_rectangle((x, y, x + pw, y + 54 * S), radius=27 * S, fill=bg)
+    draw.text((x + 20 * S, y + 27 * S), p.pill, font=pill, fill=ink, anchor="lm")
+    y += 80 * S
+    name = _font(50, 750)
+    for line in _wrap(draw, p.name, name, width, 3):
+        draw.text((x, y), line, font=name, fill=INK)
+        y += 60 * S
+    y += 18 * S
+    size = 120
+    while size > 64 and draw.textlength(p.price, font=_font(size, 800)) > width * S:
+        size -= 6
+    draw.text((x, y), p.price, font=_font(size, 800), fill=INK)
+    y += round(size * 1.1) * S
+    side = _font(34, 650)
+    for line in _wrap(draw, p.saving, side, width, 2):
+        draw.text((x, y), line, font=side, fill=GOOD)
+        y += 44 * S
+    label, prices = _font(32, 750), _font(29, 450)
+    for market, text, under in p.markets:
+        y += 16 * S
+        draw.line((x, y, right, y), fill=LINE, width=2 * S)
+        y += 18 * S
+        draw.text((x, y), market, font=label, fill=INK)
+        if under:
+            draw.text((right, y), under, font=label, fill=GOOD if under.startswith("−") else BAD, anchor="ra")
+        y += 42 * S
+        for line in _wrap(draw, text, prices, width, 2, sep=" · "):
+            draw.text((x, y), line, font=prices, fill=MUTED)
+            y += 38 * S
+    if p.footer:
+        y += 18 * S
+        for line in _wrap(draw, p.footer, _font(26, 450), width, 2, sep=" · "):
+            draw.text((x, y), line, font=_font(26, 450), fill=MUTED)
+            y += 34 * S
+    height = max(y + PAD * S, ch + 2 * PAD * S)
+
+    # The card, centred top to bottom, with Magic's rounded corners and a soft shadow.
     art = card.convert("RGB").resize((cw, ch), Image.LANCZOS)
     radius = round(cw * 0.047)
     mask = Image.new("L", (cw, ch), 0)
     ImageDraw.Draw(mask).rounded_rectangle((0, 0, cw - 1, ch - 1), radius=radius, fill=255)
-    x0 = y0 = PAD * S
+    x0, y0 = PAD * S, (height - ch) // 2
     shadow = Image.new("L", img.size, 0)
     ImageDraw.Draw(shadow).rounded_rectangle((x0, y0 + 14 * S, x0 + cw, y0 + ch + 14 * S), radius=radius, fill=160)
     img.paste(Image.new("RGB", img.size, "#000000"), (0, 0), shadow.filter(ImageFilter.GaussianBlur(20 * S)))
     img.paste(art, (x0, y0), mask)
 
-    # Beside it: the strength, the card and the copy.
-    x = x0 + cw + 44 * S
-    width = W - (x // S) - PAD
-    y = y0 + 6 * S
-    bg, ink = TIER_COLOURS.get(p.tier_pct, TARGET_COLOURS) if p.tier_pct else TARGET_COLOURS
-    pill = _font(30, 750)
-    pw = draw.textlength(p.pill, font=pill) + 44 * S
-    draw.rounded_rectangle((x, y, x + pw, y + 58 * S), radius=29 * S, fill=bg)
-    draw.text((x + 22 * S, y + 29 * S), p.pill, font=pill, fill=ink, anchor="lm")
-    y += 92 * S
-    name = _font(56, 750)
-    for line in _wrap(draw, p.name, name, width, 4):
-        draw.text((x, y), line, font=name, fill=INK)
-        y += 66 * S
-    y += 18 * S
-    small = _font(34, 450)
-    for text in (p.printing, p.copy):
-        for line in _wrap(draw, text, small, width, 3, sep=" · "):
-            draw.text((x, y), line, font=small, fill=MUTED)
-            y += 44 * S
-        y += 12 * S
-
-    # Under it, full width: the price, then each market against its own usual price.
-    x = x0
-    full = (W - 2 * PAD) * S
-    y = max(y, y0 + ch) + 52 * S
-    big = _font(150, 800)
-    draw.text((x, y), p.price, font=big, fill=INK, anchor="lt")
-    px = x + draw.textlength(p.price, font=big) + 32 * S
-    side = _font(38, 650)
-    if px + draw.textlength(p.saving, font=side) <= x + full:
-        draw.text((px, y + 52 * S), p.saving, font=side, fill=GOOD, anchor="ls")
-        draw.text((px, y + 104 * S), "on CardTrader", font=_font(34, 450), fill=MUTED, anchor="ls")
-        y += 170 * S
-    else:  # a long price or saving: the saving goes under the price
-        y += 170 * S
-        draw.text((x, y), p.saving, font=side, fill=GOOD)
-        draw.text((x, y + 52 * S), "on CardTrader", font=_font(34, 450), fill=MUTED)
-        y += 116 * S
-    label, text, pct = _font(36, 750), _font(36, 450), _font(36, 750)
-    for market, prices, under in p.markets:
-        y += 8 * S
-        draw.line((x, y, x + full, y), fill=LINE, width=2 * S)
-        y += 30 * S
-        draw.text((x, y), market, font=label, fill=INK)
-        draw.text((x + 250 * S, y), prices, font=text, fill=MUTED)
-        if under:
-            draw.text((x + full, y), under, font=pct, fill=GOOD if under.startswith("−") else BAD, anchor="ra")
-        y += 62 * S
-    if p.footer:
-        y += 28 * S
-        draw.text((x, y), p.footer, font=_font(30, 450), fill=MUTED)
-        y += 40 * S
-    y += PAD * S
-
     out = io.BytesIO()
-    img.crop((0, 0, W * S, y)).resize((W, y // S), Image.LANCZOS).save(out, "PNG", optimize=True)
+    img.crop((0, 0, W * S, height)).resize((W, height // S), Image.LANCZOS).save(out, "PNG", optimize=True)
     return out.getvalue()
 
 

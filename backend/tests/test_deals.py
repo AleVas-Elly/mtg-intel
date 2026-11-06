@@ -173,7 +173,7 @@ def test_telegram_message_shows_both_markets_against_their_usual_and_details_beh
                                 "<b>Cardmarket</b>  from €3.00 · trend €4.67 (−36%)"]
     assert preview == "https://site.example/p/x"
     assert more.startswith("Judged against the higher usual price, €4.67: a deal from 30% under.")
-    assert "Cardmarket 7-day average €4.59." in more and "Seller in IT · List: Marvel" in more
+    assert "Seller in IT · List: Marvel" in more and "7-day average" not in more  # the price trend replaces it
     assert buttons[0] == [{"text": "🛒 Bought it", "callback_data": "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|en|no|288|NM|0|en"}]
     assert [b["text"] for b in buttons[1]] == ["CardTrader", "Cardmarket", "Site"]
     assert buttons[1][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
@@ -303,13 +303,11 @@ def test_deal_image_says_what_makes_it_a_deal_and_draws():
                            usual=4.10)
     p = dealimage.panel(deal)
     assert (p.pill, p.name, p.price, p.saving) == ("GOOD DEAL · 38% UNDER", "Loki, God of Mischief", "€2.88", "€1.79 less than usual")
-    assert p.printing == "Marvel Super Heroes · MSH #343 · Borderless"
-    assert p.copy == "Near Mint · English · Non-foil · Zero"
     assert p.markets == [("CardTrader", "usually €4.10", "−30%"), ("Cardmarket", "from €3.00 · trend €4.67", "−36%")]
     assert p.footer == "Seller in Italy · Marvel list"
     png = dealimage.render(p, Image.new("RGB", (488, 680), "#335533"))
     image = Image.open(io.BytesIO(png))
-    assert image.width == 1080 and 1000 < image.height < 1400
+    assert image.width == 1080 and 650 < image.height < 900  # wider than tall: no side bars
     # The photo goes with a one-line caption (lock screen) and the details behind a tap.
     rich = deals.telegram(deal, photo=png)
     assert rich.photo == png and rich.caption.startswith("✅ Good deal · <b>Loki, God of Mischief</b> · €2.88\n<blockquote expandable>")
@@ -329,3 +327,22 @@ def test_photo_alert_falls_back_to_text_then_plain(monkeypatch):
     client = httpx.Client(transport=httpx.MockTransport(handler))
     assert alert(client, "t", "m", Rich("<b>x</b>", [], photo=b"png", caption="c"))
     assert methods == ["sendPhoto", "sendMessage"]
+
+
+def test_price_trend_tells_where_the_card_has_been():
+    from datetime import date, timedelta
+
+    start = date(2026, 8, 8)
+    rows = [{"price_date": start + timedelta(days=i), "source": "mtgjson", "finish": "normal", "trend": 20.0 - i * 0.06}
+            for i in range(90)]
+    rows.append({"price_date": start + timedelta(days=89), "source": "cardmarket", "finish": "normal", "trend": 14.98})
+    rows.append({"price_date": start, "source": "mtgjson", "finish": "foil", "trend": 99.0})
+    points = deals.trend_points(rows, foil=False)
+    assert len(points) == 90 and points[-1] == ("2026-11-05", 14.98) and 99.0 not in [v for _, v in points]
+    spark, moves, extremes = deals.price_trend(points)
+    assert spark.startswith("📈 Cardmarket trend, 90 days: █") and spark.endswith("▁")
+    assert moves == "Down 9% in a month (was €16.46) · down 24% in 3 months (€19.76)"
+    assert extremes == "Lowest €14.72 (4 Nov) · highest €20.00 (8 Aug)"
+    assert deals.price_trend(points[-10:]) == []  # under two weeks says nothing
+    deal = deals.best_deal(wish(), [listing(cents=288)])
+    assert "📈 Cardmarket trend" in deals.telegram(deal, history=[spark, moves, extremes]).caption
