@@ -67,7 +67,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
   return (
     <div class={`shell${card ? " has-detail" : ""}`}>
       <nav class="rail" aria-label="Main">
-        <a class="brand" href="/" onClick={link("/")}><img src="/icon.svg" alt="" />mtg-intel</a>
+        <a class="brand" href="/" onClick={link("/")}><img src="/icon-64.png" alt="" />mtg-intel</a>
         {TABS.map(({ path: p, label, Icon }) => (
           <a href={p} onClick={link(p)} class={SEC[p] ? `sec-${SEC[p]}` : undefined} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}>
             <Icon />{label}{counts[p] != null && <span class="count">{counts[p]}</span>}

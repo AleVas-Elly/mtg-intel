@@ -74,7 +74,7 @@ export function Gate({ auth, onIn }: { auth: Auth; onIn: () => void }) {
   if (!invite) return <Landing busy={busy} error={error} onSignIn={signIn} local={LOCAL} setupMissing={!auth.passkeys} />;
   return (
     <div class="landing">
-      <header class="l-bar"><a class="l-mark" href="/"><img src="/icon.svg" alt="" />mtg-intel</a></header>
+      <header class="l-bar"><a class="l-mark" href="/"><img src="/icon-64.png" alt="" />mtg-intel</a></header>
       <section class="l-hero setup">
         <div class="l-hero-copy">
           <h1>Set up this device</h1>

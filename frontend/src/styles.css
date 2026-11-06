@@ -149,7 +149,7 @@ img { display: block; }
   .main { padding-bottom: 48px; }
   .rail { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 0; height: 100dvh; padding: 26px 14px; }
   .brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 26px; font-weight: 800; font-stretch: 122%; font-size: 17px; letter-spacing: -0.02em; text-decoration: none; }
-  .brand img { width: 26px; height: 26px; }
+  .brand img { width: 26px; height: 26px; border-radius: 7px; }
   .rail a:not(.brand) {
     display: flex; align-items: center; gap: 11px; height: 40px; padding: 0 14px; border-radius: 999px;
     text-decoration: none; color: var(--ink-2); font-weight: 600; font-size: 15px;

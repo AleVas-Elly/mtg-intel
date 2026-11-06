@@ -5,7 +5,7 @@
   max-width: 1320px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top)) 20px 18px;
 }
 .l-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; font-stretch: 122%; font-size: 18px; letter-spacing: -0.02em; text-decoration: none; }
-.l-mark img { width: 28px; height: 28px; }
+.l-mark img { width: 28px; height: 28px; border-radius: 7px; }
 .l-bar nav { display: flex; align-items: center; gap: 20px; }
 .l-bar nav > a { font-weight: 600; color: var(--ink-2); text-decoration: none; font-size: 15px; }
 .l-bar nav > a:hover { color: var(--ink); }
@@ -74,7 +74,8 @@
 :root:not([data-motion="calm"]) .l-states li .stamp { animation: stamp 520ms var(--out) both; animation-timeline: view(); animation-range: entry 20% cover 35%; }
 
 .l-close { max-width: 1320px; margin: 0 auto; padding: 80px 20px calc(40px + env(safe-area-inset-bottom)); }
-.l-big { font-weight: 900; font-stretch: 125%; font-size: clamp(56px, 15vw, 230px); line-height: 0.85; letter-spacing: -0.06em; }
+.l-big { margin: 0; line-height: 0; }
+.l-big img { display: block; width: min(100%, 560px); height: auto; border-radius: 28px; background: #12171b; }
 .l-close-row { margin-top: 36px; display: flex; gap: 28px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
 .l-legal { font-size: 13px; color: var(--ink-3); max-width: 64ch; line-height: 1.5; }
 

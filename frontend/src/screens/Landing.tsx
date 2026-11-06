@@ -156,7 +156,7 @@ export function Landing({ busy, error, onSignIn, local, setupMissing }: {
   return (
     <div class="landing">
       <header class="l-bar">
-        <a class="l-mark" href="/"><img src="/icon.svg" alt="" />mtg-intel</a>
+        <a class="l-mark" href="/"><img src="/icon-64.png" alt="" />mtg-intel</a>
         <nav>
           <a href="#how">How it works</a>
           <SignIn busy={busy} onSignIn={onSignIn} local={local} />
@@ -199,7 +199,7 @@ export function Landing({ busy, error, onSignIn, local, setupMissing }: {
       </Section>
 
       <footer class="l-close">
-        <p class="l-big">mtg-intel</p>
+        <h2 class="l-big"><img src="/logo-full.webp" width="748" height="600" alt="MTG Intel: Magic analytics & insights" loading="lazy" /></h2>
         <div class="l-close-row">
           <SignIn busy={busy} onSignIn={onSignIn} local={local} big />
           <p class="l-legal">Card pictures and symbols via Scryfall. mtg-intel is unofficial Fan Content permitted under the Fan Content Policy. Not approved or endorsed by Wizards. Portions of the materials used are property of Wizards of the Coast. ©Wizards of the Coast LLC.</p>
