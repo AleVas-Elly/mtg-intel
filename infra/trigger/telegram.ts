@@ -175,25 +175,37 @@ async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
 }
 
 /** A demo of the "Add to cart" button (2026-11-06), before it is built: `d|ok`, `d|sold` and
- *  `d|bought` show what the real buttons would do. Nothing touches CardTrader. */
+ *  `d|bought` (then `d|undo`) show what the real buttons would do. Nothing touches CardTrader or the want-list. */
 async function demo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<void> {
   const links = linkRows(m);
   const kind = (q.data || "").slice(2);
-  if (kind === "bought") return void answer(env, q, "Demo: the real ✅ Bought it records the purchase, as it does today.", true);
-  const line = kind === "ok" ? "✅ In your CardTrader cart · go pay there" : "❌ Already sold: CardTrader's list was out of date";
+  if (kind === "undo") return void answer(env, q, "Demo: the real ↩️ Undo takes the purchase back for 5 minutes, as it does today.", true);
   const photo = m.text === undefined;
-  const old = (photo ? m.caption : m.text) || "";
+  let old = (photo ? m.caption : m.text) || "";
+  let oldEntities = (photo ? m.caption_entities : m.entities) || [];
+  if (kind === "bought" && old.startsWith("✅ In your CardTrader cart")) {
+    // Once bought, the cart line has done its job: the bought line replaces it.
+    const cut = old.indexOf("\n\n") + 2;
+    old = old.slice(cut);
+    oldEntities = oldEntities.filter((e) => e.offset >= cut).map((e) => ({ ...e, offset: e.offset - cut }));
+  }
+  const price = (old.match(/€\d+\.\d\d/) || ["€?"])[0];
+  const line = kind === "ok" ? "✅ In your CardTrader cart · go pay there"
+    : kind === "bought" ? `🛒 Bought for ${price} · off the want-list`
+    : "❌ Already sold: CardTrader's list was out of date";
   const shift = line.length + 2;
   const entities = [{ type: "bold", offset: 0, length: line.length },
-    ...((photo ? m.caption_entities : m.entities) || []).map((e) => ({ ...e, offset: e.offset + shift }))];
+    ...oldEntities.map((e) => ({ ...e, offset: e.offset + shift }))];
   const keyboard = kind === "ok"
     ? [[{ text: "🧾 Open cart", url: "https://www.cardtrader.com/cart" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links]
+    : kind === "bought" ? [[{ text: "↩️ Undo", callback_data: "d|undo" }], ...links]
     : links;
   const target = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } };
   await call(env, photo ? "editMessageCaption" : "editMessageText", photo
     ? { ...target, caption: `${line}\n\n${old}`, caption_entities: entities }
     : { ...target, text: `${line}\n\n${old}`, entities });
-  await answer(env, q, kind === "ok" ? "Demo: added to your CardTrader cart." : "Demo: this copy is gone, so nothing was added.", kind !== "ok");
+  await answer(env, q, kind === "ok" ? "Demo: added to your CardTrader cart."
+    : kind === "bought" ? "Demo: saved. Undo works for 5 minutes." : "Demo: this copy is gone, so nothing was added.", kind === "sold");
 }
 
 /** Telegram's webhook (POST /api/telegram on the website, passed on here). Only my chat counts; anything else is acknowledged and dropped. */
