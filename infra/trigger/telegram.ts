@@ -41,7 +41,7 @@ const TIMEZONE = "Europe/Amsterdam";
 type Button = { text: string; callback_data?: string; url?: string };
 interface Entity { type: string; offset: number; length: number; [k: string]: unknown }
 interface Message {
-  message_id: number; chat: { id: number }; text?: string; entities?: Entity[];
+  message_id: number; chat: { id: number }; text?: string; entities?: Entity[]; link_preview_options?: unknown;
   reply_markup?: { inline_keyboard: Button[][] };
 }
 interface CallbackQuery { id: string; data?: string; message?: Message }
@@ -136,7 +136,7 @@ async function bought(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<v
     w.quantity > 1 ? `${w.quantity - 1} more wanted` : "off the want-list",
   ].filter(Boolean).join(" · ");
   await call(env, "editMessageText", {
-    chat_id: m.chat.id, message_id: m.message_id, ...withMark(m, line), link_preview_options: { is_disabled: true },
+    chat_id: m.chat.id, message_id: m.message_id, ...withMark(m, line), link_preview_options: m.link_preview_options ?? { is_disabled: true },
     reply_markup: { inline_keyboard: [[{ text: "↩️ Undo", callback_data: `u|${name.slice(EDIT_PREFIX.length)}` }], ...linkRows(m)] },
   });
   await answer(env, q, `Saved. Undo works for ${HOLD_MINUTES} minutes.`);
@@ -148,7 +148,7 @@ async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   const restore = async (data: string) => {
     await env.DATA.delete(`${GUARD}${m.chat.id}:${m.message_id}`);
     await call(env, "editMessageText", {
-      chat_id: m.chat.id, message_id: m.message_id, ...withMark(m, null), link_preview_options: { is_disabled: true },
+      chat_id: m.chat.id, message_id: m.message_id, ...withMark(m, null), link_preview_options: m.link_preview_options ?? { is_disabled: true },
       reply_markup: { inline_keyboard: [[{ text: "🛒 Bought it", callback_data: data }], ...linkRows(m)] },
     });
   };

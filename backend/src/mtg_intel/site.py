@@ -124,6 +124,29 @@ def purchases_doc(text: str, cards: pa.Table, now: datetime) -> dict[str, Any]:
     return {"built_at": now.isoformat(), "purchases": out}
 
 
+PREVIEW_DAYS = 365  # Telegram fetches a preview page once, when the alert is sent
+SCRYFALL_IMAGES = "https://cards.scryfall.io/"
+
+
+def preview_url(site_url: str, token: str, key: str, image_url: str | None, title: str, description: str,
+                now: datetime) -> str | None:
+    """A link to the site's preview page for a card (`/p/<signed>`, D53): Telegram reads its
+    picture, title and description for the small preview beside a deal alert. Signed with the
+    ingest token, so the page only ever shows what a job put there; only Scryfall pictures."""
+    import base64
+    import hashlib
+    import hmac
+
+    if not image_url or not image_url.startswith(SCRYFALL_IMAGES):
+        return None
+    b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+    payload = {"kind": "preview", "k": key, "i": image_url[len(SCRYFALL_IMAGES):], "t": title, "d": description,
+               "exp": int((now + timedelta(days=PREVIEW_DAYS)).timestamp() * 1000)}
+    body = b64(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode())
+    mac = b64(hmac.new(token.encode(), body.encode(), hashlib.sha256).digest())
+    return f"{site_url.rstrip('/')}/p/{body}.{mac}"
+
+
 def cardmarket_link(cardmarket_id: int | None, wish: dict[str, Any]) -> str | None:
     """Cardmarket product page filtered to Dutch sellers and the wish's language, condition and foil (D17)."""
     if not cardmarket_id:

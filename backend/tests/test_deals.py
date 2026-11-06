@@ -162,18 +162,41 @@ def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
     assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&sellerCountry=23&language=1&minCondition=2&isFoil=N" in text
 
 
-def test_telegram_message_is_short_with_details_behind_a_tap_and_buttons():
+def test_telegram_message_shows_both_markets_against_their_usual_and_details_behind_a_tap():
     deal = deals.best_deal(wish(scryfall_id="0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50", language="en", foil="no"),
                            [listing(id=1, cents=288), listing(id=2, cents=450)])
-    html, buttons = deals.telegram(deal, "https://site.example/")
+    html, buttons, preview = deals.telegram(deal, "https://site.example/", "https://site.example/p/x")
     top, more = html.split("<blockquote expandable>")
-    assert top.splitlines() == ["✅ Good deal · 38% under", "<b>Loki, God of Mischief</b>", "€2.88 · usually €4.67",
-                                "MSH #343 · Borderless · NM · EN · Non-foil · Zero"]
-    assert "Cardmarket trend €4.67 (38% less)" in more and "Seller in IT · List: Marvel" in more
-    assert more.endswith("</blockquote>")
+    assert top.splitlines() == ["✅ Good deal · 38% under", "<b>Loki, God of Mischief</b>",
+                                "<b>CardTrader</b>  €2.88 · next copy €4.50 (−36%)",
+                                "<b>Cardmarket</b>  from €3.00 · trend €4.67 (−36%)"]
+    assert preview == "https://site.example/p/x"
+    assert "Judged against the higher usual price, €4.67: a deal from 30% under." in more
+    assert "Cardmarket 7-day average €4.59." in more and "Seller in IT · List: Marvel" in more
     assert buttons[0] == [{"text": "🛒 Bought it", "callback_data": "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|en|no|288|NM|0|en"}]
     assert [b["text"] for b in buttons[1]] == ["CardTrader", "Cardmarket", "Site"]
     assert buttons[1][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
+    assert deals.version_line(deal) == ("MSH #343 · Borderless", "NM · EN · Non-foil · Zero")
+    # Without a picture the printing and copy go in the text; a usual CardTrader price says "usually".
+    html = deals.telegram(deals.best_deal(wish(), [listing(cents=288)], usual=4.10))[0]
+    assert "MSH #343 · Borderless · NM · EN · Non-foil · Zero" in html and "usually €4.10 (−30%)" in html
+
+
+def test_preview_link_is_signed_and_only_for_scryfall_pictures():
+    import base64
+    import hashlib
+    import hmac
+    import json
+
+    from mtg_intel import site
+
+    url = site.preview_url("https://s.example", "tok", "k|en|any", "https://cards.scryfall.io/normal/front/a/b.jpg?1",
+                           "MSH #343", "NM · EN", NOW)
+    body, mac = url.removeprefix("https://s.example/p/").split(".")
+    assert base64.urlsafe_b64decode(mac + "==") == hmac.new(b"tok", body.encode(), hashlib.sha256).digest()
+    payload = json.loads(base64.urlsafe_b64decode(body + "=="))
+    assert (payload["kind"], payload["i"], payload["t"], payload["d"]) == ("preview", "normal/front/a/b.jpg?1", "MSH #343", "NM · EN")
+    assert site.preview_url("https://s.example", "tok", "k", "https://evil.example/x.jpg", "t", "d", NOW) is None
 
 
 def test_bought_button_data_fits_telegram_and_names_the_copy():

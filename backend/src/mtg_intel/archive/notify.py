@@ -15,20 +15,25 @@ TELEGRAM_API = "https://api.telegram.org"
 
 
 def alert(client: httpx.Client, title: str, message: str,
-          telegram: tuple[str, list[list[dict[str, str]]]] | None = None) -> bool:
+          telegram: tuple[str, list[list[dict[str, str]]], str | None] | None = None) -> bool:
     """Send to whichever channel is configured. Never raises. `telegram` is a richer version for
-    Telegram (HTML text and buttons, e.g. a deal's "Bought it"); ntfy gets title and message."""
+    Telegram (HTML text, buttons such as a deal's "Bought it", a link to preview small beside the
+    text); ntfy gets title and message."""
     token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if token and chat_id:
-        if telegram and send_telegram(client, token, chat_id, telegram[0], html=True, buttons=telegram[1]):
+        if telegram and send_telegram(client, token, chat_id, telegram[0], html=True, buttons=telegram[1],
+                                      preview=telegram[2] if len(telegram) > 2 else None):
             return True
         return send_telegram(client, token, chat_id, f"{title}\n\n{message}")
     return send_alert(client, os.environ.get("NTFY_TOPIC"), title, message)
 
 
 def send_telegram(client: httpx.Client, token: str, chat_id: str, text: str, html: bool = False,
-                  buttons: list[list[dict[str, str]]] | None = None) -> bool:
-    body: dict = {"chat_id": chat_id, "text": text[:4096], "link_preview_options": {"is_disabled": True}}
+                  buttons: list[list[dict[str, str]]] | None = None, preview: str | None = None) -> bool:
+    """`preview`: a link shown as a small preview above the text (a deal's card picture)."""
+    options = ({"url": preview, "prefer_small_media": True, "show_above_text": True} if preview
+               else {"is_disabled": True})
+    body: dict = {"chat_id": chat_id, "text": text[:4096], "link_preview_options": options}
     if html:
         body["parse_mode"] = "HTML"
     if buttons:

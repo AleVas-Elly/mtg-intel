@@ -74,7 +74,7 @@ def watch_table(wantlist: pa.Table, cards: pa.Table, cardmarket: pa.Table | None
         select w.line, coalesce(c.name, w.name) as name, c.set_code, c.collector_number, c.special_tags,
             c.finishes, w.scryfall_id, try_cast(w.cardtrader_blueprint_id as bigint) as blueprint_id,
             w.language, w.foil, w.min_condition, w.via_zero, try_cast(w.max_price_eur as double) as max_price_eur,
-            try_cast(w.deal_pct as double) as deal_pct, w.list, w.one_of, c.cardmarket_id{", " + prices if prices else ""}
+            try_cast(w.deal_pct as double) as deal_pct, w.list, w.one_of, c.cardmarket_id, c.image_url{", " + prices if prices else ""}
         from w
         left join c using (scryfall_id)
         left join p on p.id_product = c.cardmarket_id
@@ -384,40 +384,58 @@ def _h(text: object) -> str:
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def telegram(deal: Deal, site_url: str | None = None) -> tuple[str, list[list[dict[str, str]]]]:
-    """The deal as a Telegram message (user, 2026-11-06: less at once): the strength, card, price
-    and version up top, the reasoning in a quote that opens on a tap, and buttons for "Bought it"
-    and the marketplaces instead of long links."""
+def version_line(deal: Deal) -> tuple[str, str]:
+    """Which printing and which copy: ("KHM #314 · Showcase", "NM · EN · Non-foil · Zero")."""
     w, x = deal.wish, deal.listing
-    label = deal.tier[1] if deal.tier else "🎯 Target price"
-    head = f"{label} · {deal.below_pct:.0f}% under" if deal.tier else label
-    price = f"€{x.price:.2f}" + (f" · usually €{deal.reference:.2f}" if deal.reference else "")
-    version = [f"{(w.get('set_code') or '').upper()} #{w.get('collector_number')}" if w.get("set_code") else "",
-               ", ".join(t.capitalize() for t in w.get("special_tags") or []),
-               CONDITION_GRADE.get(x.condition, x.condition), x.language.upper(),
-               "Foil" if x.foil else "Non-foil", "Zero" if x.zero else ""]
+    printing = [f"{(w.get('set_code') or '').upper()} #{w.get('collector_number')}" if w.get("set_code") else "",
+                ", ".join(t.capitalize() for t in w.get("special_tags") or [])]
+    copy = [CONDITION_GRADE.get(x.condition, x.condition), x.language.upper(), "Foil" if x.foil else "Non-foil",
+            "Zero" if x.zero else ""]
+    return " · ".join(p for p in printing if p), " · ".join(c for c in copy if c)
 
-    def off(reference: float) -> str:
-        pct = (1 - x.price / reference) * 100
-        return f"{pct:.0f}% less" if pct >= 0 else f"{-pct:.0f}% more"
+
+def _less(price: float, usual: float) -> str:
+    pct = (1 - price / usual) * 100
+    return f"−{pct:.0f}%" if pct >= 0.5 else f"+{-pct:.0f}%" if pct <= -0.5 else "same"
+
+
+def telegram(deal: Deal, site_url: str | None = None,
+             preview: str | None = None) -> tuple[str, list[list[dict[str, str]]], str | None]:
+    """The deal as a Telegram message (user, 2026-11-06): the strength, the card, then each market
+    against its own usual price (CardTrader: this copy against its usual; Cardmarket: its lowest
+    against its trend); the rest in a quote that opens on a tap; buttons for "Bought it" and the
+    marketplaces. `preview` is the site's preview page for this card: Telegram shows the card's
+    picture small, beside its printing and the copy's condition, language and finish."""
+    w, x = deal.wish, deal.listing
+    head = f"{deal.tier[1]} · {deal.below_pct:.0f}% under" if deal.tier else "🎯 Target price"
+    if deal.cardtrader:
+        usual = "usually" if deal.cardtrader_kind == "usual price" else "next copy"
+        ct = f"€{x.price:.2f} · {usual} €{deal.cardtrader:.2f} ({_less(x.price, deal.cardtrader)})"
+    else:
+        ct = f"€{x.price:.2f}"
+    lines = [_h(head), f"<b>{_h(w['name'])}</b>", f"<b>CardTrader</b>  {_h(ct)}"]
+    foil = x.foil or (bool(w.get("finishes")) and "nonfoil" not in w["finishes"])
+    low = w.get("low_foil" if foil else "low")
+    if deal.cardmarket:
+        trend = f"trend €{deal.cardmarket:.2f}" + ("" if deal.cardmarket_trusted else " (looks wrong, not used)")
+        cm = f"from €{low:.2f} · {trend} ({_less(low, deal.cardmarket)})" if low and deal.cardmarket_trusted else trend
+        lines.append(f"<b>Cardmarket</b>  {_h(cm)}")
+    printing, copy = version_line(deal)
+    if not preview:
+        lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
 
     more = [deal.tier[2] if deal.tier else "At or under the price I set."]
     if deal.tier:
-        more.append(f"A deal from {deal.floor:.0f}% under the usual price.")
+        more.append(f"Judged against the higher usual price, €{deal.reference:.2f}: a deal from {deal.floor:.0f}% under.")
     if w.get("max_price_eur") is not None and x.price <= w["max_price_eur"]:
         more.append(f"At or under my €{w['max_price_eur']:.2f} target.")
+    if w.get("avg7_foil" if foil else "avg7"):
+        more.append(f"Cardmarket 7-day average €{w['avg7_foil' if foil else 'avg7']:.2f}.")
     if deal.cardmarket:
-        more.append(f"Cardmarket trend €{deal.cardmarket:.2f} ({off(deal.cardmarket)})" if deal.cardmarket_trusted
-                    else f"Cardmarket trend €{deal.cardmarket:.2f} (looks wrong, not used)")
-    if deal.cardtrader:
-        more.append(f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f} ({off(deal.cardtrader)})")
-    more.append(cardmarket_context(w, x.foil).replace("Cardmarket: ", "Cardmarket "))
+        more.append("Cardmarket's prices come from its daily price list: any seller, condition and language.")
     more.append(" · ".join(p for p in [f"Seller in {x.country}" if x.country else "",
                                         f"List: {w['list']}" if w.get("list") else ""] if p))
-    html = "\n".join([
-        _h(head), f"<b>{_h(w['name'])}</b>", _h(price), _h(" · ".join(v for v in version if v)),
-        "<blockquote expandable>" + "\n".join(_h(m) for m in more if m) + "</blockquote>",
-    ])
+    lines.append("<blockquote expandable>" + "\n".join(_h(m) for m in more if m) + "</blockquote>")
     buttons: list[list[dict[str, str]]] = []
     data = bought_data(deal)
     if data:
@@ -428,7 +446,7 @@ def telegram(deal: Deal, site_url: str | None = None) -> tuple[str, list[list[di
     if site_url:
         links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
     buttons.append(links)
-    return html, buttons
+    return "\n".join(lines), buttons, preview
 
 
 def cardmarket_url(w: dict[str, Any]) -> str:

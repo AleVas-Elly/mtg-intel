@@ -574,8 +574,16 @@ def check_deals(args: argparse.Namespace) -> int:
         result = deals.check(session, watch, alerted, now, history,
                              out_of_time=lambda: time.monotonic() - started > CARDTRADER_BUDGET.total_seconds())
         targets = deals.cardmarket_targets(watch, alerted, now)
-        site_url = os.environ.get("SITE_URL")
-        messages = ([(*deals.message(d), deals.telegram(d, site_url)) for d in result.new]
+        site_url, site_token = os.environ.get("SITE_URL"), os.environ.get("SITE_INGEST_TOKEN")
+
+        def preview(d: deals.Deal) -> str | None:
+            if not site_url or not site_token:
+                return None
+            printing, copy = deals.version_line(d)
+            return site.preview_url(site_url, site_token, d.key, d.wish.get("image_url"), printing or d.wish["name"],
+                                    copy, now)
+
+        messages = ([(*deals.message(d), deals.telegram(d, site_url, preview(d))) for d in result.new]
                     + [(title, text, None) for title, text in targets])
         problems = []
         try:

@@ -297,6 +297,31 @@ async function telegram(request: Request, env: Env): Promise<Response> {
   });
 }
 
+const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** GET /p/<signed>: a card's preview page for Telegram (D53). A deal alert links here so Telegram
+ *  shows the card's picture small, beside its printing and the copy's condition, language and
+ *  finish. Only what a GitHub job signed with the ingest token, only Scryfall pictures; a person
+ *  who opens it is sent on to the card on the site. */
+async function preview(env: Env, token: string): Promise<Response> {
+  const p = await verify<{ kind: string; k: string; i: string; t: string; d: string; exp: number }>(env.INGEST_TOKEN, token);
+  if (!p || p.kind !== "preview" || !/^[A-Za-z0-9/_.?=-]{1,200}$/.test(p.i) || p.i.includes("..")) {
+    return new Response("Not found", { status: 404 });
+  }
+  const card = `/wants?card=${encodeURIComponent(p.k)}`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${attr(p.t)}</title>
+<meta name="robots" content="noindex">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="mtg-intel">
+<meta property="og:title" content="${attr(p.t)}">
+<meta property="og:description" content="${attr(p.d)}">
+<meta property="og:image" content="https://cards.scryfall.io/${attr(p.i)}">
+<meta property="og:image:width" content="488"><meta property="og:image:height" content="680">
+<meta http-equiv="refresh" content="0;url=${attr(card)}">
+</head><body><a href="${attr(card)}">Open the card</a></body></html>`;
+  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=86400" } });
+}
+
 /** Scryfall's set and mana symbol SVGs, from our own origin so CSS masks can colour them by rarity. */
 async function symbol(request: Request, path: string, ctx: ExecutionContext): Promise<Response> {
   if (!/^(sets|card-symbols)\/[A-Za-z0-9_-]{1,40}\.svg$/.test(path)) return new Response("Not found", { status: 404 });
@@ -330,6 +355,7 @@ export default {
       if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
       if (path.startsWith("/sym/")) return await symbol(request, path.slice(5), ctx);
       if (path === "/api/telegram") return await telegram(request, env);
+      if (path.startsWith("/p/")) return await preview(env, path.slice(3));
       if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     } catch (e) {
       return json({ error: "Something went wrong on the server.", detail: String(e) }, 500);
