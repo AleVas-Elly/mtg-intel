@@ -106,9 +106,8 @@ def test_caption_names_the_copy_and_crosses_out_a_finished_deal():
                                               "14:00</b>\n\n<blockquote expandable>x</blockquote>")
     assert lifecycle.caption(alert, "❌ Sold out", done=True).startswith("<s>🚨 Steal · <b>Esika</b> · €9.29</s>")
     assert lifecycle.caption(alert, "✅ Bought for €9.29", done=True).startswith("🚨 Steal")
-    open_rows = lifecycle.keyboard(alert | {"product_id": 77}, done=False)
-    assert open_rows[0][0]["url"] == lifecycle.CART_URL
-    assert [b["callback_data"] for b in open_rows[1]] == ["s|77", "c|77"]
+    assert lifecycle.keyboard(alert, done=False) == [[{"text": "🧾 Pay on CardTrader", "url": lifecycle.CART_URL}],
+                                                     alert["links"]]
     assert lifecycle.keyboard(alert, done=True) == [alert["links"]]
 
 

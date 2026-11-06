@@ -232,13 +232,9 @@ async function demo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   await answer(env, q, "Demo: this copy is gone, so nothing was added.", true);
 }
 
-// --- Skip and Check now on a live deal alert (D58) -------------------------------------------------
+// --- CardTrader, for the fast lane (D58) ------------------------------------------------------------
 
 const CT_API = "https://api.cardtrader.com/api/v2";
-const NEEDS_TOKEN = "This button needs your CardTrader token in the timer once: run `npx wrangler secret put CARDTRADER_TOKEN` in infra/trigger.";
-// Lines the deal check writes under the copy line; the first such line (after the card's own line) is the status.
-const STATUS = ["🛒", "⚠️", "⏳", "❌", "✕", "⏹", "✅ Bought", "⬇️", "✓"];
-
 export async function cardtrader(env: TelegramEnv, method: string, path: string, body?: unknown): Promise<any> {
   try {
     const r = await fetch(`${CT_API}${path}`, {
@@ -249,71 +245,6 @@ export async function cardtrader(env: TelegramEnv, method: string, path: string,
   } catch {
     return null;
   }
-}
-
-const cartItems = (cart: any): Map<number, number> =>
-  new Map((cart?.subcarts || []).flatMap((s: any) => (s.cart_items || []).map((i: any) => [Number(i.product.id), i.price_cents / 100])));
-
-const clock = () => new Date().toLocaleTimeString("en-GB", { timeZone: TIMEZONE, hour: "2-digit", minute: "2-digit" });
-
-/** The alert's text with its status line replaced (entities follow), its first line crossed out with `strike`. */
-export function withStatus(m: Message, line: string, strike = false): { text: string; entities: Entity[] } {
-  const photo = m.text === undefined;
-  const text = (photo ? m.caption : m.text) || "";
-  let entities = (photo ? m.caption_entities : m.entities) || [];
-  const lines = text.split("\n");
-  const at = lines.findIndex((l, i) => i > 0 && STATUS.some((p) => l.startsWith(p)));
-  if (at < 0) return { text, entities };
-  const start = lines.slice(0, at).reduce((n, l) => n + l.length + 1, 0);
-  const old = lines[at].length;
-  const delta = line.length - old;
-  entities = entities
-    .filter((e) => e.offset + e.length <= start || e.offset >= start + old)
-    .map((e) => (e.offset >= start + old ? { ...e, offset: e.offset + delta } : e));
-  entities.push({ type: "bold", offset: start, length: line.length });
-  if (strike) entities.push({ type: "strikethrough", offset: 0, length: lines[0].length });
-  lines[at] = line;
-  return { text: lines.join("\n"), entities };
-}
-
-function editStatus(env: TelegramEnv, m: Message, line: string, keyboard: Button[][], opts: { media?: string | null; strike?: boolean } = {}) {
-  const { text, entities } = withStatus(m, line, opts.strike);
-  const target = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } };
-  if (m.text === undefined && opts.media) {
-    return call(env, "editMessageMedia", { ...target, media: { type: "photo", media: opts.media, caption: text, caption_entities: entities } });
-  }
-  if (m.text === undefined) return call(env, "editMessageCaption", { ...target, caption: text, caption_entities: entities });
-  return call(env, "editMessageText", { ...target, text, entities, link_preview_options: m.link_preview_options ?? { is_disabled: true } });
-}
-
-/** ✕ Skip: that copy leaves my cart and the alert ends at once, in the words the next check uses too. */
-async function skip(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<void> {
-  if (!env.CARDTRADER_TOKEN) return void answer(env, q, NEEDS_TOKEN, true);
-  const pid = Number((q.data || "").split("|")[1]);
-  if (cartItems(await cardtrader(env, "GET", "/cart")).has(pid)) {
-    await cardtrader(env, "POST", "/cart/remove", { product_id: pid, quantity: 1 });
-  }
-  const done = await env.DATA.get<Done>(doneKey(m), "json");
-  const links = linkRows(m).filter((row) => !row.some((b) => b.url?.includes("/cart")));  // no Pay any more
-  await editStatus(env, m, "✕ You took it out of your cart", links, { media: done?.ended, strike: true });
-  await answer(env, q, "Skipped: it's out of your cart, and this copy won't alert again.");
-}
-
-/** 🔄 Check now: a live look at my cart (and my Zero box, if it left the cart). */
-async function checkNow(env: TelegramEnv, q: CallbackQuery, m: Message, onDeals?: () => Promise<unknown>): Promise<void> {
-  if (!env.CARDTRADER_TOKEN) return void answer(env, q, NEEDS_TOKEN, true);
-  const pid = Number((q.data || "").split("|")[1]);
-  const items = cartItems(await cardtrader(env, "GET", "/cart"));
-  if (items.has(pid)) {
-    const price = items.get(pid)!;
-    await editStatus(env, m, `🛒 Still in your cart · €${price.toFixed(2)} · checked ${clock()}`, m.reply_markup?.inline_keyboard || []);
-    return void answer(env, q, `Still there, €${price.toFixed(2)} ✓`);
-  }
-  const box = (await cardtrader(env, "GET", "/ct0_box_items")) || [];
-  const mine = (Array.isArray(box) ? box : []).some((b: any) => Number(b.product_id) === pid);
-  if (onDeals) await onDeals().catch(() => undefined); // a full check now settles the alert
-  await answer(env, q, mine ? "You bought it ✓ The alert turns BOUGHT within a couple of minutes."
-    : "It's not in your cart any more: sold, or taken out. The alert updates within a couple of minutes.", !mine);
 }
 
 /** "Set €13.50" under a weekly target suggestion (D55): the wish's target changes through the edit
@@ -349,8 +280,6 @@ export async function telegramUpdate(request: Request, env: TelegramEnv, onEdit?
     else if (q.data?.startsWith("d|")) await demo(env, q, q.message!);
     else if (q.data?.startsWith("t|")) await setTarget(env, q, q.message!, onEdit);
     else if (q.data === "x|done") await answer(env, q, "Already set.");
-    else if (q.data?.startsWith("s|")) await skip(env, q, q.message!);
-    else if (q.data?.startsWith("c|")) await checkNow(env, q, q.message!, onDeals);
     else await answer(env, q, "This button no longer works.");
   } else if (update?.message && mine(update.message)) {
     await call(env, "sendMessage", {

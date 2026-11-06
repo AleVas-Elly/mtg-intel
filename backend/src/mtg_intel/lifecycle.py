@@ -330,12 +330,8 @@ def caption(alert: dict[str, Any], line: str, done: bool = False) -> str:
 
 
 def keyboard(alert: dict[str, Any], done: bool) -> list[list[dict[str, str]]]:
-    """Open: Pay, then Skip (that copy leaves my cart and won't alert again) and Check now (a live
-    look at my cart), both handled by the timer Worker (D58); then the links. Done: the links."""
-    pid = alert.get("product_id")
-    rows = [] if done else [[{"text": "🧾 Pay on CardTrader", "url": CART_URL}],
-                            [{"text": "✕ Skip", "callback_data": f"s|{pid}"},
-                             {"text": "🔄 Check now", "callback_data": f"c|{pid}"}]]
+    """Open: Pay, then the links; done: the links. (Skip and Check now were tried and dropped, D58.)"""
+    rows = [] if done else [[{"text": "🧾 Pay on CardTrader", "url": CART_URL}]]
     return rows + ([alert["links"]] if alert.get("links") else [])
 
 
