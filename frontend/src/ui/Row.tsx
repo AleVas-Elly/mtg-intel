@@ -79,10 +79,12 @@ function GalleryCard({ w, data, extra, ctPrice, gone, n }: Item & { data: AppDat
 }
 
 /** The cards of a screen, as rows or, in the Gallery layout, as big pictures. */
-export function CardList({ items, data, current }: { items: Item[]; data: AppData; current?: string | null }) {
+/** `swap` changes when the filters or sort do: the list then plays its entrance again, so a
+ *  filter click visibly lands (typing in the search box does not, it would flicker). */
+export function CardList({ items, data, current, swap }: { items: Item[]; data: AppData; current?: string | null; swap?: string }) {
   const look = useLook();
   if (look.density === "gallery") {
-    return <div class="gallery">{items.map((it, n) => <GalleryCard {...it} data={data} n={n} />)}</div>;
+    return <div class="gallery" key={swap}>{items.map((it, n) => <GalleryCard key={it.w.key} {...it} data={data} n={n} />)}</div>;
   }
-  return <div class="list">{items.map((it, n) => <WishRow {...it} data={data} n={n} current={current === it.w.key} />)}</div>;
+  return <div class="list" key={swap}>{items.map((it, n) => <WishRow key={it.w.key} {...it} data={data} n={n} current={current === it.w.key} />)}</div>;
 }

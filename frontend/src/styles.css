@@ -928,8 +928,13 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
   background: var(--ink); color: var(--bg); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .f-head .f-on { margin-left: auto; }
-.f-options { display: flex; flex-direction: column; padding: 0 0 10px; animation: f-open var(--t-small) var(--out); }
-@keyframes f-open { from { opacity: 0; transform: translateY(-4px); } }
+/* groups open and close by height (grid 0fr -> 1fr), the options fading in as they slide */
+.f-collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 240ms var(--out); }
+.f-collapse[data-open="true"] { grid-template-rows: 1fr; }
+.f-collapse > .f-options { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: opacity var(--t-small) var(--out), transform 240ms var(--out); }
+.f-collapse[data-open="true"] > .f-options { opacity: 1; transform: none; }
+.f-options { display: flex; flex-direction: column; }
+.f-options > :last-child { margin-bottom: 10px; }
 .f-opt {
   display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 5px 8px; border: 0; border-radius: 8px;
   background: none; cursor: pointer; font-size: 14px; color: var(--ink); text-align: left; transition: background 0.12s var(--ease);

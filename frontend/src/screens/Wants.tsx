@@ -105,7 +105,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
               </div>
             )}
             {!data.wants ? <RowSkeleton /> : shown.length ? (
-              <CardList data={data} current={card} items={shown.map((w) => {
+              <CardList data={data} current={card} swap={JSON.stringify([filters, sort])} items={shown.map((w) => {
                 const c = showChange ? change30(w, history.doc) : null;
                 return {
                   w, extra: showChange && c != null ? (

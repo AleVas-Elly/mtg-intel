@@ -48,7 +48,7 @@ export function FilterPanel({ groups, state, onChange, counts }: {
             <button type="button" class="f-head" aria-expanded={isOpen} onClick={() => setOpen((o) => ({ ...o, [g.id]: !(o[g.id] ?? g.open) }))}>
               <span class="f-caret" aria-hidden="true" />{g.label}{on > 0 && <span class="f-on">{on}</span>}
             </button>
-            {isOpen && (
+            <div class="f-collapse" data-open={isOpen} inert={!isOpen}>
               <div class="f-options">
                 {options.map((o) => {
                   const checked = picked.includes(o.id);
@@ -77,7 +77,7 @@ export function FilterPanel({ groups, state, onChange, counts }: {
                   </div>
                 )}
               </div>
-            )}
+            </div>
           </section>
         );
       })}
