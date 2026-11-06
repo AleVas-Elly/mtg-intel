@@ -218,7 +218,7 @@ async function demo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   }
   if (kind === "ok") {
     await editAlert(env, m, "✅ In your CardTrader cart · go pay there",
-      [[{ text: "🧾 Open cart", url: "https://www.cardtrader.com/cart" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links]);
+      [[{ text: "🧾 Open cart", url: "https://www.cardtrader.com/cart/edit" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links]);
     return void answer(env, q, "Demo: added to your CardTrader cart.");
   }
   if (kind === "bought") {

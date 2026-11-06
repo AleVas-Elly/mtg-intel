@@ -520,7 +520,9 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
     telegram = lifecycle.Telegram(client, tg_token, chat)
     alerts: dict[str, dict] = state.setdefault("alerts", {})
 
-    # 1. My purchases: recorded as want-list edits (the site starts the wantlist run at once).
+    # 1. My cart, then my purchases (in this order: a copy I pay for in between shows as bought, never
+    # as sold to someone else). Purchases become want-list edits; the site starts the wantlist run.
+    cart = account.cart()
     book = state.setdefault("purchases", {})
     before = copy.deepcopy(book)
     since = datetime.fromisoformat(book.get("since", now.isoformat())).date() - timedelta(days=1)
@@ -542,7 +544,6 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
         print("WARNING  CardTrader purchases not read", file=sys.stderr)
 
     # 2. Open alerts: still in the cart, bought, sold out, taken out, no longer a deal.
-    cart = account.cart()
     if cart is not None:
         for line in lifecycle.refresh(alerts, result, watch, cart, bought, telegram, account, now):
             print(f"ALERT  {line}")

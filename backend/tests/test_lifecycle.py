@@ -68,12 +68,9 @@ def test_what_an_open_alert_has_become():
     assert v(cart_price=11.5).price == 11.5
     assert v(bought_price=9.29).state == "bought"
     assert v(still_deal=False, cart_price=11.5).line == "⏹ No longer a deal · price now €11.50"
-    # Gone from the cart: wait one check (my purchase may not show yet), then decide.
-    alert = {"price": 9.29, "added": True}
-    assert v(alert, in_cart=False, in_feed=False).state == "open"
-    assert v(alert, in_cart=False, in_feed=False).state == "sold_out"
-    alert = {"price": 9.29, "added": True, "missing": 1}
-    assert v(alert, in_cart=False, in_feed=True).state == "removed"
+    # Gone from the cart: decided at once (the cart is read before my purchases).
+    assert v(in_cart=False, in_feed=False).line == "❌ Missed · someone else bought it first (14:00)"
+    assert v(in_cart=False, in_feed=True).state == "removed"
     # An alert the cart couldn't check: the listing feed decides.
     assert v({"price": 9.29, "added": False}, in_cart=False, in_feed=True).state == "open"
 
@@ -219,3 +216,12 @@ def test_order_purchases_are_applied_once_collected_and_taken_back(tmp_path: Pat
     by_hand = [{"scryfall_id": "sf-1", "price_eur": "3.50", "market": "cardtrader", "date": "2026-11-05", "note": ""}]
     _, results = mycards.apply_edits(text, [ops[0]], cards, {}, purchases=by_hand)
     assert results[0]["message"].endswith("already recorded by hand") and len(by_hand) == 1
+
+
+def test_a_purchase_seen_late_turns_a_missed_alert_into_bought():
+    result = deals.check(fake_session_one(), [wish()], {}, NOW)
+    alerts = {"1": open_alert(1, product=77, state="sold_out", closed=NOW.isoformat(), line="❌ Missed")}
+    tg = FakeTelegram()
+    log = lifecycle.refresh(alerts, result, [wish()], {"subcarts": []}, {77: 2.5}, tg, FakeAccount(), NOW)
+    assert alerts["1"]["state"] == "bought" and log == ["Loki: bought after all"]
+    assert tg.edits[0][1]["media"]["media"] == "https://s/img/b.jpg"

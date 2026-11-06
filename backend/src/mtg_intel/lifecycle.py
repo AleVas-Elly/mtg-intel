@@ -24,13 +24,15 @@ from mtg_intel import deals
 from mtg_intel.archive.notify import TELEGRAM_API
 
 API = "https://api.cardtrader.com/api/v2"
-CART_URL = "https://www.cardtrader.com/cart"
+CART_URL = "https://www.cardtrader.com/cart/edit"  # opens in my own language (/en-EU/…, /it-IT/…)
 TIMEZONE = ZoneInfo("Europe/Amsterdam")
 ORDER_DAYS = 30  # purchases are read this far back (to see cancellations too)
 KEEP_DONE_DAYS = 3  # a finished alert is forgotten after this
 SLACK_PCT = 5.0  # an open alert ends only when its copy is this many points short of a deal
 NIGHT = (23, 8)  # 23:00-08:00: only Steals ring
-MISSING_CHECKS = 2  # a copy gone from the cart counts as gone after this many checks in a row
+# A copy gone from the cart counts as gone at once: the cart is read before my purchases, so a copy I
+# just paid for shows as bought, and a purchase seen later still turns a "sold out" alert into BOUGHT.
+MISSING_CHECKS = 1
 LIVE_ORDER_STATES = {"paid", "hub_pending", "sent", "arrived", "done", "request_for_cancel", "lost"}
 RETRY_WAITS = (2, 8)
 
@@ -234,8 +236,7 @@ class Verdict:
 def verdict(alert: dict[str, Any], *, bought_price: float | None, in_cart: bool, cart_price: float | None,
             in_feed: bool, still_deal: bool | None, now: datetime) -> Verdict:
     """What an open alert's copy is now. The cart is the truth: CardTrader drops a copy from it
-    once it is sold; a copy gone from the cart but still listed was taken out by me. A copy must
-    be missing for `MISSING_CHECKS` checks in a row (my purchase can take a moment to show)."""
+    once it is sold; a copy gone from the cart but still listed was taken out by me."""
     at = now.astimezone(TIMEZONE).strftime("%H:%M")
     if bought_price is not None:
         return Verdict("bought", f"✅ Bought for €{bought_price:.2f} · recorded, off the want-list")
@@ -245,7 +246,7 @@ def verdict(alert: dict[str, Any], *, bought_price: float | None, in_cart: bool,
             return Verdict("open", alert.get("line") or "")
         if in_feed:
             return Verdict("removed", "✕ You took it out of your cart")
-        return Verdict("sold_out", f"❌ Sold out · gone at {at}")
+        return Verdict("sold_out", f"❌ Missed · someone else bought it first ({at})")
     alert["missing"] = 0
     price = cart_price if cart_price is not None else alert["price"]
     changed = price if abs(price - alert["price"]) >= 0.005 else None
@@ -353,6 +354,11 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
     failed = set(result.failed_blueprints)
     log: list[str] = []
     bought_now: list[dict] = []
+    for alert in [a for a in alerts.values() if a.get("closed") and a.get("state") != "bought"]:
+        if int(alert["product_id"]) in bought:  # it was me after all: my purchase showed up late
+            finish(alert, Verdict("bought", f"✅ Bought for €{bought[int(alert['product_id'])]:.2f} · recorded, "
+                                            "off the want-list"), telegram, None, now)
+            log.append(f"{alert['name']}: bought after all")
     for alert in [a for a in alerts.values() if not a.get("closed")]:
         pid = int(alert["product_id"])
         if pid not in bought and alert["blueprint_id"] in failed:
