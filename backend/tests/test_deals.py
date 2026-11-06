@@ -165,7 +165,8 @@ def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
 def test_telegram_message_shows_both_markets_against_their_usual_and_details_behind_a_tap():
     deal = deals.best_deal(wish(scryfall_id="0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50", language="en", foil="no"),
                            [listing(id=1, cents=288), listing(id=2, cents=450)])
-    html, buttons, preview = deals.telegram(deal, "https://site.example/", "https://site.example/p/x")
+    rich = deals.telegram(deal, "https://site.example/", "https://site.example/p/x")
+    html, buttons, preview = rich.html, rich.buttons, rich.preview
     top, more = html.split("<blockquote expandable>")
     assert top.splitlines() == ["✅ Good deal · 38% under", "<b>Loki, God of Mischief</b>",
                                 "<b>CardTrader</b>  €2.88 · next copy €4.50 (−36%)",
@@ -178,7 +179,7 @@ def test_telegram_message_shows_both_markets_against_their_usual_and_details_beh
     assert buttons[1][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
     assert deals.version_line(deal) == ("MSH #343 · Borderless", "NM · EN · Non-foil · Zero")
     # Without a picture the printing and copy go in the text; a usual CardTrader price says "usually".
-    html = deals.telegram(deals.best_deal(wish(), [listing(cents=288)], usual=4.10))[0]
+    html = deals.telegram(deals.best_deal(wish(), [listing(cents=288)], usual=4.10)).html
     assert "MSH #343 · Borderless · NM · EN · Non-foil · Zero" in html and "usually €4.10 (−30%)" in html
 
 
@@ -210,7 +211,7 @@ def test_bought_button_data_fits_telegram_and_names_the_copy():
     assert data == "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|ja|any|12345|SP|1|ja" and len(data.encode()) <= 64
     assert deals.bought_data(deals.best_deal(wish(scryfall_id=None), [listing(cents=100)])).startswith("b|10|")
     # Names in HTML are escaped.
-    assert "<b>R&amp;D's &lt;Secret&gt;</b>" in deals.telegram(deals.best_deal(wish(name="R&D's <Secret>"), [listing(cents=100)]))[0]
+    assert "<b>R&amp;D's &lt;Secret&gt;</b>" in deals.telegram(deals.best_deal(wish(name="R&D's <Secret>"), [listing(cents=100)])).html
 
 
 def test_cardmarket_target_alerts_once_and_again_when_lower():
@@ -289,3 +290,42 @@ def test_daily_digest_once_a_day_from_8_with_the_closest_cards_over_10_euros():
     assert text.endswith("https://site.example/")
     assert deals.digest(state, result, watch, morning + timedelta(hours=3), None) is None  # once a day
     assert deals.digest(state, result, watch, morning + timedelta(days=1), None) is not None
+
+
+def test_deal_image_says_what_makes_it_a_deal_and_draws():
+    import io
+
+    from PIL import Image
+
+    from mtg_intel import dealimage
+
+    deal = deals.best_deal(wish(set_name="Marvel Super Heroes", foil="no"), [listing(cents=288), listing(id=2, cents=450)],
+                           usual=4.10)
+    p = dealimage.panel(deal)
+    assert (p.pill, p.name, p.price, p.saving) == ("GOOD DEAL · 38% UNDER", "Loki, God of Mischief", "€2.88", "€1.79 less than usual")
+    assert p.printing == "Marvel Super Heroes · MSH #343 · Borderless"
+    assert p.copy == "Near Mint · English · Non-foil · Zero"
+    assert p.markets == [("CardTrader", "usually €4.10", "−30%"), ("Cardmarket", "from €3.00 · trend €4.67", "−36%")]
+    assert p.footer == "Seller in Italy · Marvel list"
+    png = dealimage.render(p, Image.new("RGB", (488, 680), "#335533"))
+    image = Image.open(io.BytesIO(png))
+    assert image.width == 1080 and 1000 < image.height < 1400
+    # The photo goes with a one-line caption (lock screen) and the details behind a tap.
+    rich = deals.telegram(deal, photo=png)
+    assert rich.photo == png and rich.caption.startswith("✅ Good deal · <b>Loki, God of Mischief</b> · €2.88\n<blockquote expandable>")
+
+
+def test_photo_alert_falls_back_to_text_then_plain(monkeypatch):
+    from mtg_intel.archive.notify import Rich, alert
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+    methods = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        methods.append(request.url.path.rsplit("/", 1)[1])
+        return httpx.Response(400 if methods[-1] == "sendPhoto" else 200, json={"ok": True, "result": {}})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert alert(client, "t", "m", Rich("<b>x</b>", [], photo=b"png", caption="c"))
+    assert methods == ["sendPhoto", "sendMessage"]

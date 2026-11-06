@@ -42,6 +42,7 @@ type Button = { text: string; callback_data?: string; url?: string };
 interface Entity { type: string; offset: number; length: number; [k: string]: unknown }
 interface Message {
   message_id: number; chat: { id: number }; text?: string; entities?: Entity[]; link_preview_options?: unknown;
+  caption?: string; caption_entities?: Entity[]; // a deal sent as its image (D53)
   reply_markup?: { inline_keyboard: Button[][] };
 }
 interface CallbackQuery { id: string; data?: string; message?: Message }
@@ -69,8 +70,9 @@ export function trendFor(w: Wish, foil: boolean): number | null {
 
 /** The alert's text with a line on top (entities move with it), or without it again. */
 export function withMark(m: Message, line: string | null): { text: string; entities: Entity[] } {
-  let text = m.text || "";
-  let entities = m.entities || [];
+  const photo = m.text === undefined;
+  let text = (photo ? m.caption : m.text) || "";
+  let entities = (photo ? m.caption_entities : m.entities) || [];
   if (text.startsWith(MARK)) {
     const cut = text.indexOf("\n\n") + 2;
     text = text.slice(cut);
@@ -82,6 +84,16 @@ export function withMark(m: Message, line: string | null): { text: string; entit
     text = `${line}\n\n${text}`;
   }
   return { text, entities };
+}
+
+/** Edit the alert: its text, or its caption when it is a photo. */
+function editAlert(env: TelegramEnv, m: Message, line: string | null, keyboard: Button[][]) {
+  const { text, entities } = withMark(m, line);
+  const target = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } };
+  if (m.text === undefined) return call(env, "editMessageCaption", { ...target, caption: text, caption_entities: entities });
+  return call(env, "editMessageText", {
+    ...target, text, entities, link_preview_options: m.link_preview_options ?? { is_disabled: true },
+  });
 }
 
 const linkRows = (m?: Message) => (m?.reply_markup?.inline_keyboard || []).filter((row) => row.every((b) => b.url));
@@ -135,10 +147,7 @@ async function bought(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<v
     saved != null && saved > 0 ? `${eur(saved)} under Cardmarket` : "",
     w.quantity > 1 ? `${w.quantity - 1} more wanted` : "off the want-list",
   ].filter(Boolean).join(" · ");
-  await call(env, "editMessageText", {
-    chat_id: m.chat.id, message_id: m.message_id, ...withMark(m, line), link_preview_options: m.link_preview_options ?? { is_disabled: true },
-    reply_markup: { inline_keyboard: [[{ text: "↩️ Undo", callback_data: `u|${name.slice(EDIT_PREFIX.length)}` }], ...linkRows(m)] },
-  });
+  await editAlert(env, m, line, [[{ text: "↩️ Undo", callback_data: `u|${name.slice(EDIT_PREFIX.length)}` }], ...linkRows(m)]);
   await answer(env, q, `Saved. Undo works for ${HOLD_MINUTES} minutes.`);
 }
 
@@ -147,10 +156,7 @@ async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   const edit = await env.DATA.get<{ hold_until: string; tg: { data: string } }>(name, "json");
   const restore = async (data: string) => {
     await env.DATA.delete(`${GUARD}${m.chat.id}:${m.message_id}`);
-    await call(env, "editMessageText", {
-      chat_id: m.chat.id, message_id: m.message_id, ...withMark(m, null), link_preview_options: m.link_preview_options ?? { is_disabled: true },
-      reply_markup: { inline_keyboard: [[{ text: "🛒 Bought it", callback_data: data }], ...linkRows(m)] },
-    });
+    await editAlert(env, m, null, [[{ text: "🛒 Bought it", callback_data: data }], ...linkRows(m)]);
   };
   if (edit && Date.parse(edit.hold_until) > Date.now()) {
     await env.DATA.delete(name);

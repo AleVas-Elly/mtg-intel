@@ -21,6 +21,7 @@ import duckdb
 import pyarrow as pa
 
 from mtg_intel.archive.cardtrader import Session
+from mtg_intel.archive.notify import Rich
 
 # Deal tiers (D47, D52), strongest first: % under the usual price for a card over PRICEY_EUR,
 # name, what the message says. The first number also names the tier on the website.
@@ -404,13 +405,15 @@ def _less(price: float, usual: float) -> str:
     return f"−{pct:.0f}%" if pct >= 0.5 else f"+{-pct:.0f}%" if pct <= -0.5 else "same"
 
 
-def telegram(deal: Deal, site_url: str | None = None,
-             preview: str | None = None) -> tuple[str, list[list[dict[str, str]]], str | None]:
+def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None,
+             photo: bytes | None = None) -> Rich:
     """The deal as a Telegram message (user, 2026-11-06): the strength, the card, then each market
     against its own usual price (CardTrader: this copy against its usual; Cardmarket: its lowest
     against its trend); the rest in a quote that opens on a tap; buttons for "Bought it" and the
     marketplaces. `preview` is the site's preview page for this card: Telegram shows the card's
-    picture small, beside its printing and the copy's condition, language and finish."""
+    picture small, beside its printing and the copy's condition, language and finish. With `photo`
+    (the deal's image, dealimage.py) the alert is that image, captioned with one line for the lock
+    screen and the same details behind a tap; the text version stays as the fallback."""
     w, x = deal.wish, deal.listing
     head = f"{deal.tier[1]} · {deal.below_pct:.0f}% under" if deal.tier else "🎯 Target price"
     if deal.cardtrader:
@@ -440,7 +443,8 @@ def telegram(deal: Deal, site_url: str | None = None,
         more.append("Cardmarket's prices come from its daily price list: any seller, condition and language.")
     more.append(" · ".join(p for p in [f"Seller in {x.country}" if x.country else "",
                                         f"List: {w['list']}" if w.get("list") else ""] if p))
-    lines.append("<blockquote expandable>" + "\n".join(_h(m) for m in more if m) + "</blockquote>")
+    details = "<blockquote expandable>" + "\n".join(_h(m) for m in more if m) + "</blockquote>"
+    lines.append(details)
     buttons: list[list[dict[str, str]]] = []
     data = bought_data(deal)
     if data:
@@ -451,7 +455,9 @@ def telegram(deal: Deal, site_url: str | None = None,
     if site_url:
         links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
     buttons.append(links)
-    return "\n".join(lines), buttons, preview
+    label = f"{deal.tier[1]} · " if deal.tier else "🎯 Target · "
+    caption = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}\n{details}"
+    return Rich("\n".join(lines), buttons, preview, photo, caption)
 
 
 def cardmarket_url(w: dict[str, Any]) -> str:

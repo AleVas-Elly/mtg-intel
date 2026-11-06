@@ -345,7 +345,9 @@ def test_telegram_gets_the_rich_version_and_falls_back_to_plain_text(monkeypatch
         return httpx.Response(400 if "parse_mode" in bodies[-1] else 200, json={"ok": True, "result": {}})
 
     buttons = [[{"text": "🛒 Bought it", "callback_data": "b|x"}]]
-    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "title", "body", telegram=("<b>x", buttons))
+    from mtg_intel.archive.notify import Rich
+
+    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "title", "body", telegram=Rich("<b>x", buttons))
     assert bodies[0]["parse_mode"] == "HTML" and bodies[0]["reply_markup"] == {"inline_keyboard": buttons}
     assert bodies[1]["text"] == "title\n\nbody" and "reply_markup" not in bodies[1]
 

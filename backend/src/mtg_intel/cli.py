@@ -512,7 +512,7 @@ def check_deals(args: argparse.Namespace) -> int:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    from mtg_intel import deals, site
+    from mtg_intel import dealimage, deals, site
     from mtg_intel.archive.cardtrader import Session
     from mtg_intel.archive.sources import InvalidDownload
     from mtg_intel.site import Site
@@ -583,7 +583,13 @@ def check_deals(args: argparse.Namespace) -> int:
             return site.preview_url(site_url, site_token, d.key, d.wish.get("image_url"), printing or d.wish["name"],
                                     copy, now, d.wish.get("set_name") or "mtg-intel")
 
-        messages = ([(*deals.message(d), deals.telegram(d, site_url, preview(d))) for d in result.new]
+        def rich(d: deals.Deal):
+            # The deal's image (D53) is drawn only for alerts that go out on their own.
+            image = None if args.dry_run else dealimage.deal_image(client, d)
+            return deals.telegram(d, site_url, preview(d), image)
+
+        messages = ([(*deals.message(d), rich(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
+                    + [(*deals.message(d), None) for d in result.new[MAX_DEAL_MESSAGES:]]
                     + [(title, text, None) for title, text in targets])
         problems = []
         try:
