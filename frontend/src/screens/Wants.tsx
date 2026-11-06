@@ -1,17 +1,17 @@
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import type { AppData } from "../data";
 import { dealGap, wishCount } from "../data";
-import { cmTrend, day, eur, foilOnly, showsFoil, tagName } from "../format";
-import { CardImage } from "../ui/CardImage";
-import { SetSymbol } from "../ui/symbols";
-import { dismissFailed, pendingPurchases } from "../edits";
+import { day } from "../format";
+import { dismissFailed } from "../edits";
 import { LOCAL } from "../env";
-import { IconSearch, IconWarn } from "../ui/icons";
+import { IconFilter, IconSearch, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton } from "../ui/Row";
-import type { HistoryDoc, PurchasesDoc, Wish } from "../types";
+import { FilterPanel, FilterSheet } from "../ui/Filters";
+import { EMPTY, activeCount, applyFilters, buildGroups, change30, optionCounts, priceOf, type FilterState } from "../filters";
+import type { HistoryDoc, Wish } from "../types";
 
-const BOUGHT = "\u0000bought";  // the Bought segment, never a real list name
+export { change30 };
 
 const SORTS = [
   { id: "deal", label: "Closest to a deal" },
@@ -22,41 +22,36 @@ const SORTS = [
   { id: "set", label: "Set" },
 ];
 
-/** Cardmarket trend change over 30 days, from the price history (MTGJSON then our own days). */
-export function change30(w: Wish, history: HistoryDoc | null | undefined): number | null {
-  if (!history?.base || !w.scryfall_id) return null;
-  const card = history.cards[w.scryfall_id];
-  if (!card) return null;
-  const finish = showsFoil(w) || (foilOnly(w)) ? "foil" : "normal";
-  const points = new Map<number, number>();
-  for (const source of ["mtgjson", "cardmarket"]) {
-    const s = card[source]?.[finish] ?? [];
-    for (let i = 0; i < s.length; i += 2) points.set(s[i], s[i + 1]);
-  }
-  if (points.size < 2) return null;
-  const days = [...points.keys()].sort((a, b) => a - b);
-  const last = days[days.length - 1];
-  const then = [...days].reverse().find((d) => d <= last - 30);
-  if (then == null) return null;
-  const a = points.get(then)!, b = points.get(last)!;
-  return a ? (b - a) / a : null;
+const FILTER_KEY = "wants-filters";
+function readFilters(): FilterState {
+  try {
+    const s = JSON.parse(localStorage.getItem(FILTER_KEY) || "null");
+    if (s && typeof s.sel === "object") return { sel: s.sel, min: s.min ?? "", max: s.max ?? "" };
+  } catch { /* fine */ }
+  return EMPTY;
 }
 
 export function Wants({ data, card }: { data: AppData; card: string | null }) {
-  const [list, setList] = useState<string>(() => sessionStorage.getItem("wants-list") || "All");
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<string>(() => sessionStorage.getItem("wants-sort") || "deal");
-  const history = useDoc<HistoryDoc>(sort === "drop" || sort === "rise" ? "history" : null);
+  const [filters, setFilters] = useState<FilterState>(readFilters);
+  const [sheet, setSheet] = useState(false);
+  // price history feeds "Lowest in 90 days", the 30-day moves and their sorts
+  const history = useDoc<HistoryDoc>("history");
   const wishes = data.wants?.wishes ?? [];
-  const lists = useMemo(() => ["All", ...new Set(wishes.flatMap((w) => w.lists))], [wishes]);
+  useEffect(() => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch { /* fine */ } }, [filters]);
+
+  const groups = useMemo(() => buildGroups(wishes, data, history.doc), [wishes, data, history.doc]);
+  const searched = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return needle ? wishes.filter((w) => w.name.toLowerCase().includes(needle) || (w.set ?? "").toLowerCase() === needle ||
+      (w.set_name ?? "").toLowerCase().includes(needle) || w.tags.some((t) => t.includes(needle))) : wishes;
+  }, [wishes, q]);
+  const counts = useMemo(() => optionCounts(searched, groups, filters, data), [searched, groups, filters, data]);
 
   const shown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    const rows = wishes.filter((w) =>
-      (list === "All" || w.lists.includes(list)) &&
-      (!needle || w.name.toLowerCase().includes(needle) || (w.set ?? "").toLowerCase() === needle ||
-        (w.set_name ?? "").toLowerCase().includes(needle) || w.tags.some((t) => t.includes(needle))));
-    const price = (w: Wish) => cmTrend(w, data.liveOf(w.key)?.foil) ?? -1;
+    const rows = applyFilters(searched, groups, filters, data);
+    const price = (w: Wish) => priceOf(data, w) ?? -1;
     const by: Record<string, (a: Wish, b: Wish) => number> = {
       deal: (a, b) => (dealGap(a, data.liveOf(a.key)) ?? 999) - (dealGap(b, data.liveOf(b.key)) ?? 999),
       price: (a, b) => price(b) - price(a),
@@ -66,54 +61,68 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
       set: (a, b) => (a.set ?? "").localeCompare(b.set ?? "") || (parseInt(a.number ?? "0") - parseInt(b.number ?? "0")),
     };
     return rows.sort(by[sort] ?? by.deal);
-  }, [wishes, list, q, sort, data.live, history.doc]);
+  }, [searched, groups, filters, sort, data, history.doc]);
 
-  const pick = (l: string) => { setList(l); try { sessionStorage.setItem("wants-list", l); } catch { /* fine */ } };
   const pickSort = (s: string) => { setSort(s); try { sessionStorage.setItem("wants-sort", s); } catch { /* fine */ } };
   const showChange = sort === "drop" || sort === "rise";
+  const on = activeCount(filters);
+  const total = wishCount(wishes), n = wishCount(shown);
+  const clear = () => setFilters(EMPTY);
 
   return (
-    <div class="page">
+    <div class="page wide">
       <header class="head">
         <div>
           <h1 class="title">Want-list</h1>
           <p class="sub">
-            {data.wants ? <>{wishCount(wishes)} wishes{data.wants.price_date && <>, Cardmarket prices of {day(data.wants.price_date)}</>}</> : "Loading…"}
+            {data.wants ? <>{total} wishes{data.wants.price_date && <>, Cardmarket prices of {day(data.wants.price_date)}</>}</> : "Loading…"}
           </p>
         </div>
       </header>
       <EditsStatus data={data} />
-      <div class="toolbar">
-        <div class="seg" role="group" aria-label="List">
-          {lists.map((l) => (
-            <button type="button" aria-pressed={list === l} onClick={() => pick(l)}>
-              {l}<small>{wishCount(l === "All" ? wishes : wishes.filter((w) => w.lists.includes(l)))}</small>
-            </button>
-          ))}
-          <button type="button" aria-pressed={list === BOUGHT} onClick={() => pick(BOUGHT)}>Bought</button>
+      <div class="with-side">
+        <div class="side-grid">
+          <aside class="side" aria-label="Filters">
+            <div class="side-head"><span>Filters</span>{on > 0 && <button type="button" class="link" onClick={clear}>Clear all</button>}</div>
+            <FilterPanel groups={groups} state={filters} onChange={setFilters} counts={counts} />
+          </aside>
+          <div class="side-main">
+            <div class="toolbar">
+              <label class="field"><IconSearch /><span class="sr">Filter</span>
+                <input type="search" placeholder="Search cards" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+              </label>
+              <button type="button" class="btn sm filters-btn" aria-label={`Filters${on ? `, ${on} on` : ""}`} onClick={() => setSheet(true)}>
+                <IconFilter />Filters{on > 0 && <span class="f-on">{on}</span>}
+              </button>
+              <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
+                {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+            {data.wants && (on > 0 || q.trim()) && (
+              <div class="list-head shown-line">
+                <span class="num">{n} of {total} wishes{on > 0 && ` · ${on} ${on === 1 ? "filter" : "filters"} on`}</span>
+                {on > 0 && <button type="button" class="link" onClick={clear}>Clear all</button>}
+              </div>
+            )}
+            {!data.wants ? <RowSkeleton /> : shown.length ? (
+              <CardList data={data} current={card} items={shown.map((w) => {
+                const c = showChange ? change30(w, history.doc) : null;
+                return {
+                  w, extra: showChange && c != null ? (
+                    <div class={`r-wish chg ${c <= -0.02 ? "down" : c >= 0.02 ? "up" : "flat"}`}>{c > 0 ? "+" : ""}{Math.round(c * 100)}% on Cardmarket in 30 days</div>
+                  ) : undefined,
+                };
+              })} />
+            ) : q.trim() && !on ? (
+              <div class="empty"><h2>Nothing matches “{q}”</h2><p>Try a card name, a set code like <b>msh</b>, or a version like <b>borderless</b>.</p></div>
+            ) : (
+              <div class="empty"><h2>No wishes match</h2><p>Loosen a filter, or <button type="button" class="link" onClick={clear}>clear them all</button>.</p></div>
+            )}
+            <p class="hint">Green dot: CardTrader's cheapest copy that fits the wish, right now. Blue square: Cardmarket's trend for that finish (all sellers, all conditions, once a day).</p>
+          </div>
         </div>
-        <label class="field"><IconSearch /><span class="sr">Filter</span>
-          <input type="search" placeholder="Search cards" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
-        </label>
-        {list !== BOUGHT && (
-          <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
-            {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}
-          </select>
-        )}
       </div>
-      {list === BOUGHT ? <BoughtList data={data} q={q} /> : !data.wants ? <RowSkeleton /> : shown.length ? (
-        <CardList data={data} current={card} items={shown.map((w) => {
-          const c = showChange ? change30(w, history.doc) : null;
-          return {
-            w, extra: showChange && c != null ? (
-              <div class={`r-wish chg ${c <= -0.02 ? "down" : c >= 0.02 ? "up" : "flat"}`}>{c > 0 ? "+" : ""}{Math.round(c * 100)}% on Cardmarket in 30 days</div>
-            ) : undefined,
-          };
-        })} />
-      ) : (
-        <div class="empty"><h2>Nothing matches “{q}”</h2><p>Try a card name, a set code like <b>msh</b>, or a version like <b>borderless</b>.</p></div>
-      )}
-      {list !== BOUGHT && <p class="hint">Green dot: CardTrader's cheapest copy that fits the wish, right now. Blue square: Cardmarket's trend for that finish (all sellers, all conditions, once a day).</p>}
+      {sheet && <FilterSheet groups={groups} state={filters} onChange={setFilters} counts={counts} shown={n} onClose={() => setSheet(false)} />}
     </div>
   );
 }
@@ -137,49 +146,6 @@ function EditsStatus({ data }: { data: AppData }) {
           <button class="btn sm" type="button" onClick={() => dismissFailed()}>Dismiss</button>
         </div>
       )}
-    </>
-  );
-}
-
-const MARKET: Record<string, string> = { cardtrader: "CardTrader", cardmarket: "Cardmarket", other: "Elsewhere" };
-
-/** Cards I bought, newest first, with what each saved against Cardmarket's trend that day. */
-function BoughtList({ data, q }: { data: AppData; q: string }) {
-  const doc = useDoc<PurchasesDoc>("purchases").doc;
-  const all = [...pendingPurchases(data.edits.ops), ...(doc?.purchases ?? [])];
-  const needle = q.trim().toLowerCase();
-  const rows = all.filter((p) => !needle || p.name.toLowerCase().includes(needle) || (p.set ?? "").toLowerCase() === needle);
-  const compared = all.filter((p) => p.saved != null);
-  const saved = compared.reduce((t, p) => t + p.saved!, 0);
-  const paid = all.reduce((t, p) => t + p.price, 0);
-  if (doc === undefined && !all.length) return <RowSkeleton n={3} />;
-  if (!all.length) {
-    return <div class="empty"><h2>Nothing bought yet</h2><p>On a card's page, tap <b>Bought it</b> to record what you paid. It shows here with what you saved against Cardmarket.</p></div>;
-  }
-  return (
-    <>
-      <div class="savings">
-        <div><span class="label">Saved against Cardmarket</span><b class={saved >= 0 ? "good" : "bad"}>{eur(Math.abs(saved))}{saved < 0 ? " more" : ""}</b></div>
-        <div><span class="label">Paid</span><b>{eur(paid)}</b></div>
-        <div><span class="label">Cards</span><b>{all.length}</b></div>
-      </div>
-      <div class="list">
-        {rows.map((p) => (
-          <div class="row static">
-            <CardImage src={p.thumb} alt="" foil={p.foil} />
-            <div class="r-main">
-              <div class="r-name"><span>{p.name}</span></div>
-              <div class="r-line"><SetSymbol set={p.set} rarity={p.rarity} /><span>{p.tags.length ? p.tags.map(tagName).join(", ") : "regular"}{p.set ? `, ${p.set.toUpperCase()} ${p.number}` : ""}</span></div>
-              <div class="r-wish">{p.pending && <span class="pending">Saving</span>}{day(p.date)}, {MARKET[p.market] ?? p.market}, {p.condition}{p.foil ? ", foil" : ""}</div>
-            </div>
-            <div class="r-price">
-              <span class="p-paid">{eur(p.price)}</span>
-              {p.saved != null && <span class={`chg ${p.saved > 0 ? "down" : p.saved < 0 ? "up" : "flat"}`}>{p.saved >= 0 ? `saved ${eur(p.saved)}` : `${eur(-p.saved)} over`}</span>}
-            </div>
-          </div>
-        ))}
-      </div>
-      <p class="hint">Saved is the difference with Cardmarket's trend for that finish on the day you bought, before shipping.</p>
     </>
   );
 }

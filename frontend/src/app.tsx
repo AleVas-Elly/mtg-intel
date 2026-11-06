@@ -2,11 +2,12 @@ import { useEffect, useState } from "preact/hooks";
 import { whenSignedOut } from "./api";
 import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
-import { IconCheck, IconDeals, IconSearch, IconSettings, IconWants } from "./ui/icons";
+import { IconBag, IconCheck, IconDeals, IconSearch, IconSettings, IconWants } from "./ui/icons";
 import { Gate, useAuth } from "./screens/Gate";
 import { Deals } from "./screens/Deals";
 import { Wants } from "./screens/Wants";
 import { Search } from "./screens/Search";
+import { Bought } from "./screens/Bought";
 import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
 import { Detail } from "./screens/Detail";
@@ -20,6 +21,7 @@ import { setLabOpen, useLabOpen } from "./labstate";
 const TABS = [
   { path: "/", label: "Deals", Icon: IconDeals },
   { path: "/wants", label: "Want-list", Icon: IconWants },
+  { path: "/bought", label: "Bought", Icon: IconBag },
   { path: "/search", label: "Search", Icon: IconSearch },
   { path: "/check", label: "Check", Icon: IconCheck },
 ];
@@ -41,6 +43,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
   const screen =
     path === "/wants" ? <Wants data={data} card={card} /> :
+    path === "/bought" ? <Bought data={data} /> :
     path === "/search" ? <Search data={data} /> :
     path === "/check" ? <Check data={data} /> :
     path === "/settings" ? <Settings data={data} /> :
