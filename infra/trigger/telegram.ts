@@ -174,6 +174,28 @@ async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   await answer(env, q, "Too late to undo: the purchase is saved. It's on the Bought list on the site.", true);
 }
 
+/** A demo of the "Add to cart" button (2026-11-06), before it is built: `d|ok`, `d|sold` and
+ *  `d|bought` show what the real buttons would do. Nothing touches CardTrader. */
+async function demo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<void> {
+  const links = linkRows(m);
+  const kind = (q.data || "").slice(2);
+  if (kind === "bought") return void answer(env, q, "Demo: the real ✅ Bought it records the purchase, as it does today.", true);
+  const line = kind === "ok" ? "✅ In your CardTrader cart · go pay there" : "❌ Already sold: CardTrader's list was out of date";
+  const photo = m.text === undefined;
+  const old = (photo ? m.caption : m.text) || "";
+  const shift = line.length + 2;
+  const entities = [{ type: "bold", offset: 0, length: line.length },
+    ...((photo ? m.caption_entities : m.entities) || []).map((e) => ({ ...e, offset: e.offset + shift }))];
+  const keyboard = kind === "ok"
+    ? [[{ text: "🧾 Open cart", url: "https://www.cardtrader.com/cart" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links]
+    : links;
+  const target = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } };
+  await call(env, photo ? "editMessageCaption" : "editMessageText", photo
+    ? { ...target, caption: `${line}\n\n${old}`, caption_entities: entities }
+    : { ...target, text: `${line}\n\n${old}`, entities });
+  await answer(env, q, kind === "ok" ? "Demo: added to your CardTrader cart." : "Demo: this copy is gone, so nothing was added.", kind !== "ok");
+}
+
 /** Telegram's webhook (POST /api/telegram on the website, passed on here). Only my chat counts; anything else is acknowledged and dropped. */
 export async function telegramUpdate(request: Request, env: TelegramEnv): Promise<Response> {
   const ok = new Response("ok");
@@ -186,6 +208,7 @@ export async function telegramUpdate(request: Request, env: TelegramEnv): Promis
   if (q && mine(q.message)) {
     if (q.data?.startsWith("b|")) await bought(env, q, q.message!);
     else if (q.data?.startsWith("u|")) await undo(env, q, q.message!);
+    else if (q.data?.startsWith("d|")) await demo(env, q, q.message!);
     else await answer(env, q, "This button no longer works.");
   } else if (update?.message && mine(update.message)) {
     await call(env, "sendMessage", {
