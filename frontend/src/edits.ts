@@ -1,6 +1,6 @@
 // Want-list edits made on the site (spec D50). Each one is saved on the Worker at once and shown
 // straight away; a GitHub job writes it into the want-list file within a few minutes.
-import { send, setLocal, useDoc } from "./api";
+import { peek, send, setLocal, useDoc } from "./api";
 import type { Edit, EditsDoc, Purchase, Settings, Wish } from "./types";
 
 /** What a new wish starts with (user, 2026-10-22): English, any finish, NM or better, any CardTrader
@@ -60,8 +60,12 @@ export function overlay(wishes: Wish[], ops: Edit[]): Wish[] {
   return [...out.values()];
 }
 
+/** Waiting edits. Polled every 30 s only while one of my edits is waiting: each read is a KV list
+ *  call, and the free plan allows 1,000 a day, so an idle open tab must not use them up (2026-11-06,
+ *  the queue then failed for the rest of the day). Otherwise read on open and when the tab comes back. */
 export function useEdits(): EditsDoc {
-  return useDoc<EditsDoc>("edits", 30_000).doc ?? { ops: [], failed: [] };
+  const waiting = (peek<EditsDoc>("edits")?.ops.length ?? 0) > 0;
+  return useDoc<EditsDoc>("edits", waiting ? 30_000 : 0).doc ?? { ops: [], failed: [] };
 }
 
 export async function saveEdit(edit: Omit<Edit, "id" | "at">): Promise<EditsDoc> {

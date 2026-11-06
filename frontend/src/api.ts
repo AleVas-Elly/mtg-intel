@@ -111,7 +111,7 @@ export function useDoc<T>(key: string | null, everyMs = 0, persist = true): DocS
       document.removeEventListener("visibilitychange", onVisible);
       if (timer) clearInterval(timer);
     };
-  }, [key]);
+  }, [key, everyMs]);
   const stored = key ? read<T>(key) : null;
   return { doc: stored ? stored.doc : undefined, error, loading };
 }
