@@ -74,7 +74,7 @@ def watch_table(wantlist: pa.Table, cards: pa.Table, cardmarket: pa.Table | None
         select w.line, coalesce(c.name, w.name) as name, c.set_code, c.collector_number, c.special_tags,
             c.finishes, w.scryfall_id, try_cast(w.cardtrader_blueprint_id as bigint) as blueprint_id,
             w.language, w.foil, w.min_condition, w.via_zero, try_cast(w.max_price_eur as double) as max_price_eur,
-            try_cast(w.deal_pct as double) as deal_pct, w.list, w.one_of, c.cardmarket_id, c.image_url{", " + prices if prices else ""}
+            try_cast(w.deal_pct as double) as deal_pct, w.list, w.one_of, c.cardmarket_id, c.image_url, c.set_name{", " + prices if prices else ""}
         from w
         left join c using (scryfall_id)
         left join p on p.id_product = c.cardmarket_id
@@ -394,6 +394,11 @@ def version_line(deal: Deal) -> tuple[str, str]:
     return " · ".join(p for p in printing if p), " · ".join(c for c in copy if c)
 
 
+def front_name(name: str) -> str:
+    """A double-faced card by its front face: "Esika, God of the Tree", not "… // The Prismatic Bridge"."""
+    return name.split(" // ")[0]
+
+
 def _less(price: float, usual: float) -> str:
     pct = (1 - price / usual) * 100
     return f"−{pct:.0f}%" if pct >= 0.5 else f"+{-pct:.0f}%" if pct <= -0.5 else "same"
@@ -413,7 +418,7 @@ def telegram(deal: Deal, site_url: str | None = None,
         ct = f"€{x.price:.2f} · {usual} €{deal.cardtrader:.2f} ({_less(x.price, deal.cardtrader)})"
     else:
         ct = f"€{x.price:.2f}"
-    lines = [_h(head), f"<b>{_h(w['name'])}</b>", f"<b>CardTrader</b>  {_h(ct)}"]
+    lines = [_h(head), f"<b>{_h(front_name(w['name']))}</b>", f"<b>CardTrader</b>  {_h(ct)}"]
     foil = x.foil or (bool(w.get("finishes")) and "nonfoil" not in w["finishes"])
     low = w.get("low_foil" if foil else "low")
     if deal.cardmarket:
@@ -424,7 +429,7 @@ def telegram(deal: Deal, site_url: str | None = None,
     if not preview:
         lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
 
-    more = [deal.tier[2] if deal.tier else "At or under the price I set."]
+    more = [] if deal.tier else ["At or under the price I set."]
     if deal.tier:
         more.append(f"Judged against the higher usual price, €{deal.reference:.2f}: a deal from {deal.floor:.0f}% under.")
     if w.get("max_price_eur") is not None and x.price <= w["max_price_eur"]:

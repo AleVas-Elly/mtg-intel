@@ -171,7 +171,7 @@ def test_telegram_message_shows_both_markets_against_their_usual_and_details_beh
                                 "<b>CardTrader</b>  €2.88 · next copy €4.50 (−36%)",
                                 "<b>Cardmarket</b>  from €3.00 · trend €4.67 (−36%)"]
     assert preview == "https://site.example/p/x"
-    assert "Judged against the higher usual price, €4.67: a deal from 30% under." in more
+    assert more.startswith("Judged against the higher usual price, €4.67: a deal from 30% under.")
     assert "Cardmarket 7-day average €4.59." in more and "Seller in IT · List: Marvel" in more
     assert buttons[0] == [{"text": "🛒 Bought it", "callback_data": "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|en|no|288|NM|0|en"}]
     assert [b["text"] for b in buttons[1]] == ["CardTrader", "Cardmarket", "Site"]
@@ -191,11 +191,13 @@ def test_preview_link_is_signed_and_only_for_scryfall_pictures():
     from mtg_intel import site
 
     url = site.preview_url("https://s.example", "tok", "k|en|any", "https://cards.scryfall.io/normal/front/a/b.jpg?1",
-                           "MSH #343", "NM · EN", NOW)
+                           "MSH #343", "NM · EN", NOW, "Marvel Super Heroes")
     body, mac = url.removeprefix("https://s.example/p/").split(".")
     assert base64.urlsafe_b64decode(mac + "==") == hmac.new(b"tok", body.encode(), hashlib.sha256).digest()
     payload = json.loads(base64.urlsafe_b64decode(body + "=="))
-    assert (payload["kind"], payload["i"], payload["t"], payload["d"]) == ("preview", "normal/front/a/b.jpg?1", "MSH #343", "NM · EN")
+    assert (payload["kind"], payload["i"], payload["t"], payload["d"], payload["s"]) == (
+        "preview", "normal/front/a/b.jpg?1", "MSH #343", "NM · EN", "Marvel Super Heroes")
+    assert deals.front_name("Esika, God of the Tree // The Prismatic Bridge") == "Esika, God of the Tree"
     assert site.preview_url("https://s.example", "tok", "k", "https://evil.example/x.jpg", "t", "d", NOW) is None
 
 

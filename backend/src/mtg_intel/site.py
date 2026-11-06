@@ -129,7 +129,7 @@ SCRYFALL_IMAGES = "https://cards.scryfall.io/"
 
 
 def preview_url(site_url: str, token: str, key: str, image_url: str | None, title: str, description: str,
-                now: datetime) -> str | None:
+                now: datetime, header: str = "mtg-intel") -> str | None:
     """A link to the site's preview page for a card (`/p/<signed>`, D53): Telegram reads its
     picture, title and description for the small preview beside a deal alert. Signed with the
     ingest token, so the page only ever shows what a job put there; only Scryfall pictures."""
@@ -140,7 +140,7 @@ def preview_url(site_url: str, token: str, key: str, image_url: str | None, titl
     if not image_url or not image_url.startswith(SCRYFALL_IMAGES):
         return None
     b64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
-    payload = {"kind": "preview", "k": key, "i": image_url[len(SCRYFALL_IMAGES):], "t": title, "d": description,
+    payload = {"kind": "preview", "k": key, "i": image_url[len(SCRYFALL_IMAGES):], "t": title, "d": description, "s": header,
                "exp": int((now + timedelta(days=PREVIEW_DAYS)).timestamp() * 1000)}
     body = b64(json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode())
     mac = b64(hmac.new(token.encode(), body.encode(), hashlib.sha256).digest())

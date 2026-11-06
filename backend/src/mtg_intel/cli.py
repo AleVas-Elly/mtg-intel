@@ -581,7 +581,7 @@ def check_deals(args: argparse.Namespace) -> int:
                 return None
             printing, copy = deals.version_line(d)
             return site.preview_url(site_url, site_token, d.key, d.wish.get("image_url"), printing or d.wish["name"],
-                                    copy, now)
+                                    copy, now, d.wish.get("set_name") or "mtg-intel")
 
         messages = ([(*deals.message(d), deals.telegram(d, site_url, preview(d))) for d in result.new]
                     + [(title, text, None) for title, text in targets])

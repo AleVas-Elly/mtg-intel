@@ -305,7 +305,7 @@ const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").rep
  *  who opens it is sent on to the card by script, never by a meta refresh: Telegram follows those
  *  and would preview the sign-in page instead (2026-11-06). */
 async function preview(env: Env, token: string): Promise<Response> {
-  const p = await verify<{ kind: string; k: string; i: string; t: string; d: string; exp: number }>(env.INGEST_TOKEN, token);
+  const p = await verify<{ kind: string; k: string; i: string; t: string; d: string; s?: string; exp: number }>(env.INGEST_TOKEN, token);
   if (!p || p.kind !== "preview" || !/^[A-Za-z0-9/_.?=-]{1,200}$/.test(p.i) || p.i.includes("..")) {
     return new Response("Not found", { status: 404 });
   }
@@ -313,7 +313,7 @@ async function preview(env: Env, token: string): Promise<Response> {
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>${attr(p.t)}</title>
 <meta name="robots" content="noindex">
 <meta property="og:type" content="article">
-<meta property="og:site_name" content="mtg-intel">
+<meta property="og:site_name" content="${attr(p.s || "mtg-intel")}">
 <meta property="og:title" content="${attr(p.t)}">
 <meta property="og:description" content="${attr(p.d)}">
 <meta property="og:image" content="https://cards.scryfall.io/${attr(p.i)}">
