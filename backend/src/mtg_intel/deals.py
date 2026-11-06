@@ -95,6 +95,7 @@ class Listing:
     zero: bool
     country: str
     quantity: int
+    seller: str = ""  # the seller's CardTrader username, to find the copy on the page
 
     @classmethod
     def from_api(cls, item: dict[str, Any]) -> Listing | None:
@@ -109,7 +110,7 @@ class Listing:
             id=item["id"], price=item["price_cents"] / 100, condition=props.get("condition") or "",
             language=props.get("mtg_language") or "", foil=bool(props.get("mtg_foil")),
             zero=bool(user.get("can_sell_via_hub")), country=user.get("country_code") or "",
-            quantity=item.get("quantity") or 1,
+            quantity=item.get("quantity") or 1, seller=user.get("username") or "",
         )
 
 
@@ -425,10 +426,31 @@ def trend_points(rows: list[dict[str, Any]], foil: bool) -> list[tuple[str, floa
     return [(d, v) for d, (_, v) in sorted(by_day.items())]
 
 
-def price_trend(points: list[tuple[str, float]], now: float | None = None) -> list[str]:
-    """Where a card's Cardmarket trend has been over the last 90 days (user, 2026-11-06), from
-    `my/price_history` points (date, trend), oldest first: a sparkline, the change over a month
-    and three months, and the lowest and highest with their dates. Empty with under 2 weeks."""
+COUNTRIES = {"IT": "Italy", "DE": "Germany", "FR": "France", "ES": "Spain", "NL": "the Netherlands", "BE": "Belgium",
+             "AT": "Austria", "PT": "Portugal", "PL": "Poland", "IE": "Ireland", "LU": "Luxembourg", "DK": "Denmark",
+             "SE": "Sweden", "FI": "Finland", "CZ": "Czechia", "SK": "Slovakia", "SI": "Slovenia", "HR": "Croatia",
+             "GR": "Greece", "HU": "Hungary", "RO": "Romania", "BG": "Bulgaria", "MT": "Malta", "CY": "Cyprus",
+             "EE": "Estonia", "LV": "Latvia", "LT": "Lithuania", "GB": "the UK", "CH": "Switzerland", "US": "the US",
+             "CA": "Canada", "JP": "Japan"}
+
+
+def cardtrader_points(rows: list[dict[str, Any]], wish: dict[str, Any]) -> list[tuple[str, float]]:
+    """The cheapest CardTrader copy fitting a wish on each day, oldest first, from the daily check
+    summaries (`checks/daily`, one row per check, language, condition, foil and Zero)."""
+    cheapest: dict[str, float] = {}
+    for r in rows:
+        x = Listing(0, r["min_price"], r["condition"], r["language"], r["foil"], r["zero"], "", 1)
+        if fits(x, wish):
+            day = str(r["checked_at"])[:10]
+            cheapest[day] = min(cheapest.get(day, x.price), x.price)
+    return sorted(cheapest.items())
+
+
+def price_trend(points: list[tuple[str, float]], now: float | None, title: str, min_days: int = 14) -> list[str]:
+    """Where a price has been over the last 90 days (user, 2026-11-06), from (date, price) points,
+    oldest first: a title (with "since <date>" while there is less history), a sparkline, the
+    change over a month and over three months, and the lowest and highest with their dates.
+    Empty with under `min_days` of history."""
     from datetime import date
 
     points = [(d, v) for d, v in points if v]
@@ -436,12 +458,15 @@ def price_trend(points: list[tuple[str, float]], now: float | None = None) -> li
         return []
     last = date.fromisoformat(points[-1][0])
     points = [(d, v) for d, v in points if (last - date.fromisoformat(d)).days <= TREND_DAYS]
-    if (last - date.fromisoformat(points[0][0])).days < 14:
+    first = date.fromisoformat(points[0][0])
+    if (last - first).days < min_days:
         return []
     now = now or points[-1][1]
-    buckets: list[list[float]] = [[] for _ in range(13)]
+    span = (last - first).days + 1
+    steps = min(13, span)
+    buckets: list[list[float]] = [[] for _ in range(steps)]
     for d, v in points:
-        buckets[min(12, (TREND_DAYS - (last - date.fromisoformat(d)).days) * 13 // (TREND_DAYS + 1))].append(v)
+        buckets[min(steps - 1, (date.fromisoformat(d) - first).days * steps // span)].append(v)
     means = [sum(b) / len(b) for b in buckets if b]
     lo, hi = min(means), max(means)
     spark = "".join(SPARK[0 if hi == lo else round((m - lo) / (hi - lo) * (len(SPARK) - 1))] for m in means)
@@ -450,23 +475,25 @@ def price_trend(points: list[tuple[str, float]], now: float | None = None) -> li
         before = [v for d, v in points if (last - date.fromisoformat(d)).days >= days]
         return before[-1] if before else None
 
-    def change(old: float) -> str:
+    def change(old: float, when: str) -> str:
         pct = (now / old - 1) * 100
-        return "steady" if abs(pct) < FLAT_PCT else f"{'up' if pct > 0 else 'down'} {abs(pct):.0f}%"
+        move = "Steady" if abs(pct) < FLAT_PCT else f"{'Up' if pct > 0 else 'Down'} {abs(pct):.0f}%"
+        return f"{move} {when} (was €{old:.2f})"
 
-    month, quarter = ago(30), ago(85)
-    moves = [f"{change(month)} in a month (was €{month:.2f})" if month else "",
-             f"{change(quarter)} in 3 months (€{quarter:.2f})" if quarter else ""]
+    day = lambda d: date.fromisoformat(d).strftime("%-d %b")
     low = min(points, key=lambda p: p[1])
     high = max(points, key=lambda p: p[1])
-    day = lambda d: date.fromisoformat(d).strftime("%-d %b")
-    return [f"📈 Cardmarket trend, 90 days: {spark}",
-            " · ".join(m for m in moves if m).capitalize(),
-            f"Lowest €{low[1]:.2f} ({day(low[0])}) · highest €{high[1]:.2f} ({day(high[0])})"]
+    month, quarter = ago(30), ago(85)
+    window = "90 days" if (last - first).days >= 85 else f"since {day(points[0][0])}"
+    return [f"{title} · {window}", spark,
+            *([change(month, "in a month")] if month else []),
+            *([change(quarter, "in 3 months")] if quarter else []),
+            f"Lowest €{low[1]:.2f} · {day(low[0])}",
+            f"Highest €{high[1]:.2f} · {day(high[0])}"]
 
 
 def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None,
-             photo: bytes | None = None, history: list[str] | None = None) -> Rich:
+             photo: bytes | None = None, history: list[list[str]] | None = None) -> Rich:
     """The deal as a Telegram message (user, 2026-11-06): the strength, the card, then each market
     against its own usual price (CardTrader: this copy against its usual; Cardmarket: its lowest
     against its trend); the rest in a quote that opens on a tap; buttons for "Bought it" and the
@@ -492,21 +519,27 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
     if not preview:
         lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
 
-    more = [line for line in history or [] if line]
-    if more:
-        more.append("")
-    if not deal.tier:
-        more.append("At or under the price I set.")
+    # The details, behind a tap: the price trends, then why it is a deal and where the copy is. Each
+    # section starts with a bold title and a blank line sits between them (user, 2026-11-06).
+    why = [] if deal.tier else ["At or under the price I set."]
     if deal.tier:
-        more.append(f"Judged against the higher usual price, €{deal.reference:.2f}: a deal from {deal.floor:.0f}% under.")
+        why.append(f"Judged against the higher usual price, €{deal.reference:.2f}; a deal from {deal.floor:.0f}% under.")
     if w.get("max_price_eur") is not None and x.price <= w["max_price_eur"]:
-        more.append(f"At or under my €{w['max_price_eur']:.2f} target.")
+        why.append(f"At or under my €{w['max_price_eur']:.2f} target.")
     if deal.cardmarket:
-        more.append("Cardmarket's prices come from its daily price list: any seller, condition and language.")
-    more.append(" · ".join(p for p in [f"Seller in {x.country}" if x.country else "",
-                                        f"List: {w['list']}" if w.get("list") else ""] if p))
-    details = "<blockquote expandable>" + "\n".join(_h(m) for m in more).strip() + "</blockquote>"
-    lines.append(details)
+        why.append("Cardmarket's prices come from its daily list: any seller, condition and language.")
+    country = COUNTRIES.get(x.country, x.country)
+    if x.seller:
+        why.append(f"Seller: {x.seller}" + (f" ({country})" if country else ""))
+    elif country:
+        why.append(f"Seller in {country}")
+    if w.get("list"):
+        why.append(f"List: {w['list']}")
+    sections = [s for s in (history or []) if s] + [["ℹ️ Why it's a deal" if deal.tier else "ℹ️ Why this alert", *why]]
+    details = "<blockquote expandable>" + "\n\n".join(
+        "\n".join([f"<b>{_h(section[0])}</b>", *(_h(line) for line in section[1:])]) for section in sections
+    ) + "</blockquote>"
+    lines += ["", details]
     buttons: list[list[dict[str, str]]] = []
     data = bought_data(deal)
     if data:
@@ -518,7 +551,7 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
         links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
     buttons.append(links)
     label = f"{deal.tier[1]} · " if deal.tier else "🎯 Target · "
-    caption = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}\n{details}"
+    caption = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}\n\n{details}"
     return Rich("\n".join(lines), buttons, preview, photo, caption)
 
 

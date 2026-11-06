@@ -594,12 +594,34 @@ def check_deals(args: argparse.Namespace) -> int:
             except Exception as e:  # noqa: BLE001 - the alert goes without a trend rather than not at all
                 print(f"WARNING  price history not read: {e}", file=sys.stderr)
 
+        # CardTrader's own trend: the cheapest fitting copy per day from the packed daily check files
+        # (kept since 2026-10-20), up to 90 days back, plus this check.
+        ct_rows: dict[int, list[dict]] = {}
+        if result.new:
+            wanted = {d.wish["blueprint_id"] for d in result.new}
+            found = False
+            for days_back in range(1, deals.TREND_DAYS + 1):
+                daily = store.fetch(daily_checks_path((now - timedelta(days=days_back)).date()), fresh=False)
+                if daily is None:
+                    if found:
+                        break  # the files are contiguous: an earlier gap is where they start
+                    continue
+                found = True
+                for row in pq.read_table(daily, filters=[("blueprint_id", "in", sorted(wanted))]).to_pylist():
+                    ct_rows.setdefault(row["blueprint_id"], []).append(row)
+            for row in result.summary:
+                if row["blueprint_id"] in wanted:
+                    ct_rows.setdefault(row["blueprint_id"], []).append(row)
+
         def rich(d: deals.Deal):
             # The deal's image (D53) is drawn only for alerts that go out on their own.
             image = None if args.dry_run else dealimage.deal_image(client, d)
             foil = d.listing.foil or (bool(d.wish.get("finishes")) and "nonfoil" not in d.wish["finishes"])
-            points = deals.trend_points(history_rows.get(d.wish.get("scryfall_id") or "", []), foil)
-            return deals.telegram(d, site_url, preview(d), image, deals.price_trend(points, d.cardmarket))
+            cm = deals.trend_points(history_rows.get(d.wish.get("scryfall_id") or "", []), foil)
+            ct = deals.cardtrader_points(ct_rows.get(d.wish["blueprint_id"], []), d.wish)
+            trends = [deals.price_trend(cm, d.cardmarket, "📈 Cardmarket trend"),
+                      deals.price_trend(ct, None, "📉 CardTrader, cheapest copy", min_days=5)]
+            return deals.telegram(d, site_url, preview(d), image, trends)
 
         messages = ([(*deals.message(d), rich(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
                     + [(*deals.message(d), None) for d in result.new[MAX_DEAL_MESSAGES:]]

@@ -27,12 +27,6 @@ GOOD, BAD = "#2fcf96", "#ff8a80"
 # The site's dark tier colours (frontend styles.css), by the tier's base %: background, text.
 TIER_COLOURS = {20.0: ("#2a2150", "#c3b4ff"), 30.0: ("#5b3fd6", "#ffffff"), 40.0: ("#a58cff", "#170a3d")}
 TARGET_COLOURS = ("#3a3a3c", INK)
-COUNTRIES = {"IT": "Italy", "DE": "Germany", "FR": "France", "ES": "Spain", "NL": "the Netherlands", "BE": "Belgium",
-             "AT": "Austria", "PT": "Portugal", "PL": "Poland", "IE": "Ireland", "LU": "Luxembourg", "DK": "Denmark",
-             "SE": "Sweden", "FI": "Finland", "CZ": "Czechia", "SK": "Slovakia", "SI": "Slovenia", "HR": "Croatia",
-             "GR": "Greece", "HU": "Hungary", "RO": "Romania", "BG": "Bulgaria", "MT": "Malta", "CY": "Cyprus",
-             "EE": "Estonia", "LV": "Latvia", "LT": "Lithuania", "GB": "the UK", "CH": "Switzerland", "US": "the US",
-             "JP": "Japan"}
 
 
 @dataclass
@@ -69,7 +63,7 @@ def panel(deal: deals.Deal) -> Panel:
             markets.append(("Cardmarket", f"from €{low:.2f} · trend €{deal.cardmarket:.2f}", deals._less(low, deal.cardmarket)))
         else:
             markets.append(("Cardmarket", f"trend €{deal.cardmarket:.2f}", deals._less(x.price, deal.cardmarket)))
-    footer = " · ".join(p for p in [f"Seller in {COUNTRIES.get(x.country, x.country)}" if x.country else "",
+    footer = " · ".join(p for p in [f"Seller in {deals.COUNTRIES.get(x.country, x.country)}" if x.country else "",
                                     f"{w['list']} list" if w.get("list") else ""] if p)
     return Panel(pill, deal.tier[0] if deal.tier else None, deals.front_name(w["name"]), f"€{x.price:.2f}", saving,
                  markets, footer)
