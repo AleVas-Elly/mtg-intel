@@ -982,3 +982,8 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .d-gone .stamp { border-color: #ff8a80; color: #ff8a80; font-size: 14px; }
 .d-gone s { opacity: 0.8; }
 .detail.was-deal .d-stage, .detail.was-deal .d-top { background: color-mix(in srgb, var(--f) 45%, #2a2a2e); }
+/* review round 2: drops stay smaller than the hero; foil shimmers when touched, not forever; Steal shines twice */
+.drop-row { grid-template-columns: repeat(auto-fill, minmax(240px, 300px)); }
+.foil::after { animation: none; }
+:root:not([data-motion="calm"]) :is(.row, .tile, .g-card, .drop):hover .foil::after { animation: sheen 2.4s var(--ease) 1; }
+:root[data-motion="lively"] .tier.t3::after { animation-iteration-count: 2; }

@@ -10,8 +10,8 @@ export const DEFAULT: Look = { motion: "lively", density: "comfortable" };
 export const OPTIONS: { [K in keyof Look]: { id: string; label: string; hint: string }[] } = {
   motion: [
     { id: "calm", label: "Calm", hint: "Things just appear: no rolling prices, no flying card, foil stays still" },
-    { id: "smooth", label: "Smooth", hint: "Pages glide, a tapped card flies into its pane, prices roll, foil shimmers slowly" },
-    { id: "lively", label: "Lively", hint: "All of Smooth, plus lists cascade in, cards tilt when touched and Steal badges shine" },
+    { id: "smooth", label: "Smooth", hint: "Pages glide, a tapped card flies into its pane, prices roll, foil shimmers when you point at it" },
+    { id: "lively", label: "Lively", hint: "All of Smooth, plus lists cascade in, cards tilt when touched and Steal badges flash" },
   ],
   density: [
     { id: "compact", label: "Compact", hint: "Small pictures, more cards per screen" },
