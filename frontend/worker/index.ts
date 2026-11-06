@@ -301,8 +301,9 @@ const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").rep
 
 /** GET /p/<signed>: a card's preview page for Telegram (D53). A deal alert links here so Telegram
  *  shows the card's picture small, beside its printing and the copy's condition, language and
- *  finish. Only what a GitHub job signed with the ingest token, only Scryfall pictures; a person
- *  who opens it is sent on to the card on the site. */
+ *  finish. Only what a GitHub job signed with the ingest token, only Scryfall pictures. A person
+ *  who opens it is sent on to the card by script, never by a meta refresh: Telegram follows those
+ *  and would preview the sign-in page instead (2026-11-06). */
 async function preview(env: Env, token: string): Promise<Response> {
   const p = await verify<{ kind: string; k: string; i: string; t: string; d: string; exp: number }>(env.INGEST_TOKEN, token);
   if (!p || p.kind !== "preview" || !/^[A-Za-z0-9/_.?=-]{1,200}$/.test(p.i) || p.i.includes("..")) {
@@ -317,8 +318,7 @@ async function preview(env: Env, token: string): Promise<Response> {
 <meta property="og:description" content="${attr(p.d)}">
 <meta property="og:image" content="https://cards.scryfall.io/${attr(p.i)}">
 <meta property="og:image:width" content="488"><meta property="og:image:height" content="680">
-<meta http-equiv="refresh" content="0;url=${attr(card)}">
-</head><body><a href="${attr(card)}">Open the card</a></body></html>`;
+</head><body><a href="${attr(card)}">Open the card</a><script>location.replace(${JSON.stringify(card).replace(/</g, "\\u003c")})</script></body></html>`;
   return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=86400" } });
 }
 
