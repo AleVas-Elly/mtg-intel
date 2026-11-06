@@ -1,4 +1,4 @@
-// Want-list filters (spec D54): groups of options in the sidebar. Options in one group are
+// Want-list filters (spec D55): groups of options in the sidebar. Options in one group are
 // alternatives (Rare or Mythic); groups narrow each other (Rare and Blue).
 import type { AppData } from "./data";
 import { dealGap, wishCount } from "./data";

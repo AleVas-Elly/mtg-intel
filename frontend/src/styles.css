@@ -43,6 +43,10 @@
   --radius-s: 9px;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --spring: cubic-bezier(0.16, 1, 0.3, 1);
+  /* motion (D56): strong ease-out for things arriving, quicker exits, nothing over ~300 ms but panes */
+  --out: cubic-bezier(0.23, 1, 0.32, 1);
+  --in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --t-press: 120ms; --t-small: 180ms; --t-pane: 300ms; --t-exit: 200ms;
   --rail: 232px;
   --detail: 440px;
 }
@@ -329,17 +333,17 @@ img { display: block; }
 .mana .sep { color: var(--ink-3); font-size: 12px; padding: 0 3px; }
 
 /* ---------- detail ---------- */
-.detail-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.36); animation: fade 0.25s var(--ease); }
+.detail-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.36); animation: fade var(--t-pane) var(--out); }
 .detail {
   position: fixed; z-index: 61; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--bg);
-  animation: rise 0.42s var(--ease);
+  animation: rise var(--t-pane) var(--out);
   padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
 @keyframes slide { from { transform: translateX(48px); opacity: 0; } }
 @media (min-width: 900px) {
-  .detail { left: auto; width: min(var(--detail), 100vw); border-left: 0.5px solid var(--line); box-shadow: var(--shadow-2); animation: slide 0.42s var(--ease); }
+  .detail { left: auto; width: min(var(--detail), 100vw); border-left: 0.5px solid var(--line); box-shadow: var(--shadow-2); animation: slide var(--t-pane) var(--out); }
 }
 @media (min-width: 1280px) {
   .shell.has-detail { grid-template-columns: var(--rail) minmax(0, 1fr) var(--detail); }
@@ -470,16 +474,16 @@ img { display: block; }
   .head { padding-top: 34px; }
 }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.3s; animation-timing-function: var(--ease); }
-::view-transition-group(card-open) { animation-duration: 0.45s; animation-timing-function: var(--ease); z-index: 3; }
+::view-transition-group(card-open) { animation-duration: 0.36s; animation-timing-function: var(--out); z-index: 3; }
 /* Opening or closing a card: the page underneath swaps at once (no ghosted double list while the
    columns resize), the detail pane slides on its own and the picture flies above it. */
 .detail { view-transition-name: detail-pane; }
 .detail-backdrop { view-transition-name: detail-backdrop; }
-::view-transition-group(detail-pane) { z-index: 2; animation-duration: 0.4s; animation-timing-function: var(--ease); }
-::view-transition-new(detail-pane):only-child { animation: rise 0.4s var(--ease) both; }
-::view-transition-old(detail-pane):only-child { animation: rise 0.3s var(--ease) reverse both; }
-::view-transition-new(detail-backdrop):only-child { animation: fade 0.3s var(--ease) both; }
-::view-transition-old(detail-backdrop):only-child { animation: fade 0.25s var(--ease) reverse both; }
+::view-transition-group(detail-pane) { z-index: 2; animation-duration: var(--t-pane); animation-timing-function: var(--out); }
+::view-transition-new(detail-pane):only-child { animation: rise var(--t-pane) var(--out) both; }
+::view-transition-old(detail-pane):only-child { animation: rise var(--t-exit) var(--out) reverse both; }
+::view-transition-new(detail-backdrop):only-child { animation: fade var(--t-pane) var(--out) both; }
+::view-transition-old(detail-backdrop):only-child { animation: fade var(--t-exit) var(--out) reverse both; }
 @media (min-width: 900px) {
   ::view-transition-new(detail-pane):only-child { animation-name: slide; }
   ::view-transition-old(detail-pane):only-child { animation-name: slide; }
@@ -619,7 +623,7 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 /* ---------- Design lab: motion ----------
    Calm: things appear. Smooth: the card flies into its page, lists fade in, foil drifts.
    Lively: the flight bounces, lists cascade, pictures tilt when touched, Steal badges shine. */
-@keyframes reveal { from { opacity: 0; transform: translateY(14px) scale(0.98); } }
+@keyframes reveal { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
 :root[data-motion="calm"] .foil::after { animation: none; opacity: 0.35; }
 :root[data-motion="calm"] .dot.live { animation: none; }
 :root[data-motion="calm"] .detail { animation: fade 0.15s linear; }
@@ -633,15 +637,15 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 :root[data-motion="smooth"] .list, :root[data-motion="smooth"] .gallery { animation: fade 0.35s var(--ease) both; }
 
 :root[data-motion="lively"] { --spring: cubic-bezier(0.34, 1.45, 0.64, 1); }
-:root[data-motion="lively"]::view-transition-group(card-open) { animation-duration: 0.5s; animation-timing-function: cubic-bezier(0.3, 1.16, 0.55, 1); }
-:root[data-motion="lively"] .detail { animation-duration: 0.55s; animation-timing-function: var(--spring); }
+:root[data-motion="lively"]::view-transition-group(card-open) { animation-duration: 0.4s; animation-timing-function: cubic-bezier(0.3, 1.08, 0.55, 1); }
+:root[data-motion="lively"] .detail { animation-duration: 0.34s; }
 :root[data-motion="lively"] .foil::after { opacity: 0.95; animation-duration: 3s; }
 :root[data-motion="lively"] .row .thumb, :root[data-motion="lively"] .g-card .thumb { transition: transform 0.45s var(--spring); }
 :root[data-motion="lively"] .row:hover .thumb { transform: perspective(500px) rotateY(-10deg) rotateX(5deg) scale(1.06); }
 :root[data-motion="lively"] .row:active .thumb { transform: perspective(500px) rotateY(-14deg) rotateX(6deg) scale(1.1); transition-duration: 0.2s; }
 :root[data-motion="lively"] .g-card:hover .thumb { transform: perspective(900px) rotateY(-6deg) rotateX(4deg) translateY(-4px); }
 :root[data-motion="lively"] .g-card:active .thumb { transform: perspective(900px) rotateY(-9deg) rotateX(5deg) scale(0.97); transition-duration: 0.2s; }
-:root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 0.6s var(--spring) both; animation-delay: calc(min(var(--n, 12), 12) * 40ms); }
+:root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 280ms var(--out) both; animation-delay: calc(min(var(--n, 8), 8) * 20ms); }
 :root[data-motion="lively"] .tier.t3 { position: relative; overflow: hidden; }
 :root[data-motion="lively"] .tier.t3::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -705,7 +709,7 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
   max-height: min(62dvh, 560px); display: flex; flex-direction: column; border-radius: 22px; overflow: hidden;
   background: color-mix(in srgb, var(--surface) 96%, transparent);
   backdrop-filter: blur(24px) saturate(1.8); -webkit-backdrop-filter: blur(24px) saturate(1.8);
-  box-shadow: var(--shadow-2), 0 0 0 0.5px var(--line-strong); animation: rise 0.35s var(--ease);
+  box-shadow: var(--shadow-2), 0 0 0 0.5px var(--line-strong); animation: rise var(--t-pane) var(--out);
 }
 @media (min-width: 900px) { .lab { left: auto; right: 20px; bottom: 20px; width: 380px; max-height: calc(100dvh - 40px); } }
 .lab-head { display: flex; justify-content: space-between; align-items: center; padding: 14px 14px 6px 18px; }
@@ -738,16 +742,16 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 /* ---------- editing (3c): the wish sheet, toasts, add buttons ---------- */
 .sheet-wrap {
   position: fixed; inset: 0; z-index: 80; display: flex; align-items: flex-end; justify-content: center;
-  background: rgba(0, 0, 0, 0.36); animation: fade 0.25s var(--ease);
+  background: rgba(0, 0, 0, 0.36); animation: fade var(--t-pane) var(--out);
 }
 .sheet {
   width: 100%; max-height: 92dvh; display: flex; flex-direction: column; background: var(--bg);
-  border-radius: 20px 20px 0 0; box-shadow: var(--shadow-2); animation: rise 0.42s var(--spring);
+  border-radius: 20px 20px 0 0; box-shadow: var(--shadow-2); animation: sheet-up var(--t-pane) var(--out);
   padding-bottom: env(safe-area-inset-bottom);
 }
 @media (min-width: 700px) {
   .sheet-wrap { align-items: center; }
-  .sheet { width: 460px; border-radius: 20px; max-height: min(88dvh, 820px); }
+  .sheet { width: 460px; border-radius: 20px; max-height: min(88dvh, 820px); animation: pop 220ms var(--out); }
 }
 .sheet-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; padding: 14px 14px 10px 18px; }
 .sheet-head .thumb { width: 36px; }
@@ -818,7 +822,7 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; }
   position: fixed; z-index: 90; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: center; gap: 14px; padding: 12px 16px;
   border-radius: 14px; background: var(--ink); color: var(--surface); font-size: 14px; box-shadow: var(--shadow-2);
-  animation: toast-in 0.35s var(--spring);
+  animation: toast-in 260ms var(--out);
 }
 .toast button { border: 0; background: none; color: inherit; font: inherit; font-weight: 650; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 900px) { .toast { bottom: 24px; } }
@@ -834,7 +838,8 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; }
 .confirm-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
 .btn.danger { background: var(--bad); color: #fff; }
 .btn.danger:hover { opacity: 0.9; }
-@keyframes pop { from { opacity: 0; transform: scale(0.94); } }
+@keyframes pop { from { opacity: 0; transform: scale(0.96); } }
+@keyframes sheet-up { from { transform: translateY(100%); } }
 .versions { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px; scrollbar-width: thin; scroll-snap-type: x proximity; }
 .version {
   flex: none; width: 76px; display: flex; flex-direction: column; gap: 3px; padding: 0; border: 0; background: none;
@@ -885,7 +890,7 @@ input.date:focus { outline: 2px solid var(--focus); }
 .row.static:hover { background: none; }
 .p-paid { font-size: 15.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* ---------- want-list filters (D54): sidebar on wide layouts, a sheet on the phone ---------- */
+/* ---------- want-list filters (D55): sidebar on wide layouts, a sheet on the phone ---------- */
 button.link { border: 0; background: none; padding: 0; font: inherit; font-weight: 500; cursor: pointer; }
 .page.wide { max-width: 760px; }
 @media (min-width: 900px) { .page.wide { max-width: 1180px; } }
@@ -916,14 +921,15 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
   padding: 10px 8px; font-size: 13px; font-weight: 600; color: var(--ink-2); text-align: left; border-radius: 8px;
 }
 .f-head:hover { color: var(--ink); }
-.f-caret { width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(-45deg); transition: transform 0.2s var(--ease); margin: 0 2px; }
+.f-caret { width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(-45deg); transition: transform var(--t-small) var(--out); margin: 0 2px; }
 .f-head[aria-expanded="true"] .f-caret { transform: rotate(45deg) translate(-1px, -1px); }
 .f-on {
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
   background: var(--ink); color: var(--bg); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
 .f-head .f-on { margin-left: auto; }
-.f-options { display: flex; flex-direction: column; padding: 0 0 10px; }
+.f-options { display: flex; flex-direction: column; padding: 0 0 10px; animation: f-open var(--t-small) var(--out); }
+@keyframes f-open { from { opacity: 0; transform: translateY(-4px); } }
 .f-opt {
   display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding: 5px 8px; border: 0; border-radius: 8px;
   background: none; cursor: pointer; font-size: 14px; color: var(--ink); text-align: left; transition: background 0.12s var(--ease);
@@ -937,11 +943,13 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .f-opt[aria-checked="true"] .f-box { background: var(--ink); box-shadow: none; }
 .f-opt[aria-checked="true"] .f-box::after {
   content: ""; width: 4px; height: 8px; border-right: 2px solid var(--bg); border-bottom: 2px solid var(--bg); transform: translateY(-1px) rotate(45deg);
+  animation: tick var(--t-press) var(--out);
 }
+@keyframes tick { from { opacity: 0; transform: translateY(-1px) rotate(45deg) scale(0.5); } }
 .f-label { flex: 1; min-width: 0; line-height: 1.3; }
 .f-n { flex: none; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .f-mana { width: 16px; height: 16px; flex: none; }
-.f-opt .set-sym { flex: none; }
+.f-opt .set-sym { flex: none; width: 20px; height: 16px; background: var(--ink-2); filter: none; }
 .f-rarity { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--r-common, var(--ink)); box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.25); }
 .f-rarity.uncommon { background: var(--r-uncommon); }
 .f-rarity.rare { background: var(--r-rare); }
