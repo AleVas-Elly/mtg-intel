@@ -12,6 +12,7 @@ The decisions are pure functions (tested on their own); `Account` and `Telegram`
 
 from __future__ import annotations
 
+import itertools
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -430,29 +431,92 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
     return log
 
 
-FAST_CARDS = 15  # cards the timer Worker checks every minute (D58)
+FAST_CARDS = 30  # cards the timer Worker checks every minute (D58) ...
+FAST_EXPLORE = 5  # ... of which these rotate through all the others, so none is missed for ever
+DROP_WINDOW = timedelta(hours=1)
+MIN_POINTS = 12  # checks of history needed to learn a card's chance; less: PRIOR_CHANCE
+PRIOR_CHANCE = 0.02
 
 
-def fast_lane(result: deals.CheckResult, watch: list[dict[str, Any]], gone: dict[str, str]) -> list[dict[str, Any]]:
-    """The cards closest to a deal that aren't one yet, with what the timer Worker needs to judge a
-    copy on its own every minute: the wish's language, finish, worst condition and Zero, the usual
-    price and the % under needed (or the target), the cheapest copy this check saw, and the copies
-    the cart said are gone. A copy it finds is handed back to a full check, which alerts."""
+def price_series(rows: list[dict[str, Any]], wish: dict[str, Any]) -> list[tuple[datetime, float, int]]:
+    """Per check: the cheapest copy fitting the wish and how many fitting copies there were."""
+    best: dict[datetime, tuple[float, int]] = {}
+    for r in rows:
+        x = deals.Listing(0, r["min_price"], r["condition"], r["language"], r["foil"], r["zero"], "", 1)
+        if deals.fits(x, wish):
+            t = r["checked_at"]
+            price, count = best.get(t, (x.price, 0))
+            best[t] = (min(price, x.price), count + int(r.get("listings") or 1))
+    return sorted((t, p, n) for t, (p, n) in best.items())
+
+
+def drop_chance(series: list[tuple[datetime, float, int]], gap: float) -> float:
+    """How often, over the history, the cheapest copy dropped by at least `gap` euros within an hour."""
+    if len(series) < MIN_POINTS:
+        return PRIOR_CHANCE
+    hits = 0
+    for i, (t, price, _) in enumerate(series):
+        j = i + 1
+        while j < len(series) and series[j][0] - t <= DROP_WINDOW:
+            if series[j][1] <= price - gap + 0.005:
+                hits += 1
+                break
+            j += 1
+    return hits / len(series)
+
+
+def fresh_rate(series: list[tuple[datetime, float, int]]) -> float:
+    """The share of checks where the number of fitting copies went up: new copies being listed."""
+    if len(series) < 2:
+        return 0.0
+    return sum(b[2] > a[2] for a, b in itertools.pairwise(series)) / (len(series) - 1)
+
+
+def fast_score(a: deals.Assessment, wish: dict[str, Any], series: list[tuple[datetime, float, int]]) -> float:
+    """Chance it becomes a deal soon × what that deal is worth × a bonus for fresh copies (D58):
+    the gap is how many euros the cheapest copy must fall to be a deal (or hit the target); the
+    chance is how often it fell that far within an hour over the last week; the worth is the
+    square root of the euros a deal saves, so pricey cards don't take every place."""
+    deal_price = a.reference * (1 - a.floor / 100)
+    if wish.get("max_price_eur") is not None:
+        deal_price = max(deal_price, wish["max_price_eur"])
+    gap = a.listing.price - deal_price
+    if gap <= 0:
+        return 0.0  # a deal already: the full check has it
+    worth = (a.reference * a.floor / 100) ** 0.5
+    return drop_chance(series, gap) * worth * (1 + 0.5 * min(1.0, 4 * fresh_rate(series)))
+
+
+def fast_lane(result: deals.CheckResult, watch: list[dict[str, Any]], gone: dict[str, str],
+              history: dict[int, list[dict[str, Any]]] | None = None, now: datetime | None = None) -> list[dict[str, Any]]:
+    """The cards the timer Worker checks every minute (D58): the 25 most likely to turn into a
+    worthwhile deal soon (fast_score, from the last week of checks), plus 5 that rotate through all
+    the others with each check. With what the Worker needs to judge a copy on its own: the wish's
+    language, finish, worst condition and Zero, the usual price and the % under needed (or the
+    target), the cheapest copy this check saw, and the copies the cart said are gone. A copy it
+    finds is handed back to a full check, which alerts."""
     current = {d.key for d in result.deals}
     wishes = {deals.wish_key(w): w for w in watch}
     gone_ids = {int(p) for p in gone}
-    near = sorted(((k, a) for k, a in result.assessed.items()
-                   if k in wishes and k not in current and a.reference and a.below_pct is not None),
-                  key=lambda ka: ka[1].floor - ka[1].below_pct)[:FAST_CARDS]
+    candidates = [(k, a) for k, a in result.assessed.items()
+                  if k in wishes and k not in current and a.reference and a.below_pct is not None]
+    scored = sorted(((fast_score(a, wishes[k], price_series((history or {}).get(wishes[k]["blueprint_id"], []), wishes[k])), k, a)
+                     for k, a in candidates), key=lambda ska: (-ska[0], ska[1]))
+    top = scored[: FAST_CARDS - FAST_EXPLORE]
+    rest = sorted(scored[FAST_CARDS - FAST_EXPLORE:], key=lambda ska: ska[1])
+    if rest:  # the explorers: a different slice of the rest at each check (every 5 minutes)
+        turn = int((now or utcnow()).timestamp() // 300)
+        start = (turn * FAST_EXPLORE) % len(rest)
+        top += (rest + rest)[start:start + min(FAST_EXPLORE, len(rest))]
     out = []
-    for key, a in near:
+    for score, key, a in top:
         w = wishes[key]
         language = w.get("language") or "any"
         out.append({"bp": w["blueprint_id"], "key": key,
                     "lang": "any" if language == "any" else deals.LANGUAGES.get(language, language),
                     "foil": w.get("foil") or "any", "grade": deals.GRADE.get(w.get("min_condition") or "NM", 1),
                     "zero": w.get("via_zero") == "yes", "ref": round(a.reference, 2), "floor": a.floor,
-                    "max": w.get("max_price_eur"), "best": a.listing.price,
+                    "max": w.get("max_price_eur"), "best": a.listing.price, "score": round(score, 4),
                     "gone": sorted(p for p in gone_ids if p in result.seen_by.get(w["blueprint_id"], set()))})
     return out
 

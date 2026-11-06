@@ -851,7 +851,7 @@ def check_deals(args: argparse.Namespace) -> int:
                 from mtg_intel import lifecycle
 
                 live = site.live_doc(result, watch, now, site_store.get("live"))
-                live["fast"] = lifecycle.fast_lane(result, watch, state.get("gone", {}))  # the timer's minute checks
+                live["fast"] = lifecycle.fast_lane(result, watch, state.get("gone", {}), history, now)  # the timer's minute checks
                 site_store.put("live", live)
                 if now.minute % 10 < 5:  # every other check: the 48-hour chart keeps 10-minute steps,
                     # and the site's free 1,000 writes a day stay well away

@@ -242,15 +242,48 @@ def test_zero_box_purchases_are_recorded_and_refunds_taken_back():
     assert [(e["op"], e["note"]) for e in undo] == [("unbought", "Zero box 9 #500")] and bought == {}
 
 
-def test_fast_lane_lists_the_cards_closest_to_a_deal_with_what_the_timer_needs():
+def history_rows(bp, prices, start=NOW - timedelta(days=2), language="en", foil=False, counts=None):
+    """One check every 5 minutes with these cheapest prices."""
+    return [{"checked_at": start + timedelta(minutes=5 * n), "blueprint_id": bp, "language": language,
+             "condition": "Near Mint", "foil": foil, "zero": True, "min_price": p,
+             "listings": (counts[n] if counts else 1)} for n, p in enumerate(prices)]
+
+
+def test_drop_chance_is_how_often_the_cheapest_fell_that_far_within_an_hour():
+    series = lifecycle.price_series(history_rows(10, [5.0] * 10 + [4.0] + [5.0] * 13), wish())
+    assert len(series) == 24
+    # The 10 checks in the hour before the dip see a €1 drop coming.
+    assert lifecycle.drop_chance(series, 1.0) == 10 / 24
+    assert lifecycle.drop_chance(series, 1.5) == 0
+    assert lifecycle.drop_chance(series[:5], 1.0) == lifecycle.PRIOR_CHANCE
+    assert lifecycle.fresh_rate(lifecycle.price_series(history_rows(10, [5.0] * 4, counts=[1, 2, 2, 3]), wish())) == 2 / 3
+
+
+def test_fast_lane_picks_likely_worthwhile_deals_and_rotates_explorers():
     from test_deals import fake_session, item
 
-    watch = [wish(), wish(scryfall_id="sf-b", blueprint_id=11, language="ja", foil="yes", min_condition="SP", via_zero="no")]
-    listings = {10: [item(id=1, cents=400), item(id=9, cents=100)], 11: [item(id=2, cents=430, language="jp", foil=True)]}
-    result = deals.check(fake_session(listings), watch, {}, NOW, ignore={9})
-    fast = lifecycle.fast_lane(result, watch, {"9": NOW.isoformat()})
-    assert [f["bp"] for f in fast] == [10, 11]  # 400 vs 4.67 is 14% under (16 points short) vs 11% for 430 vs 4.83
+    # Card 10 (Loki, usual €4.67): 14% under, but its cheapest swings by over €1 every hour.
+    # Card 11: just 2 points short, but its price never moves. Swings beat closeness.
+    watch = [wish(), wish(scryfall_id="sf-b", blueprint_id=11)]
+    listings = {10: [item(id=1, cents=400)], 11: [item(id=2, cents=340)]}
+    result = deals.check(fake_session(listings), watch, {}, NOW)
+    swings = [4.0 if n % 6 else 2.5 for n in range(60)]
+    history = {10: history_rows(10, swings), 11: history_rows(11, [3.40] * 60)}
+    fast = lifecycle.fast_lane(result, watch, {}, history, NOW)
+    assert [f["bp"] for f in fast] == [10, 11] and fast[0]["score"] > 0 and fast[1]["score"] == 0
     loki = fast[0]
-    assert (loki["lang"], loki["foil"], loki["grade"], loki["zero"], loki["ref"], loki["floor"], loki["best"], loki["gone"]) == \
-        ("en", "any", 1, True, 4.67, 30.0, 4.0, [9])
-    assert (fast[1]["lang"], fast[1]["foil"], fast[1]["grade"], fast[1]["zero"]) == ("jp", "yes", 2, False)
+    assert (loki["lang"], loki["foil"], loki["grade"], loki["zero"], loki["ref"], loki["floor"], loki["best"]) == \
+        ("en", "any", 1, True, 4.67, 30.0, 4.0)
+
+
+def test_fast_lane_keeps_25_top_places_and_5_rotating():
+    from test_deals import fake_session, item
+
+    watch = [wish(scryfall_id=f"sf-{n}", blueprint_id=100 + n) for n in range(40)]
+    listings = {100 + n: [item(id=n + 1, cents=400 + n)] for n in range(40)}
+    result = deals.check(fake_session(listings), watch, {}, NOW)
+    a = lifecycle.fast_lane(result, watch, {}, {}, NOW)
+    b = lifecycle.fast_lane(result, watch, {}, {}, NOW + timedelta(minutes=5))
+    assert len(a) == len(b) == 30
+    assert [f["key"] for f in a[:25]] == [f["key"] for f in b[:25]]  # the top places stay
+    assert {f["key"] for f in a[25:]} != {f["key"] for f in b[25:]}  # the explorers move on
