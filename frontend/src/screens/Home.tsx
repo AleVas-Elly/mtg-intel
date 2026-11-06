@@ -1,6 +1,5 @@
 // Home (D57): the first screen after sign-in. Today's best deal as a big drop in its own colour,
 // the other deals beside it, the countdown to the next check, the counts, and what went today.
-import { useRef } from "preact/hooks";
 import type { AppData } from "../data";
 import { dealGap, dealRatio, wishCount } from "../data";
 import { useArtColour } from "../drop";
@@ -13,28 +12,16 @@ import { ManaCost, SetSymbol } from "../ui/symbols";
 
 const today = () => new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
-/** The art follows the pointer with a soft light, like tilting a card under a lamp. */
-function useHolo() {
-  const el = useRef<HTMLDivElement>(null);
-  const move = (e: PointerEvent) => {
-    const box = el.current!.getBoundingClientRect();
-    el.current!.style.setProperty("--hx", `${((e.clientX - box.left) / box.width) * 100}%`);
-    el.current!.style.setProperty("--hy", `${((e.clientY - box.top) / box.height) * 100}%`);
-  };
-  return { ref: el, onPointerMove: move };
-}
-
 function HeroDeal({ d, w, data }: { d: Deal; w: Wish; data: AppData }) {
   const colour = useArtColour(w.image);
   const usual = usualOf(d, data);
   const save = usual ? usual - d.listing.price : null;
-  const holo = useHolo();
   return (
     <section class="hero" data-key={w.key} style={colour ? { "--f": colour } : undefined} aria-label="Best deal right now">
       <div class="body">
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-start" }}>
           <TierPill d={d} />
-          <h2>{w.name}</h2>
+          <h2><a href={`?card=${encodeURIComponent(w.key)}`} onClick={(e) => { e.preventDefault(); openCard(w.key); }}>{w.name}</a></h2>
           <div class="ver d-ink"><ManaCost cost={w.mana_cost} front /><SetSymbol set={w.set} rarity={w.rarity} /><span>{collectorLine(w)} · {w.condition}</span></div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -45,11 +32,10 @@ function HeroDeal({ d, w, data }: { d: Deal; w: Wish; data: AppData }) {
           <div class="acts">
             {w.links.cardtrader && <a class="btn primary" href={w.links.cardtrader} target="_blank" rel="noopener">Open on CardTrader<IconOut /></a>}
             {w.links.cardmarket && <a class="btn" href={w.links.cardmarket} target="_blank" rel="noopener">Cardmarket</a>}
-            <a class="btn" href={`?card=${encodeURIComponent(w.key)}`} onClick={(e) => { e.preventDefault(); openCard(w.key); }}>Details</a>
           </div>
         </div>
       </div>
-      <div class="art" {...holo} onClick={() => openCard(w.key)} role="presentation"><Art w={w} eager /><span class="holo" /></div>
+      <div class="art" onClick={() => openCard(w.key)} role="presentation"><Art w={w} eager /></div>
     </section>
   );
 }
@@ -59,7 +45,6 @@ function HeroClosest({ w, data }: { w: Wish; data: AppData }) {
   const colour = useArtColour(w.image);
   const l = data.liveOf(w.key);
   const r = dealRatio(w, l);
-  const holo = useHolo();
   return (
     <section class="hero quiet" data-key={w.key} style={colour ? { "--f": colour } : undefined} aria-label="Closest to a deal">
       <div class="body">
@@ -79,7 +64,7 @@ function HeroClosest({ w, data }: { w: Wish; data: AppData }) {
           </div>
         </div>
       </div>
-      <div class="art" {...holo} onClick={() => openCard(w.key)} role="presentation"><Art w={w} eager /><span class="holo" /></div>
+      <div class="art" onClick={() => openCard(w.key)} role="presentation"><Art w={w} eager /></div>
     </section>
   );
 }

@@ -5,9 +5,9 @@
 
 :root {
   color-scheme: light;
-  --bg: #f3f2ed;
-  --surface: #fcfbf8;
-  --surface-2: #e9e7e0;
+  --bg: #f4f3ef;
+  --surface: #e9e7e1;
+  --surface-2: #dfddd5;
   --fill: rgba(22, 22, 20, 0.07);
   --fill-strong: rgba(22, 22, 20, 0.13);
   --ink: #121211;
@@ -403,11 +403,6 @@ img { display: block; }
 .hero .art { position: relative; aspect-ratio: 626 / 457; overflow: hidden; cursor: pointer; background: color-mix(in srgb, var(--f) 70%, #000); }
 .hero .art img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.6s var(--smooth); }
 .hero .art img.ready { opacity: 1; }
-.hero .holo {
-  position: absolute; inset: 0; pointer-events: none; mix-blend-mode: soft-light; opacity: 0; transition: opacity 0.4s var(--ease);
-  background: radial-gradient(circle at var(--hx, 50%) var(--hy, 30%), rgba(255, 255, 255, 0.55), transparent 45%);
-}
-.hero .art:hover .holo { opacity: 1; }
 .hero .body { padding: 24px 22px 24px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .hero h2 { font-size: 34px; font-weight: 800; font-stretch: 116%; letter-spacing: -0.035em; line-height: 0.98; max-width: 14ch; }
 .hero .ver { display: flex; align-items: center; gap: 8px; font-size: 14px; flex-wrap: wrap; }
@@ -430,7 +425,7 @@ img { display: block; }
 .stat span { font-size: 13.5px; color: var(--ink-2); line-height: 1.25; }
 .stat b { font-size: 52px; align-self: flex-end; }
 .stat.warn b { color: var(--warn); }
-.drop-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.drop-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 22px 4px 10px; }
 .section-head h2 { font-size: 17px; font-weight: 800; font-stretch: 108%; letter-spacing: -0.015em; }
 .section-head span, .section-head a { font-size: 13.5px; color: var(--ink-3); }
@@ -656,7 +651,7 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 :root[data-motion="lively"] .g-card:hover .thumb { transform: perspective(900px) rotateY(-6deg) rotateX(4deg) translateY(-4px); }
 :root[data-motion="lively"] .g-card:active .thumb { transform: perspective(900px) rotateY(-9deg) rotateX(5deg) scale(0.97); transition-duration: 0.2s; }
 :root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 420ms var(--smooth) both; animation-delay: calc(min(var(--n, 10), 10) * 32ms); }
-:root:not([data-motion="calm"]) .tier.t3::after, :root:not([data-motion="calm"]) .hero .tier::after {
+:root[data-motion="lively"] .tier.t3::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.6) 50%, transparent 65%) 200% 0 / 250% 100% no-repeat;
   animation: shine 3.4s var(--ease) infinite 0.8s;
@@ -978,3 +973,12 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .gone-row { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 .gone-item { padding-right: 16px; }
 .gone-item .stamp { right: auto; left: 18px; font-size: 12px; padding: 2px 7px; border-width: 2px; background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.hero h2 a { color: inherit; text-decoration: none; }
+.hero h2 a:hover { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 6px; }
+.hero .acts { flex-wrap: nowrap; }
+/* a stamp that sits in the flow (the pane, the landing) */
+.stamp.still { position: static; translate: none; rotate: -6deg; align-self: flex-start; animation: none; }
+.d-gone { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 14px; color: rgba(255, 255, 255, 0.85); }
+.d-gone .stamp { border-color: #ff8a80; color: #ff8a80; font-size: 14px; }
+.d-gone s { opacity: 0.8; }
+.detail.was-deal .d-stage, .detail.was-deal .d-top { background: color-mix(in srgb, var(--f) 45%, #2a2a2e); }

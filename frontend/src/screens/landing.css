@@ -69,7 +69,7 @@
 .l-states { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .l-states li { position: relative; background: var(--surface); border-radius: 22px; padding: 26px 22px 22px; min-height: 160px; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
 .l-states p { font-size: 15px; line-height: 1.45; }
-.stamp.still { position: static; translate: none; align-self: flex-start; animation: none; font-size: 17px; }
+.stamp.still { font-size: 17px; }
 .stamp.still.ok { border-color: var(--ink); color: var(--ink); }
 :root:not([data-motion="calm"]) .l-states li .stamp { animation: stamp 520ms var(--out) both; animation-timeline: view(); animation-range: entry 20% cover 35%; }
 
@@ -110,3 +110,39 @@
   :root:not([data-motion="calm"]) .l-figure > * { animation-range: entry 10% cover 34%; }
 }
 @keyframes rise-in { from { transform: translateY(36px); } }
+
+/* review fixes: one field per idea, not rows of tiles */
+.ex-next { margin-left: auto; margin-right: 10px; font-size: 13px; }
+.l-ribbon img { object-position: center bottom; }
+.l-field { --f: var(--field); background: var(--f); color: #fff; border-radius: 30px; padding: 32px; display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 1fr); gap: 32px; align-items: center; transition: background-color 0.8s var(--smooth); }
+.l-field .l-card { transform: rotate(-3deg); }
+.l-field dl { margin: 0; display: flex; flex-direction: column; }
+.l-field dl > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid rgba(255, 255, 255, 0.16); }
+.l-field dl > div:first-child { border-top: 0; }
+.l-field dt { color: rgba(255, 255, 255, 0.72); font-size: 15px; }
+.l-field dd { margin: 0; font-weight: 700; font-size: 17px; text-align: right; }
+.l-mdrop { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); border-radius: 30px; }
+.l-mart { overflow: hidden; background: color-mix(in srgb, var(--f) 70%, #000); }
+.l-mart img { width: 100%; height: 100%; object-fit: cover; object-position: center bottom; }
+.l-mbody { padding: 26px 28px; display: flex; flex-direction: column; gap: 18px; }
+.l-mbody h3 { font-weight: 800; font-stretch: 114%; font-size: 26px; letter-spacing: -0.03em; line-height: 1.02; }
+.l-mrow { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.l-mrow > div { display: flex; flex-direction: column; gap: 10px; }
+.l-mrow span { font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+.l-mrow b { font-size: clamp(44px, 4.4vw, 64px); }
+.l-mbody .tier { height: 30px; font-size: 14px; padding: 0 14px; }
+.l-mdrop .tier.t3 { background: #fff; color: #121211; }
+@media (max-width: 560px) {
+  .l-field { grid-template-columns: minmax(0, 1fr); padding: 22px; }
+  .l-field .l-card { max-width: 200px; margin: 0 auto; }
+  .l-mdrop { grid-template-columns: minmax(0, 1fr); }
+  .l-mart { aspect-ratio: 626 / 457; }
+}
+@media (min-width: 960px) {
+  .l-section.flip { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+}
+.l-mdrop { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr); }
+.l-ribbon img { aspect-ratio: 16 / 10; object-position: center bottom; }
+/* the cart's stamps land as they scroll in, but never start invisible */
+@keyframes stamp-land { 0% { scale: 1.5; rotate: -18deg; } 70% { scale: 0.96; } 100% { scale: 1; rotate: -6deg; } }
+:root:not([data-motion="calm"]) .l-states li .stamp { animation-name: stamp-land; }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
-import { ago, cmTrend, condName, countryName, day, eur, foilOnly, langName, showsFoil, TIERS, versionText } from "../format";
+import { ago, cmTrend, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText } from "../format";
 import { closeCard } from "../router";
 import { saveEdit, undoEdit } from "../edits";
 import { toast } from "../toast";
@@ -55,6 +55,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const live = data.liveOf(wishKey);
   const colour = useArtColour(w?.image);
   const deal = data.dealOf(wishKey);
+  const gone = !deal ? data.live?.gone.find((d) => d.key === wishKey) : undefined;
   const bothFinishes = !!w && w.foil === "any" && !foilOnly(w) && w.finishes.some((f) => f !== "nonfoil");
   const [foil, setFoil] = useState(false);
   useEffect(() => { if (w) setFoil(live?.foil ?? showsFoil(w)); }, [wishKey, w?.key]);
@@ -94,7 +95,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   return (
     <>
       <div class={`detail-backdrop${q}`} onClick={closeCard} />
-      <aside class={`detail${q}`} aria-label={w.name} style={colour ? { "--f": colour } : undefined}>
+      <aside class={`detail${q}${gone ? " was-deal" : ""}`} aria-label={w.name} style={colour ? { "--f": colour } : undefined}>
         <div class="d-top">
           <button class="icon-btn" onClick={closeCard} aria-label="Back"><IconBack /></button>
           {w.links.scryfall && <a class="icon-btn" href={w.links.scryfall} target="_blank" rel="noopener" aria-label="Open on Scryfall"><IconOut /></a>}
@@ -115,6 +116,9 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           {foil && <span class="chip">foil</span>}
           {w.rarity && <span class="chip">{w.rarity}</span>}
         </div>
+        {gone && (
+          <p class="d-gone"><span class="stamp still">Gone</span><span>The <s>{eur(gone.listing.price)}</s> deal went at {time(gone.gone_at!)}</span></p>
+        )}
         {w.ct && (
           <p class="hint" style={{ textAlign: "center" }}>
             CardTrader calls it {w.ct.name}{w.ct.version ? ` · ${w.ct.version}` : ""} · {w.ct.expansion} #{w.ct.number}

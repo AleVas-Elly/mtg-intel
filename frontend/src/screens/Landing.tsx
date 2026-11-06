@@ -57,6 +57,7 @@ function ExampleDrop() {
           <p class="d-ink">{ex.line}</p>
           <div class="ex-top">
             <span class={`tier ${ex.cls}`}>{ex.tier}<small>{ex.under}% under</small></span>
+            <span class="ex-next d-ink">next check</span>
             <svg class="ring" width="44" height="44" viewBox="0 0 44 44" aria-hidden="true">
               <circle class="track" cx="22" cy="22" r="19" fill="none" stroke-width="4" />
               <circle class="arc ex-arc" cx="22" cy="22" r="19" fill="none" stroke-width="4" stroke-dasharray={c}
@@ -85,6 +86,40 @@ function Section({ id, title, lead, children, tone }: { id?: string; title: stri
       </div>
       <div class="l-figure">{children}</div>
     </section>
+  );
+}
+
+/** The facts that make a version, on that card's own colour field. */
+function VersionField({ id }: { id: string }) {
+  const colour = useArtColour(ART(id));
+  const facts = [["Version", "Borderless"], ["Set and number", "SLC 83"], ["Language", "English"], ["Finish", "Foil or not"], ["Condition", "Near Mint or better"], ["Seller", "Via CardTrader Zero"]];
+  return (
+    <div class="l-field" style={colour ? { "--f": colour } : undefined}>
+      <img class="l-card" src={CARD(id)} alt="Lightning Bolt, borderless" loading="lazy" />
+      <dl>{facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+    </div>
+  );
+}
+
+/** Both markets for one copy, as a drop: the way Home shows a deal. */
+function MarketsDrop() {
+  const id = EXAMPLES[0].id;
+  const colour = useArtColour(ART(id));
+  return (
+    <figure class="ex">
+      <div class="drop l-mdrop" style={colour ? { "--f": colour } : undefined}>
+        <div class="l-mart"><img src={ART(id)} alt="Orcish Bowmasters, card art" loading="lazy" /></div>
+        <div class="l-mbody">
+          <h3>Orcish Bowmasters</h3>
+          <div class="l-mrow">
+            <div><span class="d-ink"><i class="l-dot ct" />CardTrader, cheapest copy</span><b class="fig">€27.20</b></div>
+            <div><span class="d-ink"><i class="l-dot cm" />Cardmarket trend</span><b class="fig">€45.40</b></div>
+          </div>
+          <span class="tier t3">Steal<small>40% under its usual €45.40</small></span>
+        </div>
+      </div>
+      <figcaption>Example figures.</figcaption>
+    </figure>
   );
 }
 
@@ -147,26 +182,11 @@ export function Landing({ busy, error, onSignIn, local, setupMissing }: {
       <Ribbon />
 
       <Section id="how" title="Only your version" lead="Not just the card: the set, the collector number, the language, the finish, the condition, and whether it ships via CardTrader Zero. A price is always for exactly that copy.">
-        <div class="l-version">
-          <img class="l-card" src={CARD(bolt)} alt="Lightning Bolt, borderless" loading="lazy" />
-          <ul class="l-chips">
-            <li><b>Version</b>Borderless</li>
-            <li><b>Set and number</b>SLC 83</li>
-            <li><b>Language</b>English</li>
-            <li><b>Finish</b>Foil or not</li>
-            <li><b>Condition</b>Near Mint or better</li>
-            <li><b>Seller</b>Via CardTrader Zero</li>
-          </ul>
-        </div>
+        <VersionField id={bolt} />
       </Section>
 
-      <Section title="Two markets, one price" tone="flip" lead="CardTrader's cheapest fitting copy is checked every ten minutes and set beside Cardmarket's trend. The usual price is the higher of the two, so one odd listing can't fake a deal.">
-        <div class="l-markets">
-          <div class="l-market"><span class="l-dot ct" />CardTrader, cheapest copy<b class="fig">€27.20</b><small>checked 2 minutes ago</small></div>
-          <div class="l-market"><span class="l-dot cm" />Cardmarket trend<b class="fig">€45.40</b><small>today's price guide</small></div>
-          <div class="l-verdict"><span class="tier t3">Steal<small>40% under</small></span><p>A deal from 30% under its usual price, or 20% for cards usually over €20. Steals go up to 40% and beyond.</p></div>
-          <p class="l-example">Example figures.</p>
-        </div>
+      <Section title="Two markets, one price" tone="flip" lead="CardTrader's cheapest fitting copy is checked every ten minutes and set beside Cardmarket's trend. The usual price is the higher of the two, so one odd listing can't fake a deal. A deal starts 30% under it, or 20% for cards usually over €20.">
+        <MarketsDrop />
       </Section>
 
       <Section title="Waiting in your cart" lead="When a deal turns up, the copy goes into the CardTrader cart first, then a Telegram alert arrives with its picture. The alert keeps itself up to date until the deal ends.">
