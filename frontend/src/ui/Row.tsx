@@ -1,19 +1,53 @@
 import type { ComponentChildren } from "preact";
 import type { AppData } from "../data";
-import { cmTrend, collectorLine, eur, showsFoil, wishLine } from "../format";
+import { cmLow, cmShipping, cmTrend, collectorLine, eur, showsFoil, wishLine } from "../format";
 import { openCard } from "../router";
 import type { Wish } from "../types";
 import { CardImage, preloadImage } from "./CardImage";
 import { ManaCost, SetSymbol } from "./symbols";
 import { useLook } from "../lab";
 
+export const CT_ICON = "https://www.cardtrader.com/favicon.ico";
+export const CM_ICON = "https://static.cardmarket.com/img/favicon.ico";
+const under = (usual: number | null, p: number | null) => (usual && p != null ? (usual - p) / usual : null);
+const pctText = (s: number) => (s >= 0.005 ? `−${Math.round(s * 100)}%` : s <= -0.005 ? `+${Math.round(-s * 100)}%` : "0%");
+
+/** Both markets for a wish: CardTrader's cheapest fitting copy (shipping included via Zero) and
+ *  Cardmarket's lowest listing plus shipping, each with how far under the usual price it is; the
+ *  market that saves more is set bigger. */
+export function Markets({ w, data, ctPrice }: { w: Wish; data: AppData; ctPrice?: number | null }) {
+  const live = data.liveOf(w.key);
+  const ct = ctPrice !== undefined ? ctPrice : live?.price ?? null;
+  const trend = cmTrend(w, live?.foil);
+  const low = cmLow(w, live?.foil);
+  const ship = low != null ? cmShipping(low) : null;
+  const cm = low != null ? Math.round((low + ship!) * 100) / 100 : null;
+  const refs = [trend, live?.usual].filter((v): v is number => !!v);
+  const usual = live?.ref ?? (refs.length ? Math.max(...refs) : null);
+  const sCt = under(usual, ct), sCm = under(usual, cm);
+  const lead = ct == null ? "cm" : cm == null ? "ct" : (sCt ?? -9) >= (sCm ?? -9) ? "ct" : "cm";
+  if (w.pending === "add") return <div class="r-price"><span class="p-none">prices soon</span></div>;
+  return (
+    <div class="r-price mk-prices">
+      {ct != null ? (
+        <span class={`mk${lead === "ct" ? " lead" : ""}`} title={`CardTrader: cheapest copy that fits the wish${live?.zero ? ", via Zero (shipping included)" : ""}`}>
+          <img src={CT_ICON} alt="CardTrader" width="14" height="14" /><b>{eur(ct)}</b>{sCt != null && <i class={sCt >= 0.005 ? "good" : "over"}>{pctText(sCt)}</i>}
+        </span>
+      ) : <span class="p-none">{w.blueprint_id ? "no CardTrader copy" : "not on CardTrader"}</span>}
+      {cm != null ? (
+        <span class={`mk${lead === "cm" ? " lead" : ""}`} title={`Cardmarket: lowest listing ${eur(low)} (any seller and condition) + ${eur(ship)} shipping`}>
+          <img src={CM_ICON} alt="Cardmarket" width="14" height="14" /><b>{eur(cm)}</b>{sCm != null && <i class={sCm >= 0.005 ? "good" : "over"}>{pctText(sCm)}</i>}
+        </span>
+      ) : <span class="p-none">no Cardmarket price</span>}
+      {usual != null && <span class="mk-usual">usual {eur(usual)}</span>}
+    </div>
+  );
+}
+
 /** One card: picture, name and cost, the collector line, the wish, and both markets' prices. */
 export function WishRow({ w, data, current, extra, ctPrice, gone, n }: {
   w: Wish; data: AppData; current?: boolean; extra?: ComponentChildren; ctPrice?: number | null; gone?: boolean; n?: number;
 }) {
-  const live = data.liveOf(w.key);
-  const ct = ctPrice !== undefined ? ctPrice : live?.price;
-  const cm = cmTrend(w, live?.foil);
   const flagged = data.flagsOf(w).length > 0;
   return (
     <a
@@ -31,12 +65,7 @@ export function WishRow({ w, data, current, extra, ctPrice, gone, n }: {
         <div class="r-line"><SetSymbol set={w.set} rarity={w.rarity} /><span>{collectorLine(w)}</span></div>
         {extra ?? <div class="r-wish">{w.pending && <span class="pending">{w.pending === "add" ? "Adding" : "Saving"}</span>}{wishLine(w)}{w.one_of ? ", either version" : ""}</div>}
       </div>
-      <div class="r-price">
-        {w.pending === "add" ? <span class="p-none">prices soon</span> : <>
-          {ct != null ? <span class="p-ct">{eur(ct)}</span> : <span class="p-none">{w.blueprint_id ? "no copy" : "not on CardTrader"}</span>}
-          {cm != null ? <span class="p-cm">{eur(cm)}</span> : <span class="p-none">no CM price</span>}
-        </>}
-      </div>
+      <Markets w={w} data={data} ctPrice={ctPrice} />
     </a>
   );
 }
@@ -59,9 +88,6 @@ export interface Item { w: Wish; extra?: ComponentChildren; ctPrice?: number | n
 
 /** A big card picture with its name, version and both prices (the Gallery layout). */
 function GalleryCard({ w, data, extra, ctPrice, gone, n }: Item & { data: AppData; n: number }) {
-  const live = data.liveOf(w.key);
-  const ct = ctPrice !== undefined ? ctPrice : live?.price;
-  const cm = cmTrend(w, live?.foil);
   return (
     <a class={`g-card${gone ? " gone" : ""}`} data-key={w.key} href={`?card=${encodeURIComponent(w.key)}`} style={{ "--n": n }}
       onClick={(e) => { e.preventDefault(); openCard(w.key); }}
@@ -70,10 +96,7 @@ function GalleryCard({ w, data, extra, ctPrice, gone, n }: Item & { data: AppDat
       <div class="g-name"><span>{w.name}</span>{data.flagsOf(w).length > 0 && <span class="flag-dot" title="Needs a look" />}</div>
       <div class="g-line"><SetSymbol set={w.set} rarity={w.rarity} /><span>{collectorLine(w)}</span></div>
       {extra}
-      <div class="g-prices">
-        {ct != null ? <span class="p-ct">{eur(ct)}</span> : <span class="p-none">{w.blueprint_id ? "no copy" : "not on CardTrader"}</span>}
-        {cm != null ? <span class="p-cm">{eur(cm)}</span> : <span class="p-none">no CM price</span>}
-      </div>
+      <Markets w={w} data={data} ctPrice={ctPrice} />
     </a>
   );
 }

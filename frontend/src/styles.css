@@ -989,3 +989,25 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 :root[data-motion="lively"] .tier.t3::after { animation-iteration-count: 2; }
 .head-btns { gap: 8px; }
 @media (max-width: 899px) { .head-btns.phone-only { display: flex; } }
+/* both markets on a wish (user, 2026-11-06): logo, price, % under the usual price; the better saving set bigger */
+.mk-prices { gap: 5px; min-width: 132px; }
+.mk { display: flex; align-items: center; justify-content: flex-end; gap: 6px; line-height: 1; color: var(--ink-2); }
+.mk img { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.mk b { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.mk i { font-style: normal; font-size: 12px; font-weight: 700; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.mk i.good { color: var(--good); }
+.mk i.over { color: var(--ink-3); }
+.mk.lead b { font-size: 26px; font-stretch: 70%; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+.mk.lead img { width: 16px; height: 16px; }
+.mk.lead i { font-size: 13.5px; }
+.mk-usual { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.g-card .mk-prices { align-items: flex-start; min-width: 0; }
+.g-card .mk { justify-content: flex-start; }
+:root[data-density="compact"] .mk.lead b { font-size: 21px; }
+@media (max-width: 640px) {
+  .mk-prices { min-width: 0; }
+  .mk.lead b { font-size: 22px; }
+  .mk b { font-size: 14px; }
+  .mk i { min-width: 30px; font-size: 11.5px; }
+  .row { gap: 10px; padding: 12px 12px; }
+}

@@ -84,3 +84,21 @@ export const countryName = (code: string) => {
     return code;
   }
 };
+
+/** Cardmarket's lowest listing for the wish's finish (daily price list: any seller, condition, language). */
+export function cmLow(w: Wish, foil?: boolean): number | null {
+  const f = foilOnly(w) || w.foil === "yes" || (foil ?? showsFoil(w));
+  const v = f ? w.cm.low_foil : w.cm.low;
+  if (v) return v;
+  if (w.foil === "any" && !foilOnly(w)) return w.cm.low || w.cm.low_foil || null;
+  return null;
+}
+
+/** Shipping always added to a Cardmarket price (user, 2026-11-06): €3.50 up to €10, then growing
+ *  in a straight line to €15 for a €100 card, and €15 above that. CardTrader via Zero already
+ *  includes shipping. */
+export function cmShipping(price: number): number {
+  if (price <= 10) return 3.5;
+  if (price >= 100) return 15;
+  return Math.round((3.5 + ((price - 10) * (15 - 3.5)) / 90) * 100) / 100;
+}
