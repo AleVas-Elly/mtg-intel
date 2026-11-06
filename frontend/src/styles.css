@@ -46,7 +46,9 @@
   /* motion (D56): strong ease-out for things arriving, quicker exits, nothing over ~300 ms but panes */
   --out: cubic-bezier(0.23, 1, 0.32, 1);
   --in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --t-press: 120ms; --t-small: 180ms; --t-pane: 300ms; --t-exit: 200ms;
+  /* calmer pass (user, 2026-11-06: slower, smoother): a long soft landing, within NN/g's 400-500 ms ceiling */
+  --smooth: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --t-press: 120ms; --t-small: 240ms; --t-pane: 380ms; --t-exit: 240ms;
   --rail: 232px;
   --detail: 440px;
 }
@@ -343,7 +345,7 @@ img { display: block; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes slide { from { transform: translateX(48px); opacity: 0; } }
 @media (min-width: 900px) {
-  .detail { left: auto; width: min(var(--detail), 100vw); border-left: 0.5px solid var(--line); box-shadow: var(--shadow-2); animation: slide var(--t-pane) var(--out); }
+  .detail { left: auto; width: min(var(--detail), 100vw); border-left: 0.5px solid var(--line); box-shadow: var(--shadow-2); animation: slide var(--t-pane) var(--smooth); }
 }
 @media (min-width: 1280px) {
   .shell.has-detail { grid-template-columns: var(--rail) minmax(0, 1fr) var(--detail); }
@@ -474,13 +476,13 @@ img { display: block; }
   .head { padding-top: 34px; }
 }
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.3s; animation-timing-function: var(--ease); }
-::view-transition-group(card-open) { animation-duration: 0.36s; animation-timing-function: var(--out); z-index: 3; }
+::view-transition-group(card-open) { animation-duration: 0.42s; animation-timing-function: var(--out); z-index: 3; }
 /* Opening or closing a card: the page underneath swaps at once (no ghosted double list while the
    columns resize), the detail pane slides on its own and the picture flies above it. */
 .detail { view-transition-name: detail-pane; }
 .detail-backdrop { view-transition-name: detail-backdrop; }
-::view-transition-group(detail-pane) { z-index: 2; animation-duration: var(--t-pane); animation-timing-function: var(--out); }
-::view-transition-new(detail-pane):only-child { animation: rise var(--t-pane) var(--out) both; }
+::view-transition-group(detail-pane) { z-index: 2; animation-duration: var(--t-pane); animation-timing-function: var(--smooth); }
+::view-transition-new(detail-pane):only-child { animation: rise var(--t-pane) var(--smooth) both; }
 ::view-transition-old(detail-pane):only-child { animation: rise var(--t-exit) var(--out) reverse both; }
 ::view-transition-new(detail-backdrop):only-child { animation: fade var(--t-pane) var(--out) both; }
 ::view-transition-old(detail-backdrop):only-child { animation: fade var(--t-exit) var(--out) reverse both; }
@@ -623,7 +625,7 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 /* ---------- Design lab: motion ----------
    Calm: things appear. Smooth: the card flies into its page, lists fade in, foil drifts.
    Lively: the flight bounces, lists cascade, pictures tilt when touched, Steal badges shine. */
-@keyframes reveal { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@keyframes reveal { from { opacity: 0; transform: translateY(12px) scale(0.985); } }
 :root[data-motion="calm"] .foil::after { animation: none; opacity: 0.35; }
 :root[data-motion="calm"] .dot.live { animation: none; }
 :root[data-motion="calm"] .detail { animation: fade 0.15s linear; }
@@ -638,14 +640,14 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 
 :root[data-motion="lively"] { --spring: cubic-bezier(0.34, 1.45, 0.64, 1); }
 :root[data-motion="lively"]::view-transition-group(card-open) { animation-duration: 0.4s; animation-timing-function: cubic-bezier(0.3, 1.08, 0.55, 1); }
-:root[data-motion="lively"] .detail { animation-duration: 0.34s; }
+:root[data-motion="lively"] .detail { animation-duration: 0.4s; }
 :root[data-motion="lively"] .foil::after { opacity: 0.95; animation-duration: 3s; }
 :root[data-motion="lively"] .row .thumb, :root[data-motion="lively"] .g-card .thumb { transition: transform 0.45s var(--spring); }
 :root[data-motion="lively"] .row:hover .thumb { transform: perspective(500px) rotateY(-10deg) rotateX(5deg) scale(1.06); }
 :root[data-motion="lively"] .row:active .thumb { transform: perspective(500px) rotateY(-14deg) rotateX(6deg) scale(1.1); transition-duration: 0.2s; }
 :root[data-motion="lively"] .g-card:hover .thumb { transform: perspective(900px) rotateY(-6deg) rotateX(4deg) translateY(-4px); }
 :root[data-motion="lively"] .g-card:active .thumb { transform: perspective(900px) rotateY(-9deg) rotateX(5deg) scale(0.97); transition-duration: 0.2s; }
-:root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 280ms var(--out) both; animation-delay: calc(min(var(--n, 8), 8) * 20ms); }
+:root[data-motion="lively"] .list > .row, :root[data-motion="lively"] .gallery > * { animation: reveal 420ms var(--smooth) both; animation-delay: calc(min(var(--n, 10), 10) * 32ms); }
 :root[data-motion="lively"] .tier.t3 { position: relative; overflow: hidden; }
 :root[data-motion="lively"] .tier.t3::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
@@ -746,12 +748,12 @@ html.vt:root .detail, html.vt:root .detail-backdrop, html:root .detail.quiet, ht
 }
 .sheet {
   width: 100%; max-height: 92dvh; display: flex; flex-direction: column; background: var(--bg);
-  border-radius: 20px 20px 0 0; box-shadow: var(--shadow-2); animation: sheet-up var(--t-pane) var(--out);
+  border-radius: 20px 20px 0 0; box-shadow: var(--shadow-2); animation: sheet-up var(--t-pane) var(--smooth);
   padding-bottom: env(safe-area-inset-bottom);
 }
 @media (min-width: 700px) {
   .sheet-wrap { align-items: center; }
-  .sheet { width: 460px; border-radius: 20px; max-height: min(88dvh, 820px); animation: pop 220ms var(--out); }
+  .sheet { width: 460px; border-radius: 20px; max-height: min(88dvh, 820px); animation: pop 300ms var(--smooth); }
 }
 .sheet-head { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; padding: 14px 14px 10px 18px; }
 .sheet-head .thumb { width: 36px; }
@@ -822,7 +824,7 @@ textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; }
   position: fixed; z-index: 90; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%);
   width: max-content; max-width: calc(100vw - 32px); display: flex; align-items: center; gap: 14px; padding: 12px 16px;
   border-radius: 14px; background: var(--ink); color: var(--surface); font-size: 14px; box-shadow: var(--shadow-2);
-  animation: toast-in 260ms var(--out);
+  animation: toast-in 340ms var(--smooth);
 }
 .toast button { border: 0; background: none; color: inherit; font: inherit; font-weight: 650; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 3px; }
 @media (min-width: 900px) { .toast { bottom: 24px; } }
@@ -929,9 +931,9 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 }
 .f-head .f-on { margin-left: auto; }
 /* groups open and close by height (grid 0fr -> 1fr), the options fading in as they slide */
-.f-collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 240ms var(--out); }
+.f-collapse { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 360ms var(--smooth); }
 .f-collapse[data-open="true"] { grid-template-rows: 1fr; }
-.f-collapse > .f-options { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: opacity var(--t-small) var(--out), transform 240ms var(--out); }
+.f-collapse > .f-options { min-height: 0; overflow: hidden; opacity: 0; transform: translateY(-4px); transition: opacity var(--t-small) var(--smooth), transform 360ms var(--smooth); }
 .f-collapse[data-open="true"] > .f-options { opacity: 1; transform: none; }
 .f-options { display: flex; flex-direction: column; }
 .f-options > :last-child { margin-bottom: 10px; }
