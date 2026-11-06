@@ -464,8 +464,6 @@ img { display: block; }
 .detail-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.45); animation: fade var(--t-pane) var(--out); }
 .detail {
   --f: var(--field);
-  /* the pane's field: the card's colour, desaturated toward a neutral grey */
-  --pane-field: color-mix(in srgb, var(--f) 50%, #2a2a2e);
   position: fixed; z-index: 61; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--bg);
   animation: rise var(--t-pane) var(--out);
   padding: 0 max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
@@ -484,11 +482,11 @@ img { display: block; }
 /* the card's own colour field at the top of the pane */
 .d-stage {
   margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
-  padding: 4px 16px 26px; background: var(--pane-field); color: #fff; transition: background-color 0.6s var(--smooth);
+  padding: 4px 16px 26px; background: var(--f); color: #fff; transition: background-color 0.6s var(--smooth);
 }
 .d-top {
   display: flex; justify-content: space-between; align-items: center; position: sticky; z-index: 3;
-  top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--pane-field); color: #fff;
+  top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--f); color: #fff;
   transition: background-color 0.6s var(--smooth);
 }
 .d-top .icon-btn { background: rgba(255, 255, 255, 0.16); color: #fff; }

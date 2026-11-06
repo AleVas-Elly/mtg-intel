@@ -2,7 +2,8 @@
 // sampled once per picture in the browser (Scryfall's image CDN allows it) and remembered.
 import { useEffect, useState } from "preact/hooks";
 
-const KEY = "art-colours-v1";
+// v2: the fields are desaturated, so the colours sampled before (v1) are sampled again
+const KEY = "art-colours-v2";
 const colours: Record<string, string> = (() => {
   try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; }
 })();
@@ -57,7 +58,8 @@ function fieldOf(img: HTMLImageElement): string {
   const best = buckets.reduce((a, b) => (b.score > a.score ? b : a));
   if (best.score < (w * h) * 0.04) return `hsl(${Math.round(best.n ? best.h / best.n : 220)} 8% 18%)`;
   const hue = Math.round(best.h / best.n);
-  const sat = Math.min(0.78, Math.max(0.28, (best.s / best.n) * 1.15 + 0.08));
+  // desaturated (D66): half the saturation the art has, so the fields sit calmer on the ground
+  const sat = 0.5 * Math.min(0.78, Math.max(0.28, (best.s / best.n) * 1.15 + 0.08));
   return `hsl(${hue} ${Math.round(sat * 100)}% 21%)`;
 }
 
