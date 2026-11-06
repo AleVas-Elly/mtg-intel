@@ -2,7 +2,7 @@
 // what to buy now, and the buying record (from the old Bought page). Collection: what it's worth,
 // how it moved, what to consider selling. Both: set completion.
 import type { ComponentChildren } from "preact";
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { bestNow, completionBySet, gainOf, moves, ownedCards, series, toBuy, totalOverTime, valueOf, type Owned } from "../collection";
 import type { AppData } from "../data";
@@ -10,7 +10,7 @@ import { dealGap, wishCount } from "../data";
 import { pendingPurchases } from "../edits";
 import { atLow90 } from "../filters";
 import { day, eur, showsFoil } from "../format";
-import { link, openCard } from "../router";
+import { go, link, openCard } from "../router";
 import { CardImage } from "../ui/CardImage";
 import { SetSymbol } from "../ui/symbols";
 import type { HistoryDoc, PurchasesDoc, Wish } from "../types";
@@ -23,8 +23,20 @@ type Tab = "wants" | "collection";
 
 // ---------- shared pieces ----------
 
-/** A value over time as one line with a flat tint under it, its first and last values labelled. */
+/** Open the Want-list or the Collection with one filter set, e.g. a set or a list (D62). */
+function openFiltered(path: "/wants" | "/collection", group: string, id: string) {
+  try { localStorage.setItem(path === "/wants" ? "wants-filters" : "collection-filters", JSON.stringify({ sel: { [group]: [id] }, min: "", max: "" })); } catch { /* fine */ }
+  go(path);
+  window.scrollTo({ top: 0 });
+}
+
+const fmtDay = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+/** A value over time: one line with a flat tint under it. Point at it (or use the arrow keys) to
+ *  read any day's value and its change since the start of the range. */
 function Line({ line, label }: { line: { t: number; v: number }[]; label: string }) {
+  const [at, setAt] = useState<number | null>(null);
+  const box = useRef<HTMLDivElement>(null);
   if (line.length < 2) return <div class="chart-empty">Not enough price history yet.</div>;
   const W = 640, H = 170, P = 6;
   const vs = line.map((p) => p.v);
@@ -33,16 +45,60 @@ function Line({ line, label }: { line: { t: number; v: number }[]; label: string
   const y = (v: number) => P + (1 - (v - lo) / span) * (H - 2 * P);
   const d = line.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
   const last = line[line.length - 1];
-  const fmt = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const pick = (clientX: number) => {
+    const r = box.current!.getBoundingClientRect();
+    setAt(Math.max(0, Math.min(line.length - 1, Math.round(((clientX - r.left) / r.width) * (line.length - 1)))));
+  };
+  const key = (e: KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setAt((a) => Math.max(0, Math.min(line.length - 1, (a ?? line.length - 1) + (e.key === "ArrowLeft" ? -1 : 1))));
+  };
+  const p = at != null ? line[at] : null;
+  const change = p && line[0].v ? (p.v - line[0].v) / line[0].v : null;
   return (
     <figure class="db-line" aria-label={label}>
-      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label={`${label}: from ${eur(line[0].v)} to ${eur(last.v)}`}>
-        <path class="db-area" d={`${d}L${x(line.length - 1)},${H}L${x(0)},${H}Z`} />
-        <path class="db-path" d={d} vector-effect="non-scaling-stroke" />
-        <circle class="db-dot" cx={x(line.length - 1)} cy={y(last.v)} r="4" />
-      </svg>
-      <figcaption><span>{fmt(line[0].t)} · {eur(line[0].v)}</span><span>high {eur(hi)} · low {eur(lo)}</span><span>{fmt(last.t)} · {eur(last.v)}</span></figcaption>
+      <div class="db-plot" ref={box} tabIndex={0} role="img" aria-label={`${label}: from ${eur(line[0].v)} to ${eur(last.v)}. Arrow keys read each day.`}
+        onPointerMove={(e) => pick(e.clientX)} onPointerDown={(e) => pick(e.clientX)} onPointerLeave={() => setAt(null)} onKeyDown={key} onBlur={() => setAt(null)}>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+          <path class="db-area" d={`${d}L${x(line.length - 1)},${H}L${x(0)},${H}Z`} />
+          <path class="db-path" d={d} vector-effect="non-scaling-stroke" />
+          {at != null && <line class="db-cross" x1={x(at)} x2={x(at)} y1={0} y2={H} vector-effect="non-scaling-stroke" />}
+        </svg>
+        <span class="db-mark" style={{ left: `${(x(at ?? line.length - 1) / W) * 100}%`, top: `${(y((p ?? last).v) / H) * 100}%` }} />
+        {p && (
+          <div class={`db-tip ${at! > line.length / 2 ? "left" : "right"}`} style={{ left: `${(x(at!) / W) * 100}%` }} role="status">
+            <b class="fig">{eur(p.v)}</b>
+            <span>{fmtDay(p.t)}</span>
+            {change != null && at! > 0 && <span class={change >= 0 ? "good" : "bad"}>{change >= 0 ? "+" : "−"}{pct(change)} since {fmtDay(line[0].t)}</span>}
+          </div>
+        )}
+      </div>
+      <figcaption><span>{fmtDay(line[0].t)} · {eur(line[0].v)}</span><span>high {eur(hi)} · low {eur(lo)}</span><span>{fmtDay(last.t)} · {eur(last.v)}</span></figcaption>
     </figure>
+  );
+}
+
+/** A value line with its own range switch (30 or 90 days) and the change over the range. */
+function ValueCard({ title, make, label, hint, upIsGood }: {
+  title: string; make: (span: number) => { line: { t: number; v: number }[]; of: number }; label: string;
+  hint: (of: number) => ComponentChildren; upIsGood: boolean;
+}) {
+  const [span, setSpan] = useState(90);
+  const { line, of } = useMemo(() => make(span), [make, span]);
+  const c = line.length > 1 && line[0].v ? (line[line.length - 1].v - line[0].v) / line[0].v : null;
+  return (
+    <Card title={title} wide aside={
+      <span class="db-range">
+        {c != null && <span class={(c >= 0) === upIsGood ? "good" : "bad"}>{c >= 0 ? "up" : "down"} {pct(c)}</span>}
+        <span class="seg" role="group" aria-label="Range">
+          {[30, 90].map((d) => <button type="button" aria-pressed={span === d} onClick={() => setSpan(d)}>{d} days</button>)}
+        </span>
+      </span>
+    }>
+      <Line key={span} line={line} label={label} />
+      <p class="hint">{hint(of)}</p>
+    </Card>
   );
 }
 
@@ -55,14 +111,11 @@ function Card({ title, aside, children, wide }: { title: string; aside?: Compone
   );
 }
 
-function Stat({ label, value, note, lead, cls }: { label: string; value: string; note?: ComponentChildren; lead?: boolean; cls?: string }) {
-  return (
-    <div class={`bt-stat${lead ? " lead" : ""}`}>
-      <span class="label">{label}</span>
-      <b class={`fig ${cls ?? ""}`}>{value}</b>
-      {note && <small>{note}</small>}
-    </div>
-  );
+function Stat({ label, value, note, lead, cls, to }: { label: string; value: string; note?: ComponentChildren; lead?: boolean; cls?: string; to?: () => void }) {
+  const inner = <><span class="label">{label}</span><b class={`fig ${cls ?? ""}`}>{value}</b>{note && <small>{note}</small>}</>;
+  return to
+    ? <button type="button" class={`bt-stat go${lead ? " lead" : ""}`} onClick={to}>{inner}<span class="db-go" aria-hidden="true">→</span></button>
+    : <div class={`bt-stat${lead ? " lead" : ""}`}>{inner}</div>;
 }
 
 /** A short list of cards, each with one figure and one line of why. */
@@ -83,18 +136,20 @@ function CardRows({ rows, empty }: { rows: { key: string; thumb: string | null; 
   );
 }
 
-function Completion({ data, owned }: { data: AppData; owned: Owned[] }) {
+function Completion({ data, owned, target }: { data: AppData; owned: Owned[]; target: "/wants" | "/collection" }) {
   const [all, setAll] = useState(false);
   const sets = useMemo(() => completionBySet(data, owned), [data, owned]);
   const shown = all ? sets : sets.slice(0, 8);
   if (!sets.length) return null;
   return (
-    <Card title="Set completion" aside="special versions you own, against the ones still on your want-list" wide>
+    <Card title="Set completion" aside={target === "/wants" ? "tap a set to see what's left to buy" : "tap a set to see what you own"} wide>
       <ul class="db-sets">
         {shown.map((c, i) => {
           const share = c.owned / Math.max(1, c.owned + c.wanted);
           return (
             <li style={{ "--i": i }}>
+              <button type="button" class="db-set" onClick={() => c.set && openFiltered(target, "set", c.set)}
+                aria-label={`${c.label}: ${c.owned} of ${c.owned + c.wanted} owned. Show ${target === "/wants" ? "the wishes" : "my cards"} from this set`}>
               <div class="db-set-line">
                 <span class="db-set-name"><SetSymbol set={c.set} rarity="common" />{c.label}</span>
                 <b class="num">{c.owned} of {c.owned + c.wanted}</b>
@@ -104,6 +159,7 @@ function Completion({ data, owned }: { data: AppData; owned: Owned[] }) {
                 <span>{c.wanted ? `${c.wanted} to go` : "Complete"}</span>
                 {c.wanted > 0 && <span>{c.priced ? `${eur(c.left)} at today's best prices${c.priced < c.wanted ? ` (${c.priced} priced)` : ""}` : "no prices yet"}</span>}
               </div>
+              </button>
             </li>
           );
         })}
@@ -124,8 +180,7 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
   const lows = useMemo(() => wishes.filter((w) => atLow90(w, history)), [wishes, history]);
   const close = useMemo(() => wishes.map((w) => ({ w, gap: dealGap(w, data.liveOf(w.key)) }))
     .filter((x): x is { w: Wish; gap: number } => x.gap != null && !data.dealOf(x.w.key)).sort((a, b) => a.gap - b.gap), [wishes, data]);
-  const over = useMemo(() => totalOverTime(items, (x) => series(x.w.scryfall_id, showsFoil(x.w), history), (x) => x.qty, history), [items, history]);
-  const m = over.line.length > 30 ? (over.line[over.line.length - 1].v - over.line[over.line.length - 31].v) / over.line[over.line.length - 31].v : null;
+  const overList = useMemo(() => (span: number) => totalOverTime(items, (x) => series(x.w.scryfall_id, showsFoil(x.w), history), (x) => x.qty, history, span), [items, history]);
   const rows = [...pendingPurchases(data.edits.ops), ...(purchases?.purchases ?? [])];
   const bought = totals(rows);
   const byList = useMemo(() => {
@@ -146,14 +201,12 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
       <div class="bt-stats">
         <Stat lead label="To finish the want-list" value={eur(best)} note={`at today's best prices, ${priced} of ${items.length} priced`} />
         <Stat label="At Cardmarket's trend" value={eur(trend)} note={trend > best ? <><span class="good">{eur(trend - best)}</span> more than the best prices</> : "the same as the best prices"} />
-        <Stat label="At their lowest in 90 days" value={String(lows.length)} note={lows.length ? "a good time to buy those" : "none right now"} />
-        <Stat label="Close to a deal" value={String(close.filter((x) => x.gap <= 10).length)} note="under 10 points from a deal" />
+        <Stat label="At their lowest in 90 days" value={String(lows.length)} note={lows.length ? "a good time to buy those" : "none right now"} to={() => openFiltered("/wants", "timing", "low90")} />
+        <Stat label="Close to a deal" value={String(close.filter((x) => x.gap <= 10).length)} note="under 10 points from a deal" to={() => openFiltered("/wants", "deal", "close")} />
       </div>
       <div class="db-grid">
-        <Card title="What the list costs over time" wide aside={m != null ? <span class={m <= 0 ? "good" : "bad"}>{m <= 0 ? "down" : "up"} {pct(m)} in 30 days</span> : undefined}>
-          <Line line={over.line} label="Want-list at Cardmarket's trend" />
-          <p class="hint">Cardmarket's trend of every wish, its copies added up{over.of < items.length ? `; ${over.of} of ${items.length} wishes have 90 days of prices` : ""}. A falling line means waiting pays.</p>
-        </Card>
+        <ValueCard title="What the list costs over time" make={overList} label="Want-list at Cardmarket's trend" upIsGood={false}
+          hint={(of) => <>Cardmarket's trend of every wish, its copies added up{of < items.length ? `; ${of} of ${items.length} wishes have prices for the whole range` : ""}. A falling line means waiting pays.</>} />
         <Card title="Closest to a deal" aside={<a class="link" href="/wants" onClick={link("/wants")}>Want-list</a>}>
           <CardRows empty="No CardTrader copies checked yet." rows={close.slice(0, 6).map(({ w, gap }) => {
             const l = data.liveOf(w.key);
@@ -170,9 +223,11 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
           <ul class="bt-groups">
             {byList.map((g, i) => (
               <li style={{ "--i": i }}>
-                <div class="bt-g-line"><span class="bt-g-name">{g.list}</span><b>{eur(g.best)}</b></div>
-                <div class="bt-g-bar"><span style={{ width: `${(g.best / top) * 100}%` }} /></div>
-                <div class="bt-g-sub"><span>{g.n} {g.n === 1 ? "wish" : "wishes"}</span></div>
+                <button type="button" class="db-set" onClick={() => g.list !== "On no list" && openFiltered("/wants", "list", g.list)}>
+                  <div class="bt-g-line"><span class="bt-g-name">{g.list}</span><b>{eur(g.best)}</b></div>
+                  <div class="bt-g-bar"><span style={{ width: `${(g.best / top) * 100}%` }} /></div>
+                  <div class="bt-g-sub"><span>{g.n} {g.n === 1 ? "wish" : "wishes"}</span><span>{pct(g.best / Math.max(0.01, best))} of the total</span></div>
+                </button>
               </li>
             ))}
           </ul>
@@ -182,7 +237,7 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
             .map((x) => wishRow(x.w, eur(x.best! * x.qty), x.qty > 1 ? `${x.qty} copies` : x.w.lists.join(", ") || "on no list",
               best > 0 ? `${pct((x.best! * x.qty) / best)} of the total` : undefined))} />
         </Card>
-        <Completion data={data} owned={owned} />
+        <Completion data={data} owned={owned} target="/wants" />
       </div>
       <h2 class="db-section">Buying record</h2>
       {rows.length ? (
@@ -215,7 +270,8 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
     return owned.filter((o) => { const k = `${o.scryfall_id ?? o.key}|${o.foil}`; if (seen.has(k)) return false; seen.add(k); return true; })
       .map((o) => ({ o, m: moves(series(o.scryfall_id, o.foil, history)) }));
   }, [owned, history]);
-  const over = useMemo(() => totalOverTime(owned, (o) => series(o.scryfall_id, o.foil, history), (o) => o.qty, history), [owned, history]);
+  const overOwned = useMemo(() => (span: number) => totalOverTime(owned, (o) => series(o.scryfall_id, o.foil, history), (o) => o.qty, history, span), [owned, history]);
+  const [dir, setDir] = useState<"all" | "up" | "down">("all");
   const sell = withMoves.filter(({ o, m }) => o.now != null && ((m.change30 ?? 0) >= 0.15 || (m.days >= 30 && m.high90 != null && o.now >= m.high90 * 0.95 && (gainOf(o) ?? 0) > 0)))
     .sort((a, b) => (b.m.change30 ?? 0) - (a.m.change30 ?? 0));
   const movers = withMoves.filter(({ m }) => m.change30 != null && Math.abs(m.change30) >= 0.05).sort((a, b) => Math.abs(b.m.change30!) - Math.abs(a.m.change30!));
@@ -229,23 +285,24 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
   return (
     <>
       <div class="bt-stats">
-        <Stat lead label="Worth now" value={eur(worth)} note={`Cardmarket's trend${purchases?.price_date ? ` on ${day(purchases.price_date)}` : ""}${valued.length < owned.length ? `, ${valued.length} of ${owned.length} priced` : ""}`} />
-        <Stat label="Since bought" value={signed(gain)} cls={tone(gain)} note={paid > 0 ? `${pct(gain / paid)} ${gain >= 0 ? "up" : "down"} on ${eur(paid)} paid` : "nothing priced yet"} />
+        <Stat lead to={() => { try { sessionStorage.setItem("collection-sort", "value"); } catch { /* fine */ } go("/collection"); }} label="Worth now" value={eur(worth)} note={`Cardmarket's trend${purchases?.price_date ? ` on ${day(purchases.price_date)}` : ""}${valued.length < owned.length ? `, ${valued.length} of ${owned.length} priced` : ""}`} />
+        <Stat to={() => openFiltered("/collection", "move", gain >= 0 ? "gain" : "loss")} label="Since bought" value={signed(gain)} cls={tone(gain)} note={paid > 0 ? `${pct(gain / paid)} ${gain >= 0 ? "up" : "down"} on ${eur(paid)} paid` : "nothing priced yet"} />
         <Stat label="Cards" value={String(copies)} note={`${owned.length} different printings`} />
         <Stat label="Sets" value={String(sets)} note="with at least one card" />
       </div>
       <div class="db-grid">
-        <Card title="Value over time" wide aside={over.line.length > 30 ? (() => { const a = over.line[over.line.length - 31].v, b = over.line[over.line.length - 1].v; const c = a ? (b - a) / a : 0; return <span class={c >= 0 ? "good" : "bad"}>{c >= 0 ? "up" : "down"} {pct(c)} in 30 days</span>; })() : undefined}>
-          <Line line={over.line} label="Collection at Cardmarket's trend" />
-          <p class="hint">What today's cards were worth on each day, at Cardmarket's trend{over.of < owned.length ? `; ${over.of} of ${owned.length} printings have 90 days of prices` : ""}.</p>
-        </Card>
+        <ValueCard title="Value over time" make={overOwned} label="Collection at Cardmarket's trend" upIsGood
+          hint={(of) => <>What today's cards were worth on each day, at Cardmarket's trend{of < owned.length ? `; ${of} of ${owned.length} printings have prices for the whole range` : ""}.</>} />
         <Card title="Sell watch" aside="spiked, or near their 90-day high">
           <CardRows empty="Nothing has spiked. Cards up 15% in a month, or near their 90-day high and worth more than you paid, show here." rows={sell.slice(0, 6).map(({ o, m }) => ownedRow(o, eur(o.now!),
             (m.change30 ?? 0) >= 0.15 ? `+${pct(m.change30!)} in 30 days` : `near its 90-day high of ${eur(m.high90!)}`,
             <>paid {eur(o.paid / o.qty)}</>))} />
         </Card>
-        <Card title="Top movers" aside="this month">
-          <CardRows empty="No card moved 5% or more this month." rows={movers.slice(0, 6).map(({ o, m }) => ownedRow(o, `${m.change30! >= 0 ? "+" : "−"}${pct(m.change30!)}`,
+        <Card title="Top movers" aside={
+          <span class="seg" role="group" aria-label="Direction">
+            {(["all", "up", "down"] as const).map((d) => <button type="button" aria-pressed={dir === d} onClick={() => setDir(d)}>{d === "all" ? "All" : d === "up" ? "Up" : "Down"}</button>)}
+          </span>}>
+          <CardRows empty={dir === "all" ? "No card moved 5% or more this month." : `No card went ${dir} 5% or more this month.`} rows={movers.filter(({ m }) => dir === "all" || (dir === "up" ? m.change30! > 0 : m.change30! < 0)).slice(0, 6).map(({ o, m }) => ownedRow(o, `${m.change30! >= 0 ? "+" : "−"}${pct(m.change30!)}`,
             `${eur(o.now ?? 0)} a copy`, <span class={m.change30! >= 0 ? "good" : "bad"}>{m.change30! >= 0 ? "up" : "down"}</span>))} />
         </Card>
         <Card title="Most valuable">
@@ -257,7 +314,7 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
             `${day(o.last)}, ${o.markets.includes("cardtrader") ? "CardTrader" : o.markets.includes("cardmarket") ? "Cardmarket" : "elsewhere"}`,
             o.now != null ? <>now {eur(o.now)}</> : undefined))} />
         </Card>
-        <Completion data={data} owned={owned} />
+        <Completion data={data} owned={owned} target="/collection" />
       </div>
     </>
   );
@@ -269,15 +326,16 @@ export function Dashboards({ data }: { data: AppData }) {
   const history = useDoc<HistoryDoc>("history").doc;
   const owned = useMemo(() => ownedCards([...pendingPurchases(data.edits.ops), ...(purchases?.purchases ?? [])]), [purchases, data.edits.ops]);
   const pick = (t: Tab) => { setTab(t); try { sessionStorage.setItem("dash-tab", t); } catch { /* fine */ } };
+  useEffect(() => { document.documentElement.dataset.section = tab === "wants" ? "wants" : "collection"; }, [tab]);
   return (
     <div class="page dash">
-      <header class="head">
-        <div><h1 class="title">Dashboards</h1><p class="sub">Insights from your want-list and your collection</p></div>
+      <header class="head sec-band">
+        <div><h1 class="title">{tab === "wants" ? "Want-list dashboard" : "Collection dashboard"}</h1><p class="sub">{tab === "wants" ? "What's left to buy, what it costs, and when to buy it" : "What you own, what it's worth, and what's moving"}</p></div>
       </header>
       <div class="toolbar">
         <div class="seg" role="tablist" aria-label="Dashboard">
-          <button type="button" role="tab" aria-pressed={tab === "wants"} aria-selected={tab === "wants"} onClick={() => pick("wants")}>Want-list</button>
-          <button type="button" role="tab" aria-pressed={tab === "collection"} aria-selected={tab === "collection"} onClick={() => pick("collection")}>Collection</button>
+          <button type="button" role="tab" class="tab-wants" aria-pressed={tab === "wants"} aria-selected={tab === "wants"} onClick={() => pick("wants")}>Want-list</button>
+          <button type="button" role="tab" class="tab-coll" aria-pressed={tab === "collection"} aria-selected={tab === "collection"} onClick={() => pick("collection")}>Collection</button>
         </div>
       </div>
       {data.wants === undefined ? <div class="bt-stats"><div class="bt-stat skeleton" style={{ height: "110px" }} /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /></div>

@@ -155,7 +155,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
 
   return (
     <div class="page wide">
-      <header class="head">
+      <header class="head sec-band">
         <div>
           <h1 class="title">Collection</h1>
           <p class="sub">{doc === undefined ? "Loading…" : total ? <>{total} {total === 1 ? "card" : "cards"}, worth {eur(owned.reduce((t, o) => t + (valueOf(o) ?? 0), 0))} at Cardmarket's trend</> : "Your cards, with what they're worth"}</p>

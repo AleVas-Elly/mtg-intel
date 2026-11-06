@@ -71,7 +71,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
 
   return (
     <div class="page wide">
-      <header class="head">
+      <header class="head sec-band">
         <div>
           <h1 class="title">Want-list</h1>
           <p class="sub">

@@ -1011,3 +1011,51 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
   .mk i { min-width: 30px; font-size: 11.5px; }
   .row { gap: 10px; padding: 12px 12px; }
 }
+
+/* ---------- section colours (D62): the Want-list is cyan, the Collection pink ---------- */
+:root {
+  --wants: #0a8aa6; --wants-ink: #ffffff; --wants-text: #0b6f86;
+  --coll: #d0306f; --coll-ink: #ffffff; --coll-text: #b0245d;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --wants: #2fd3f0; --wants-ink: #03161b; --wants-text: #74e4f8;
+    --coll: #ff5fa2; --coll-ink: #23000f; --coll-text: #ff94c2;
+  }
+}
+:root[data-theme="dark"] {
+  --wants: #2fd3f0; --wants-ink: #03161b; --wants-text: #74e4f8;
+  --coll: #ff5fa2; --coll-ink: #23000f; --coll-text: #ff94c2;
+}
+:root[data-section="wants"] { --sec: var(--wants); --sec-ink: var(--wants-ink); --sec-text: var(--wants-text); }
+:root[data-section="collection"] { --sec: var(--coll); --sec-ink: var(--coll-ink); --sec-text: var(--coll-text); }
+
+/* the menu: each section's icon always in its colour, its pill when open */
+.rail a.sec-wants svg, .tab.sec-wants svg { color: var(--wants); }
+.rail a.sec-collection svg, .tab.sec-collection svg { color: var(--coll); }
+.rail a.sec-wants[aria-current="page"], .tab.sec-wants[aria-current="page"] { background: var(--wants); color: var(--wants-ink); }
+.rail a.sec-collection[aria-current="page"], .tab.sec-collection[aria-current="page"] { background: var(--coll); color: var(--coll-ink); }
+.rail a.sec-wants[aria-current="page"] svg, .tab.sec-wants[aria-current="page"] svg,
+.rail a.sec-collection[aria-current="page"] svg, .tab.sec-collection[aria-current="page"] svg { color: inherit; }
+
+/* the header band: a flat field of the section's colour behind the title */
+.head.sec-band {
+  margin: 14px -16px 6px; padding: 22px 20px 20px; border-radius: 26px;
+  background: color-mix(in srgb, var(--sec, var(--fill)) 17%, var(--bg));
+}
+.head.sec-band .title { color: var(--sec-text, var(--ink)); }
+@media (min-width: 900px) { .head.sec-band { margin: 26px 0 8px; padding: 26px 28px 24px; } }
+
+/* inside a section, its colour marks what is chosen and what leads */
+:root[data-section] .seg button[aria-pressed="true"] { background: var(--sec); color: var(--sec-ink); }
+:root[data-section] .f-opt[aria-checked="true"] .f-box { background: var(--sec); }
+:root[data-section] .f-opt[aria-checked="true"] .f-box::after { border-color: var(--sec-ink); }
+:root[data-section] .f-on { background: var(--sec); color: var(--sec-ink); }
+:root[data-section] .row[aria-current="true"]::after { background: var(--sec); }
+:root[data-section] .field:focus-within { box-shadow: 0 0 0 2px var(--sec); }
+:root[data-section] .bt-stat.lead { background: color-mix(in srgb, var(--sec) 20%, var(--surface)); }
+:root[data-section] .bt-stat.lead .label, :root[data-section] .bt-stat.lead small, :root[data-section] .bt-stat.lead b.good { color: var(--sec-text); }
+:root[data-section] .db-path { stroke: var(--sec-text); }
+:root[data-section] .db-area { fill: var(--sec); opacity: 0.14; }
+:root[data-section] .db-dot { fill: var(--sec); }
+:root[data-section] .db-bar span, :root[data-section] .bt-g-bar span { background: var(--sec); }

@@ -43,8 +43,14 @@ export function App() {
   return <Signed path={route.path} card={route.card} />;
 }
 
+/** Which section's colour the page wears (D62): the Want-list is cyan, the Collection pink. */
+const sectionOf = (path: string) => (path === "/wants" ? "wants" : path === "/collection" || path === "/bought" ? "collection" : "");
+const SEC: Record<string, string> = { "/wants": "wants", "/collection": "collection" };
+
 function Signed({ path, card }: { path: string; card: string | null }) {
   const data = useAppData();
+  // Dashboards sets its own section, by the tab that is open
+  useEffect(() => { if (path !== "/dashboards") document.documentElement.dataset.section = sectionOf(path); }, [path]);
   const dealCount = data.live?.deals.filter((d) => data.byKey.has(d.key)).length ?? 0;  // a removed wish's deal drops out
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
   const screen =
@@ -62,7 +68,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       <nav class="rail" aria-label="Main">
         <a class="brand" href="/" onClick={link("/")}><img src="/icon.svg" alt="" />mtg-intel</a>
         {TABS.map(({ path: p, label, Icon }) => (
-          <a href={p} onClick={link(p)} aria-current={path === p ? "page" : undefined}>
+          <a href={p} onClick={link(p)} class={SEC[p] ? `sec-${SEC[p]}` : undefined} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}>
             <Icon />{label}{counts[p] != null && <span class="count">{counts[p]}</span>}
           </a>
         ))}
@@ -79,7 +85,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       <ToastView />
       <nav class="tabbar" aria-label="Main">
         {PHONE_TABS.map(({ path: p, label, Icon }) => (
-          <a class="tab" href={p} onClick={link(p)} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
+          <a class={`tab${SEC[p] ? ` sec-${SEC[p]}` : ""}`} href={p} onClick={link(p)} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
         ))}
       </nav>
     </div>

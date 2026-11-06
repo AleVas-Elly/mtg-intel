@@ -56,3 +56,40 @@
 :root[data-motion="calm"] .db-card, :root[data-motion="calm"] .db-rows li, :root[data-motion="calm"] .db-sets li { animation: fade 0.15s linear both; }
 :root[data-motion="calm"] .db-bar span { animation: none; }
 @media (max-width: 640px) { .wide-only { display: none; } }
+
+/* interactive (D62): read any day on the value line, tap tiles, sets and lists */
+.db-plot { position: relative; cursor: crosshair; touch-action: pan-y; border-radius: 12px; }
+.db-plot:focus-visible { outline: 2.5px solid var(--focus); outline-offset: 4px; }
+.db-cross { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 4; }
+.db-mark { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--sec, var(--live)); box-shadow: 0 0 0 3px var(--surface); pointer-events: none; transition: left 90ms linear, top 90ms linear; }
+.db-tip {
+  position: absolute; top: 4px; z-index: 2; display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border-radius: 14px;
+  background: var(--bg); box-shadow: var(--shadow-2), 0 0 0 1px var(--line); pointer-events: none; white-space: nowrap; font-size: 12.5px; color: var(--ink-2);
+  animation: pop 160ms var(--out);
+}
+.db-tip.right { transform: translateX(14px); }
+.db-tip.left { transform: translateX(calc(-100% - 14px)); }
+.db-tip b { font-size: 26px; color: var(--ink); }
+.db-tip .good { color: var(--good); }
+.db-tip .bad { color: var(--bad); }
+.db-range { display: inline-flex; align-items: center; gap: 12px; font-size: 13px; }
+.db-range .seg button, .db-card .bt-card-head .seg button { height: 28px; padding: 0 11px; font-size: 12.5px; }
+
+button.bt-stat { border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; position: relative; transition: background 0.15s var(--ease), transform var(--t-press) var(--out); }
+button.bt-stat:hover { background: var(--surface-2); }
+:root[data-section] button.bt-stat.lead:hover { background: color-mix(in srgb, var(--sec) 28%, var(--surface)); }
+button.bt-stat:active { transform: scale(0.98); }
+.db-go { position: absolute; top: 14px; right: 16px; font-size: 15px; color: var(--ink-3); transition: transform 0.2s var(--out), color 0.15s; }
+button.bt-stat:hover .db-go { transform: translateX(3px); color: var(--ink); }
+
+.db-set { display: flex; flex-direction: column; gap: 6px; width: calc(100% + 20px); padding: 8px 10px; margin: -8px -10px; border: 0; border-radius: 14px; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; transition: background 0.15s var(--ease); box-sizing: border-box; }
+.db-set:hover { background: var(--fill); }
+.db-set:hover .db-bar span, .db-set:hover .bt-g-bar span { filter: brightness(1.12); }
+.bt-groups .db-set .bt-g-sub { display: flex; justify-content: space-between; }
+
+/* the dashboard's two tabs always show their section's colour */
+.seg button.tab-wants[aria-pressed="true"] { background: var(--wants); color: var(--wants-ink); }
+.seg button.tab-coll[aria-pressed="true"] { background: var(--coll); color: var(--coll-ink); }
+.seg button.tab-wants::before, .seg button.tab-coll::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--wants); }
+.seg button.tab-coll::before { background: var(--coll); }
+.seg button.tab-wants[aria-pressed="true"]::before, .seg button.tab-coll[aria-pressed="true"]::before { background: currentColor; }
