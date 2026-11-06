@@ -71,9 +71,11 @@ export interface Purchase {
   n: number; date: string; name: string; set: string | null; number: string | null; scryfall_id: string | null;
   language: string | null; foil: boolean; condition: string; price: number; market: string; cardmarket: number | null;
   saved: number | null; thumb: string | null; rarity: string | null; tags: string[]; set_name: string | null; lists: string[];
+  /** Cardmarket's trend for the same finish on `PurchasesDoc.price_date` (what it is worth now). */
+  now?: number | null;
   pending?: boolean;
 }
 
-export interface PurchasesDoc { built_at: string; purchases: Purchase[] }
+export interface PurchasesDoc { built_at: string; price_date?: string | null; purchases: Purchase[] }
 
 export interface EditsDoc { ops: Edit[]; failed: Edit[] }

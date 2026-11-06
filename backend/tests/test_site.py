@@ -136,3 +136,48 @@ def test_purchases_doc_shows_newest_first_with_the_saving():
     assert [(p["name"], p["saved"], p["foil"]) for p in doc["purchases"]] == [("B", None, True), ("A", 1.6, False)]
     assert doc["purchases"][1]["thumb"] == "https://cards.scryfall.io/small/front/a.jpg"
     assert doc["purchases"][1]["lists"] == ["Showcase"]
+
+
+def test_purchases_doc_says_what_each_finish_is_worth_now():
+    from mtg_intel.tables import mycards
+
+    cards = pa.table({"scryfall_id": ["sf-1", "sf-2"], "cardmarket_id": [11, 22], "image_url": [None, None],
+                      "rarity": ["rare", "mythic"], "special_tags": [[], []], "set_name": ["A", "B"]})
+    day = pa.table({"id_product": [11, 22], "trend": [4.0, 9.0], "trend_foil": [12.5, None]})
+    text = mycards.append_purchases("", [
+        {"date": "2026-10-20", "name": "Foil", "scryfall_id": "sf-1", "foil": "yes", "condition": "NM", "price_eur": "10",
+         "market": "cardtrader", "cardmarket_trend_eur": "11"},
+        {"date": "2026-10-21", "name": "No foil price", "scryfall_id": "sf-2", "foil": "yes", "condition": "NM",
+         "price_eur": "8", "market": "cardmarket"},
+        {"date": "2026-10-22", "name": "Plain", "scryfall_id": "sf-2", "foil": "no", "condition": "NM", "price_eur": "8",
+         "market": "cardmarket"},
+    ])
+
+    doc = site.purchases_doc(text, cards, NOW, day, "2026-11-06")
+
+    assert [(p["name"], p["now"]) for p in doc["purchases"]] == [("Plain", 9.0), ("No foil price", None), ("Foil", 12.5)]
+    assert doc["price_date"] == "2026-11-06"
+    assert site.purchases_doc(text, cards, NOW)["price_date"] is None
+
+
+def test_a_new_cardmarket_day_resends_purchases():
+    from mtg_intel.tables import mycards
+
+    sent = {}
+
+    class Target:
+        def put(self, key, doc):
+            sent[key] = doc
+
+    cards = pa.table({"scryfall_id": ["00aa"], "cardmarket_id": [1], "image_url": [None], "rarity": ["rare"],
+                      "special_tags": [[]], "set_name": ["A"]})
+    day = pa.table({"id_product": [1], "trend": [2.5], "trend_foil": [None]})
+    tables = {"reference/cards.parquet": cards, "prices/cardmarket/2026/2026-11-06.parquet": day}
+    text = mycards.append_purchases("", [{"date": "2026-11-01", "name": "A", "scryfall_id": "00aa", "foil": "no",
+                                          "condition": "NM", "price_eur": "2", "market": "cardtrader"}])
+
+    keys = site.export_tables(Target(), tables.get, ["prices/cardmarket/2026/2026-11-06.parquet"], NOW,
+                              purchases=lambda: text)
+
+    assert "purchases" in keys and sent["purchases"]["purchases"][0]["now"] == 2.5
+    assert sent["purchases"]["price_date"] == "2026-11-06"

@@ -101,22 +101,33 @@ def scryfall_small(image_url: str | None) -> str | None:
     return image_url.replace("/normal/", "/small/") if image_url else None
 
 
-def purchases_doc(text: str, cards: pa.Table, now: datetime) -> dict[str, Any]:
+def purchases_doc(text: str, cards: pa.Table, now: datetime, cardmarket_day: pa.Table | None = None,
+                  price_date: str | None = None) -> dict[str, Any]:
     """Cards I bought ("Bought it", 3c), newest first, with what each saved against Cardmarket's
-    trend on the day (spec principle 5)."""
+    trend on the day (spec principle 5) and, given the latest Cardmarket day, what the same finish
+    is worth now (the Bought dashboard)."""
     import pyarrow.compute as pc
 
     from mtg_intel.tables import mycards
 
     rows = mycards.read_csv_rows(text) if text.strip() else []
     ids = {r["scryfall_id"] for r in rows if r.get("scryfall_id")}
-    images = {c["scryfall_id"]: c for c in cards.filter(pc.is_in(cards["scryfall_id"], pa.array(sorted(ids))))
-              .select(["scryfall_id", "image_url", "rarity", "special_tags", "set_name"]).to_pylist()} if ids else {}
+    mine = cards.filter(pc.is_in(cards["scryfall_id"], pa.array(sorted(ids)))) if ids else None
+    images = {c["scryfall_id"]: c for c in mine.select(["scryfall_id", "image_url", "rarity", "special_tags", "set_name"])
+              .to_pylist()} if mine is not None else {}
+    worth: dict[str, tuple[float | None, float | None]] = {}
+    if mine is not None and cardmarket_day is not None and "cardmarket_id" in mine.column_names:
+        trends = {p["id_product"]: (p["trend"], p["trend_foil"])
+                  for p in cardmarket_day.select(["id_product", "trend", "trend_foil"]).to_pylist()}
+        worth = {c["scryfall_id"]: trends[c["cardmarket_id"]] for c in mine.select(["scryfall_id", "cardmarket_id"]).to_pylist()
+                 if c["cardmarket_id"] in trends}
     out = []
     for i, r in enumerate(rows):
         card = images.get(r.get("scryfall_id") or "", {})
         price = float(r["price_eur"])
         trend = float(r["cardmarket_trend_eur"]) if r.get("cardmarket_trend_eur") else None
+        trend_now, trend_foil_now = worth.get(r.get("scryfall_id") or "", (None, None))
+        value = trend_foil_now if r.get("foil") == "yes" else trend_now
         out.append({
             "n": i, "date": r["date"], "name": r["name"], "set": r.get("set_code") or None,
             "number": r.get("collector_number") or None, "scryfall_id": r.get("scryfall_id") or None,
@@ -125,9 +136,10 @@ def purchases_doc(text: str, cards: pa.Table, now: datetime) -> dict[str, Any]:
             "saved": round(trend - price, 2) if trend is not None else None,
             "thumb": scryfall_small(card.get("image_url")), "rarity": card.get("rarity"),
             "tags": card.get("special_tags") or [], "set_name": card.get("set_name"), "lists": [x for x in (r.get("list") or "").split("; ") if x],
+            "now": round(value, 2) if value is not None else None,
         })
     out.reverse()
-    return {"built_at": now.isoformat(), "purchases": out}
+    return {"built_at": now.isoformat(), "price_date": price_date if worth else None, "purchases": out}
 
 
 PREVIEW_DAYS = 365  # Telegram fetches a preview page once, when the alert is sent
@@ -351,8 +363,10 @@ def shard_of(scryfall_id: str) -> int:
 
 
 def export_tables(site: Site, load: Callable[[str], pa.Table | None], changed: Iterable[str], now: datetime,
-                  force: bool = False, latest_day: str | None = None) -> list[str]:
-    """Send the documents whose tables changed in this build; returns the keys sent."""
+                  force: bool = False, latest_day: str | None = None,
+                  purchases: Callable[[], str | None] | None = None) -> list[str]:
+    """Send the documents whose tables changed in this build; returns the keys sent. A new
+    Cardmarket day also resends `purchases`, so what my cards are worth now stays current."""
     changed = list(changed)
     sent = []
     touches = lambda prefixes: force or any(p.startswith(prefixes) for p in changed)
@@ -372,7 +386,16 @@ def export_tables(site: Site, load: Callable[[str], pa.Table | None], changed: I
             for n, shard in price_shards(cards, day).items():
                 site.put(f"prices-{n}", shard)
             sent.append(f"prices-0…{PRICE_SHARDS - 1}")
+            text = purchases() if purchases else None
+            if text and text.strip():
+                site.put("purchases", purchases_doc(text, cards, now, day, day_of(latest)))
+                sent.append("purchases")
     return sent
+
+
+def day_of(path: str | None) -> str | None:
+    """`prices/cardmarket/2026/2026-11-06.parquet` → `2026-11-06`."""
+    return path.rsplit("/", 1)[-1].removesuffix(".parquet") if path else None
 
 
 # --- documents written by each deal check -------------------------------------------------------
