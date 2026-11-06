@@ -46,7 +46,7 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
     : [];
   return (
     <div class="page">
-      <header class="head">
+      <header class="head sec-band">
         <div>
           <h1 class="title">Deals</h1>
           <Status data={data} />

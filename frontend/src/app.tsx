@@ -43,9 +43,10 @@ export function App() {
   return <Signed path={route.path} card={route.card} />;
 }
 
-/** Which section's colour the page wears (D62): the Want-list is cyan, the Collection pink. */
-const sectionOf = (path: string) => (path === "/wants" ? "wants" : path === "/collection" || path === "/bought" ? "collection" : "");
-const SEC: Record<string, string> = { "/wants": "wants", "/collection": "collection" };
+/** Which section's colour the page wears (D62): the Want-list is cyan, the Collection pink,
+ *  Deals gold, Check red. */
+const SEC: Record<string, string> = { "/wants": "wants", "/collection": "collection", "/bought": "collection", "/deals": "deals", "/check": "check" };
+const sectionOf = (path: string) => SEC[path] ?? "";
 
 function Signed({ path, card }: { path: string; card: string | null }) {
   const data = useAppData();

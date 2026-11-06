@@ -1059,3 +1059,18 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 :root[data-section] .db-area { fill: var(--sec); opacity: 0.14; }
 :root[data-section] .db-dot { fill: var(--sec); }
 :root[data-section] .db-bar span, :root[data-section] .bt-g-bar span { background: var(--sec); }
+
+/* D63: Deals gold, Check red (the user's choice; rare set symbols keep their own gradient) */
+:root { --deals: #a87400; --deals-ink: #ffffff; --deals-text: #8a5f00; --check: #c62828; --check-ink: #ffffff; --check-text: #b02020; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --deals: #f2c14e; --deals-ink: #1f1500; --deals-text: #f7d47e; --check: #ff5a5f; --check-ink: #200304; --check-text: #ff8a8d; }
+}
+:root[data-theme="dark"] { --deals: #f2c14e; --deals-ink: #1f1500; --deals-text: #f7d47e; --check: #ff5a5f; --check-ink: #200304; --check-text: #ff8a8d; }
+:root[data-section="deals"] { --sec: var(--deals); --sec-ink: var(--deals-ink); --sec-text: var(--deals-text); }
+:root[data-section="check"] { --sec: var(--check); --sec-ink: var(--check-ink); --sec-text: var(--check-text); }
+.rail a.sec-deals svg, .tab.sec-deals svg { color: var(--deals); }
+.rail a.sec-check svg, .tab.sec-check svg { color: var(--check); }
+.rail a.sec-deals[aria-current="page"], .tab.sec-deals[aria-current="page"] { background: var(--deals); color: var(--deals-ink); }
+.rail a.sec-check[aria-current="page"], .tab.sec-check[aria-current="page"] { background: var(--check); color: var(--check-ink); }
+.rail a.sec-deals[aria-current="page"] svg, .tab.sec-deals[aria-current="page"] svg,
+.rail a.sec-check[aria-current="page"] svg, .tab.sec-check[aria-current="page"] svg { color: inherit; }

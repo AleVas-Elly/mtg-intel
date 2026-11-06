@@ -44,7 +44,7 @@ export function Check({ data }: { data: AppData }) {
 
   return (
     <div class="page">
-      <header class="head">
+      <header class="head sec-band">
         <div>
           <h1 class="title">Check</h1>
           <p class="sub">{data.wants ? `${flagged.size} of ${wishes.length} versions flagged` : "Loading…"}</p>
