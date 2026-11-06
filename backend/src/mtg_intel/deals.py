@@ -75,7 +75,7 @@ def watch_table(wantlist: pa.Table, cards: pa.Table, cardmarket: pa.Table | None
         select w.line, coalesce(c.name, w.name) as name, c.set_code, c.collector_number, c.special_tags,
             c.finishes, w.scryfall_id, try_cast(w.cardtrader_blueprint_id as bigint) as blueprint_id,
             w.language, w.foil, w.min_condition, w.via_zero, try_cast(w.max_price_eur as double) as max_price_eur,
-            try_cast(w.deal_pct as double) as deal_pct, w.list, w.one_of, c.cardmarket_id, c.image_url, c.set_name{", " + prices if prices else ""}
+            try_cast(w.deal_pct as double) as deal_pct, w.list, w.one_of, try_cast(w.quantity as integer) as quantity, c.cardmarket_id, c.image_url, c.set_name{", " + prices if prices else ""}
         from w
         left join c using (scryfall_id)
         left join p on p.id_product = c.cardmarket_id
@@ -243,6 +243,7 @@ class CheckResult:
     counts: dict[str, int] = field(default_factory=dict)  # wish key -> fitting listings
     usual: dict[str, tuple[float | None, str]] = field(default_factory=dict)  # wish key -> CardTrader reference
     assessed: dict[str, Assessment] = field(default_factory=dict)  # wish key -> how close to a deal
+    seen: set[int] = field(default_factory=set)  # every listing ID this check saw (live alerts, D54)
 
 
 def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) -> list[dict[str, Any]]:
@@ -283,6 +284,7 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
             result.failed_blueprints.append(blueprint_id)
             continue
         listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or []) if x]
+        result.seen.update(x.id for x in listings)
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:
             key = wish_key(wish)
@@ -538,8 +540,26 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
         links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
     buttons.append(links)
     label = f"{deal.tier[1]} · " if deal.tier else "🎯 Target · "
-    caption = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}" + (f"\n\n{details}" if details else "")
-    return Rich("\n".join(lines), buttons, preview, photo, caption)
+    head = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}"
+    caption = head + (f"\n\n{details}" if details else "")
+    return Rich("\n".join(lines), buttons, preview, photo, caption, head=head, details=details, links=links)
+
+
+LANGUAGE_NAMES = {"en": "English", "jp": "Japanese", "ja": "Japanese", "it": "Italian", "fr": "French", "de": "German",
+                  "es": "Spanish", "pt": "Portuguese", "ko": "Korean", "ru": "Russian", "zh-CN": "Chinese",
+                  "zh-TW": "Chinese (trad.)"}
+CONDITION_NAMES = {"NM": "Near Mint", "SP": "Slightly Played", "MP": "Moderately Played", "PL": "Played", "PO": "Poor"}
+
+
+def copy_line(listing: Listing) -> str:
+    """Exactly which copy (user, 2026-11-06: "I need to know exactly what I'm buying"):
+    "Near Mint · English · Non-foil · Zero · Magicfree (Italy)"."""
+    x = listing
+    seller = (f"{x.seller} ({COUNTRIES.get(x.country, x.country)})" if x.country else x.seller) if x.seller else \
+        (f"seller in {COUNTRIES.get(x.country, x.country)}" if x.country else "")
+    return " · ".join(p for p in [CONDITION_NAMES.get(CONDITION_GRADE.get(x.condition, ""), x.condition),
+                                  LANGUAGE_NAMES.get(x.language, x.language.upper()), "Foil" if x.foil else "Non-foil",
+                                  "Zero" if x.zero else "", seller] if p)
 
 
 def cardmarket_url(w: dict[str, Any]) -> str:

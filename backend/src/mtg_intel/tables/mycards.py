@@ -273,13 +273,33 @@ def ready_edits(ops: list[dict], now: datetime) -> tuple[list[dict], list[dict]]
     return [op for op in ops if op not in held], held
 
 
+def _recorded(purchases: list[dict[str, str]], row: dict[str, str]) -> str | None:
+    """Why a purchase from my CardTrader orders is already in the purchases list, or None: the same
+    order item (its note), or the same card and price recorded by hand within three days."""
+    from datetime import date
+
+    for p in purchases:
+        if row["note"] and p.get("note") == row["note"]:
+            return "already recorded"
+        if (p.get("scryfall_id") == row["scryfall_id"] and p.get("price_eur") == row["price_eur"]
+                and p.get("market") == "cardtrader" and not (p.get("note") or "").startswith("CT order")
+                and p.get("date") and abs((date.fromisoformat(p["date"]) - date.fromisoformat(row["date"])).days) <= 3):
+            return "already recorded by hand"
+    return None
+
+
 def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[str, int],
-                bought: list[dict[str, str]] | None = None) -> tuple[str, list[dict]]:
+                bought: list[dict[str, str]] | None = None,
+                purchases: list[dict[str, str]] | None = None) -> tuple[str, list[dict]]:
     """Apply the site's waiting edits, oldest first, to the want-list CSV text. Each op is
     {"id", "op": "add" | "update" | "remove" | "bought", ...}: add carries "scryfall_id" and
     "settings", update "key" and "settings", remove "key", bought "key" and "purchase" (one copy
-    off the wish, which goes at zero; the purchase row is appended to `bought`). Returns the new
-    text and one result per op ({"id", "ok", "message"}); a failed op changes nothing."""
+    off the wish, which goes at zero; the purchase row is appended to `bought`). From my CardTrader
+    orders (D54) also come "collected" (a purchase matching no wish: "card_row" and "purchase") and
+    "unbought" (a cancelled order: "note" names the purchase rows to drop, and the wish comes back
+    from "key" or "wish_row"); with `purchases` (the purchases rows, changed in place) an order item
+    is recorded once. Returns the new text and one result per op ({"id", "ok", "message"}); a
+    failed op changes nothing."""
     rows = read_csv_rows(text) if text.strip() else []
     results = []
     for op in ops:
@@ -290,6 +310,13 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
         if problem:
             results.append({"id": op.get("id"), "ok": False, "message": problem})
             continue
+        if kind == "bought" and keys.get(str(op.get("key"))) is None and \
+                str((op.get("purchase") or {}).get("note") or "").startswith("CT order"):
+            # A CardTrader purchase whose wish is gone already (bought twice, removed): my collection.
+            card = op.get("card") or {}
+            kind, op = "collected", op | {"card_row": {"name": card.get("name"), "set_code": card.get("set"),
+                                                       "collector_number": card.get("number"),
+                                                       "scryfall_id": card.get("scryfall_id")}}
         if kind == "add":
             sid = str(op.get("scryfall_id") or "")
             card = cards.filter(pc.equal(cards["scryfall_id"], sid)).slice(0, 1).to_pylist() if sid else []
@@ -315,8 +342,13 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
             if problem:
                 results.append({"id": op.get("id"), "ok": False, "message": problem})
                 continue
+            if purchases is not None and (why := _recorded(purchases, purchase)):
+                results.append({"id": op.get("id"), "ok": True, "message": f"{row.get('name')}: {why}"})
+                continue
             if bought is not None:
                 bought.append(purchase)
+            if purchases is not None:
+                purchases.append(purchase)
             left = max(int(rows[index].get("quantity") or 1) - 1, 0)
             if left:
                 rows[index] = rows[index] | {"quantity": str(left)}
@@ -324,6 +356,39 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
                 del rows[index]
             results.append({"id": op.get("id"), "ok": True, "message": f"bought {row.get('name')}"
                             + (f", {left} more wanted" if left else ", off the want-list")})
+        elif kind == "collected":
+            card_row = {k: str(v or "") for k, v in (op.get("card_row") or {}).items()}
+            if not card_row.get("set_code") and card_row.get("scryfall_id"):
+                found = cards.filter(pc.equal(cards["scryfall_id"], card_row["scryfall_id"])).slice(0, 1).to_pylist()
+                if found:
+                    card_row |= {"name": found[0]["name"], "set_code": found[0]["set_code"],
+                                 "collector_number": found[0]["collector_number"]}
+            purchase, problem = _purchase(card_row | {"list": ""}, op.get("purchase") or {})
+            if problem:
+                results.append({"id": op.get("id"), "ok": False, "message": problem})
+                continue
+            if purchases is not None and (why := _recorded(purchases, purchase)):
+                results.append({"id": op.get("id"), "ok": True, "message": f"{card_row.get('name') or 'this card'}: {why}"})
+                continue
+            if bought is not None:
+                bought.append(purchase)
+            if purchases is not None:
+                purchases.append(purchase)
+            results.append({"id": op.get("id"), "ok": True, "message": f"collected {card_row.get('name')}"})
+        elif kind == "unbought":
+            note = str(op.get("note") or "")
+            dropped = [p for p in purchases or [] if note and p.get("note") == note]
+            for p in dropped:
+                purchases.remove(p)
+            if dropped and dropped[0].get("list") and op.get("key"):  # a wish purchase: the wish comes back
+                index = keys.get(str(op["key"]))
+                if index is not None:
+                    rows[index] = rows[index] | {"quantity": str(int(rows[index].get("quantity") or 1) + 1)}
+                elif op.get("wish_row"):
+                    rows.append({c: "" for c in WANTLIST_COLUMNS} | {k: str(v or "") for k, v in op["wish_row"].items()
+                                                                       if k in WANTLIST_COLUMNS})
+            results.append({"id": op.get("id"), "ok": True,
+                            "message": f"order cancelled: {dropped[0]['name'] if dropped else 'nothing recorded'}"})
         elif kind in ("update", "remove"):
             index = keys.get(str(op.get("key")))
             if index is None:

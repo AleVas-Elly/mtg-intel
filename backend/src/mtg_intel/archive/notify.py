@@ -25,6 +25,10 @@ class Rich:
     caption: str | None = None
     stamps: dict[str, str] | None = None  # done versions of the photo (bought, sold): their URLs on the site
     message_id: int | None = None  # set once sent
+    head: str = ""  # the caption's first line (HTML), kept so a live alert can be redrawn (D54)
+    details: str = ""  # the caption's quote behind a tap (HTML)
+    links: list[dict[str, str]] = field(default_factory=list)  # the marketplace and site buttons
+    silent: bool = False  # arrives without ringing
 
 NTFY_URL = "https://ntfy.sh"
 TELEGRAM_API = "https://api.telegram.org"
@@ -37,13 +41,22 @@ def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None 
     token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if token and chat_id:
         if telegram and telegram.photo:
-            sent = send_photo(client, token, chat_id, telegram.photo, telegram.caption or telegram.html, telegram.buttons)
+            sent = send_photo(client, token, chat_id, telegram.photo, telegram.caption or telegram.html, telegram.buttons,
+                              silent=telegram.silent)
             if sent is not None:
                 telegram.message_id = sent.get("message_id")
                 return True
-        if telegram and send_telegram(client, token, chat_id, telegram.html, html=True, buttons=telegram.buttons,
-                                      preview=telegram.preview):
-            return True
+        if telegram:
+            options = ({"url": telegram.preview, "prefer_small_media": True, "show_above_text": True} if telegram.preview
+                       else {"is_disabled": True})
+            body = {"chat_id": chat_id, "text": telegram.html[:4096], "parse_mode": "HTML", "link_preview_options": options,
+                    "disable_notification": telegram.silent}
+            if telegram.buttons:
+                body["reply_markup"] = {"inline_keyboard": telegram.buttons}
+            sent = telegram_call(client, token, "sendMessage", body)
+            if sent is not None:
+                telegram.message_id = sent.get("message_id")
+                return True
         return send_telegram(client, token, chat_id, f"{title}\n\n{message}")
     return send_alert(client, os.environ.get("NTFY_TOPIC"), title, message)
 
@@ -62,10 +75,12 @@ def send_telegram(client: httpx.Client, token: str, chat_id: str, text: str, htm
 
 
 def send_photo(client: httpx.Client, token: str, chat_id: str, png: bytes, caption: str,
-               buttons: list[list[dict[str, str]]] | None = None) -> dict | None:
+               buttons: list[list[dict[str, str]]] | None = None, silent: bool = False) -> dict | None:
     """A photo with an HTML caption (at most 1024 characters) and buttons: the sent message, or
     None. Never raises."""
     data = {"chat_id": chat_id, "caption": caption[:1024], "parse_mode": "HTML"}
+    if silent:
+        data["disable_notification"] = "true"
     if buttons:
         data["reply_markup"] = json.dumps({"inline_keyboard": buttons})
     try:

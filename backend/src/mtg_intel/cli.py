@@ -452,26 +452,32 @@ def apply_site_edits() -> int:
                 blueprint = int(row["external_id"])
                 blueprint_of[row["scryfall_id"]] = min(blueprint_of.get(row["scryfall_id"], blueprint), blueprint)
         before = text
-        bought: list[dict[str, str]] = []
-        text, results = mycards.apply_edits(text, ops, cards, blueprint_of, bought)
+        old = store.fetch(PURCHASES)
+        old_purchases = mycards.read_text(old) if old else ""
+        rows = mycards.read_csv_rows(old_purchases) if old_purchases.strip() else []
+        text, results = mycards.apply_edits(text, ops, cards, blueprint_of, purchases=rows)
         for r in results:
             print(f"{'     ok' if r['ok'] else ' FAILED'}  {r['message']}")
+        purchases = mycards.append_purchases("", rows)
+        changed_purchases = purchases != (mycards.append_purchases(old_purchases, []) if old_purchases.strip() else
+                                          mycards.append_purchases("", []))
         status = 0
-        if text != before:
+        if text != before or changed_purchases:
             out = REPO_ROOT / "data" / "my" / "wantlist.csv"
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(text)
-            files = [(build.MY_INPUTS["wantlist"], out)]
-            if bought:
-                old = store.fetch(PURCHASES)
-                purchases = mycards.append_purchases(mycards.read_text(old) if old else "", bought)
+            files = []
+            if text != before:
+                out.write_text(text)
+                files.append((build.MY_INPUTS["wantlist"], out))
+            if changed_purchases:
                 out_purchases = out.parent / "purchases.csv"
                 out_purchases.write_text(purchases)
                 files.append((PURCHASES, out_purchases))
             store.put(files, f"want-list: {sum(r['ok'] for r in results)} edits from the site")
-            if bought:
+            if changed_purchases:
                 site_store.put("purchases", site.purchases_doc(purchases, cards, datetime.now(UTC).replace(microsecond=0)))
-            status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
+            if text != before:
+                status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
         site_store.put("edits-applied", {"results": results})
         telegram_edits_done(client, ops, results)
         return status
@@ -495,6 +501,89 @@ def telegram_edits_done(client: httpx.Client, ops: list[dict], results: list[dic
             telegram_call(client, token, "sendMessage", {
                 "chat_id": tg["chat"], "reply_parameters": {"message_id": tg["message"]},
                 "text": f"⚠️ This purchase was not saved: {result['message']}. Record it on the site instead."})
+
+
+def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watch: list[dict], now: datetime,
+                     rich, site_store) -> list[bool]:
+    """Live deal alerts (D54): my CardTrader purchases recorded, open alerts brought up to date, and
+    each new deal's copy put in my cart before it alerts (a copy CardTrader says is gone never does).
+    One per alerted deal: whether it went out."""
+    import copy
+
+    from mtg_intel import deals, lifecycle
+    from mtg_intel.archive.notify import alert
+
+    tg_token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    if not tg_token or not chat:  # no bot: the old plain alerts
+        return [alert(client, *deals.message(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
+    account = lifecycle.Account(client, token)
+    telegram = lifecycle.Telegram(client, tg_token, chat)
+    alerts: dict[str, dict] = state.setdefault("alerts", {})
+
+    # 1. My purchases: recorded as want-list edits (the site starts the wantlist run at once).
+    book = state.setdefault("purchases", {})
+    before = copy.deepcopy(book)
+    since = datetime.fromisoformat(book.get("since", now.isoformat())).date() - timedelta(days=1)
+    orders = account.purchases(max(since, (now - timedelta(days=lifecycle.ORDER_DAYS)).date()))
+    bought: dict[int, float] = {}
+    if orders is not None:
+        edits, bought = lifecycle.purchase_edits(orders, watch, book, now)
+        if edits:
+            try:
+                if not site_store:
+                    raise httpx.HTTPError("the site is not set up")
+                site_store.put("edits-add", {"ops": edits})
+                print(f"purchases recorded: {len(edits)} edits")
+            except httpx.HTTPError as e:  # try again next time: nothing is marked as recorded
+                print(f"WARNING  purchases not recorded: {e}", file=sys.stderr)
+                state["purchases"] = before
+                bought = {}
+    else:
+        print("WARNING  CardTrader purchases not read", file=sys.stderr)
+
+    # 2. Open alerts: still in the cart, bought, sold out, taken out, no longer a deal.
+    cart = account.cart()
+    if cart is not None:
+        for line in lifecycle.refresh(alerts, result, watch, cart, bought, telegram, account, now):
+            print(f"ALERT  {line}")
+
+    # 3. New deals: into the cart first, then the alert.
+    sent: list[bool] = []
+    for d in result.new[:MAX_DEAL_MESSAGES]:
+        open_alert = next((a for a in alerts.values() if not a.get("closed") and a["key"] == d.key), None)
+        if open_alert and (open_alert["product_id"] == d.listing.id or d.listing.price >= open_alert["price"] - 0.005):
+            continue  # already alerted and still live
+        items = lifecycle.cart_items(cart)
+        if d.listing.id in items:
+            status = "there"
+        else:
+            status, after = account.add(d.listing.id, d.listing.zero)
+            cart = after or cart
+        if status == "gone":
+            print(f"NOT ALERTED  {d.wish['name']} €{d.listing.price:.2f}: CardTrader says this copy is gone")
+            continue
+        if open_alert:
+            lifecycle.finish(open_alert, lifecycle.Verdict("replaced", "⬇️ A cheaper copy was found · see the newer alert"),
+                             telegram, account, now)
+        out = rich(d)
+        record = {"key": d.key, "name": d.wish["name"], "blueprint_id": d.wish["blueprint_id"], "product_id": d.listing.id,
+                  "price": d.listing.price, "zero": d.listing.zero, "added": status == "added", "there": status == "there",
+                  "head": out.head, "copy": deals.copy_line(d.listing), "details": out.details, "links": out.links,
+                  "stamps": out.stamps or {}, "photo": bool(out.photo), "created": now.isoformat()}
+        line = (lifecycle.cart_line(cart, now) if status in ("added", "there")
+                else "⚠️ Not checked live: CardTrader's cart didn't answer")
+        out.caption = lifecycle.caption(record, line)
+        out.html = out.caption
+        out.buttons = lifecycle.keyboard(record, done=False)
+        out.silent = not lifecycle.rings(d, now)
+        ok = alert(client, *deals.message(d), telegram=out)
+        sent.append(ok)
+        if ok and out.message_id:
+            alerts[str(out.message_id)] = record | {"message_id": out.message_id, "line": line}
+        elif status == "added":  # not alerted: don't leave it in my cart
+            account.remove(d.listing.id)
+    lifecycle.prune(alerts, now)
+    return sent
 
 
 PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c); phase 4's collection starts here
@@ -633,9 +722,7 @@ def check_deals(args: argparse.Namespace) -> int:
             out.stamps = done
             return out
 
-        messages = ([(*deals.message(d), rich(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
-                    + [(*deals.message(d), None) for d in result.new[MAX_DEAL_MESSAGES:]]
-                    + [(title, text, None) for title, text in targets])
+        messages = [(title, text, None) for title, text in targets]  # Cardmarket target prices: plain alerts
         problems = []
         try:
             session.summary()
@@ -653,19 +740,11 @@ def check_deals(args: argparse.Namespace) -> int:
             title, _ = deals.message(d)
             print(f"{'NEW ' if d in result.new else '    '}{title}  ({'; '.join(d.reasons)})")
         print(f"{len({w['blueprint_id'] for w in watch})} cards checked, {len(result.summary)} listing groups, "
-              f"{len(result.deals)} deals, {len(messages)} to alert, {len(result.failed_blueprints)} failed")
+              f"{len(result.deals)} deals, {len(result.new) + len(messages)} to alert, {len(result.failed_blueprints)} failed")
         if args.dry_run:
             return 0
-        sent = [alert(client, title, text, telegram=tg) for title, text, tg in messages[:MAX_DEAL_MESSAGES]]
-        for _, _, tg in messages[:MAX_DEAL_MESSAGES]:
-            if tg and tg.stamps and tg.message_id and site_store:  # where the bot finds them on a tap
-                try:
-                    site_store.put(f"tgimg/{os.environ['TELEGRAM_CHAT_ID']}/{tg.message_id}", tg.stamps)
-                except httpx.HTTPError as e:
-                    print(f"WARNING  done images not linked: {e}", file=sys.stderr)
-        if len(messages) > MAX_DEAL_MESSAGES:
-            rest = [title for title, _, _ in messages[MAX_DEAL_MESSAGES:]]
-            sent.append(alert(client, f"{len(rest)} more deals", "\n".join(rest)))
+        sent = live_deal_alerts(client, token, state, result, watch, now, rich, site_store)
+        sent += [alert(client, title, text) for title, text, _ in messages]
         if sent:
             print(f"alerts sent: {sum(sent)} of {len(sent)}")
         deals.record_check(state, now, len(result.failed_blueprints), sum(sent))

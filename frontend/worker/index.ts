@@ -273,7 +273,7 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
   return json({ error: "Not found" }, 404);
 }
 
-interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "bought"; key?: string; scryfall_id?: string;
+interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "bought" | "collected" | "unbought"; key?: string; scryfall_id?: string;
   settings?: Record<string, string>; card?: Record<string, unknown>; purchase?: Record<string, string> }
 
 async function waitingEdits(env: Env): Promise<Edit[]> {
@@ -340,6 +340,22 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
   if (!env.INGEST_TOKEN || !sameSecret(header, `Bearer ${env.INGEST_TOKEN}`)) return json({ error: "Forbidden" }, 403);
   if (path === "invite" && request.method === "POST") return json(await invite(env, url.origin));
   if (path === "edits" && request.method === "GET") return json(await editsDoc(env));
+  if (path === "edits-add" && request.method === "POST") {
+    // Purchases the deal check found in my CardTrader orders (D54): queued like edits made on the
+    // site, and the run that applies them starts at once.
+    const { ops } = (await request.json()) as { ops: Edit[] };
+    const kinds = ["bought", "collected", "unbought"];
+    if (!Array.isArray(ops) || ops.length > 500 || ops.some((o) => !kinds.includes(o.op) || JSON.stringify(o).length > 6000)) {
+      return json({ error: "Not valid" }, 400);
+    }
+    for (const o of ops) {
+      const id = /^[A-Za-z0-9_-]{8,40}$/.test(o.id) ? o.id : randomToken(12);
+      const at = new Date().toISOString();
+      await env.DATA.put(`${EDIT_PREFIX}${at}:${id}`, JSON.stringify({ ...o, id, at }));
+    }
+    if (env.TRIGGER && ops.length) await env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined);
+    return json({ ok: true, added: ops.length });
+  }
   if (path === "edits-applied" && request.method === "POST") {
     // The GitHub job's report: done edits leave the queue, failed ones are kept to show on the site.
     const { results } = (await request.json()) as { results: { id: string; ok: boolean; message: string }[] };

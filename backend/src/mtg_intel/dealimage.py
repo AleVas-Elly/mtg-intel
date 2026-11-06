@@ -177,16 +177,18 @@ def stamp(png: bytes, kind: str, note: str = "") -> bytes:
     ImageDraw.Draw(glow).ellipse((cx - 420 * S, cy - 230 * S, cx + 420 * S, cy + 360 * S), fill=170)
     img.paste(Image.new("RGB", img.size, "#000000"), (0, 0), glow.filter(ImageFilter.GaussianBlur(70 * S)))
     draw = ImageDraw.Draw(img)
-    colour = GOOD if kind == "bought" else BAD
+    colour = {"bought": GOOD, "sold": BAD}.get(kind, MUTED)
     draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=colour)
-    ink, width = "#0b2e22" if kind == "bought" else "#3d0d0a", 26 * S
+    ink, width = {"bought": "#0b2e22", "sold": "#3d0d0a"}.get(kind, "#1c1c1e"), 26 * S
     if kind == "bought":  # a tick
         draw.line([(cx - 58 * S, cy + 4 * S), (cx - 14 * S, cy + 50 * S), (cx + 64 * S, cy - 44 * S)], fill=ink, width=width, joint="curve")
+    elif kind == "ended":  # a dash
+        draw.line([(cx - 60 * S, cy), (cx + 60 * S, cy)], fill=ink, width=width)
     else:  # a cross
         for a, b in (((-50, -50), (50, 50)), ((-50, 50), (50, -50))):
             draw.line([(cx + a[0] * S, cy + a[1] * S), (cx + b[0] * S, cy + b[1] * S)], fill=ink, width=width)
     title = _font(76, 800)
-    draw.text((cx, cy + r + 34 * S), "BOUGHT" if kind == "bought" else "SOLD OUT", font=title, fill="#ffffff", anchor="mt")
+    draw.text((cx, cy + r + 34 * S), {"bought": "BOUGHT", "sold": "SOLD OUT"}.get(kind, "DEAL ENDED"), font=title, fill="#ffffff", anchor="mt")
     if note:
         draw.text((cx, cy + r + 128 * S), note, font=_font(38, 550), fill="#e4e4e7", anchor="mt")
     out = io.BytesIO()
@@ -196,7 +198,8 @@ def stamp(png: bytes, kind: str, note: str = "") -> bytes:
 
 def stamps(png: bytes, price: str) -> dict[str, bytes]:
     """Both done versions of a deal's image, for the bot to swap in (bought, or gone before buying)."""
-    return {"bought": stamp(png, "bought", price), "sold": stamp(png, "sold", "Gone before you could buy it")}
+    return {"bought": stamp(png, "bought", price), "sold": stamp(png, "sold", "Gone before you could buy it"),
+            "ended": stamp(png, "ended")}
 
 
 def card_picture(client: httpx.Client, image_url: str | None) -> Image.Image | None:
