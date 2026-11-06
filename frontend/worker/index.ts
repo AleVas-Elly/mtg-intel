@@ -354,6 +354,24 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
     if (results.some((r) => !r.ok)) await env.DATA.put(EDITS_FAILED, JSON.stringify(failed.slice(-20)));
     return json({ ok: true });
   }
+  // Done versions of a deal alert's picture (D53): stored for 60 days, served publicly by an
+  // unguessable name so Telegram can fetch them; and which ones belong to which alert message.
+  const img = /^img\/([A-Za-z0-9_-]{16,64})$/.exec(path);
+  if (img && request.method === "POST") {
+    const body = await request.arrayBuffer();
+    if (body.byteLength > 2_000_000) return json({ error: "Too large" }, 413);
+    await env.DATA.put(`img:${img[1]}`, body, { expirationTtl: 60 * 86400 });
+    return json({ ok: true, bytes: body.byteLength });
+  }
+  const link = /^tgimg\/(-?\d{1,20})\/(\d{1,12})$/.exec(path);
+  if (link && request.method === "POST") {
+    const map = (await request.json().catch(() => null)) as Record<string, string> | null;
+    if (!map || Object.values(map).some((u) => typeof u !== "string" || !u.startsWith(url.origin + "/img/"))) {
+      return json({ error: "Not valid" }, 400);
+    }
+    await env.DATA.put(`tgimg:${link[1]}:${link[2]}`, JSON.stringify(map), { expirationTtl: 60 * 86400 });
+    return json({ ok: true });
+  }
   if (!DATA_KEY.test(path)) return json({ error: "Unknown key" }, 404);
   if (request.method === "GET") {
     const value = await env.DATA.get(path, "stream");
@@ -379,6 +397,14 @@ async function telegram(request: Request, env: Env): Promise<Response> {
     method: "POST", headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": secret },
     body: await request.text(),
   });
+}
+
+/** GET /img/<name>.jpg: a done version of a deal alert's picture, for Telegram (D53). */
+async function doneImage(env: Env, file: string): Promise<Response> {
+  const m = /^([A-Za-z0-9_-]{16,64})\.jpg$/.exec(file);
+  const body = m ? await env.DATA.get(`img:${m[1]}`, "arrayBuffer") : null;
+  if (!body) return new Response("Not found", { status: 404 });
+  return new Response(body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" } });
 }
 
 const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -440,6 +466,7 @@ export default {
       if (path.startsWith("/sym/")) return await symbol(request, path.slice(5), ctx);
       if (path === "/api/telegram") return await telegram(request, env);
       if (path.startsWith("/p/")) return await preview(env, path.slice(3));
+      if (path.startsWith("/img/")) return await doneImage(env, path.slice(5));
       if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     } catch (e) {
       return json({ error: "Something went wrong on the server.", detail: String(e) }, 500);

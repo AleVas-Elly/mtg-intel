@@ -36,13 +36,15 @@ const HOLD_MINUTES = 5;
 const EDIT_PREFIX = "edit:"; // the site's edit queue (index.ts)
 const GUARD = "tg:bought:"; // one purchase per alert message, even with two quick taps
 const MARK = "🛒 Bought";
+// The lines the bot puts on top of an alert; any of them is replaced by the next (or removed).
+const MARKS = [MARK, "✅ In your CardTrader cart", "❌ Already sold"];
 const TIMEZONE = "Europe/Amsterdam";
 
 type Button = { text: string; callback_data?: string; url?: string };
 interface Entity { type: string; offset: number; length: number; [k: string]: unknown }
 interface Message {
   message_id: number; chat: { id: number }; text?: string; entities?: Entity[]; link_preview_options?: unknown;
-  caption?: string; caption_entities?: Entity[]; // a deal sent as its image (D53)
+  caption?: string; caption_entities?: Entity[]; photo?: { file_id: string }[]; // a deal sent as its image (D53)
   reply_markup?: { inline_keyboard: Button[][] };
 }
 interface CallbackQuery { id: string; data?: string; message?: Message }
@@ -68,28 +70,55 @@ export function trendFor(w: Wish, foil: boolean): number | null {
   return (foilOnly || foil ? w.cm.trend_foil : w.cm.trend) || null;
 }
 
-/** The alert's text with a line on top (entities move with it), or without it again. */
-export function withMark(m: Message, line: string | null): { text: string; entities: Entity[] } {
+/** The alert's text with a line on top (entities move with it), or without it again. `strike`
+ *  crosses out the alert's own first line (a copy that was already gone). */
+export function withMark(m: Message, line: string | null, strike = false): { text: string; entities: Entity[] } {
   const photo = m.text === undefined;
   let text = (photo ? m.caption : m.text) || "";
   let entities = (photo ? m.caption_entities : m.entities) || [];
-  if (text.startsWith(MARK)) {
+  if (MARKS.some((mark) => text.startsWith(mark))) {
     const cut = text.indexOf("\n\n") + 2;
     text = text.slice(cut);
-    entities = entities.filter((e) => e.offset >= cut).map((e) => ({ ...e, offset: e.offset - cut }));
+    entities = entities.filter((e) => e.offset >= cut && e.type !== "strikethrough").map((e) => ({ ...e, offset: e.offset - cut }));
+  }
+  if (strike) {
+    const end = text.indexOf("\n");
+    entities = [...entities, { type: "strikethrough", offset: 0, length: end < 0 ? text.length : end }];
   }
   if (line) {
     const shift = line.length + 2;
-    entities = [{ type: "bold", offset: 0, length: MARK.length }, ...entities.map((e) => ({ ...e, offset: e.offset + shift }))];
+    const bold = line.startsWith(MARK) ? MARK.length : line.length;
+    entities = [{ type: "bold", offset: 0, length: bold }, ...entities.map((e) => ({ ...e, offset: e.offset + shift }))];
     text = `${line}\n\n${text}`;
   }
   return { text, entities };
 }
 
-/** Edit the alert: its text, or its caption when it is a photo. */
-function editAlert(env: TelegramEnv, m: Message, line: string | null, keyboard: Button[][]) {
-  const { text, entities } = withMark(m, line);
+interface Done { bought?: string; sold?: string; orig?: string }
+const doneKey = (m: Message) => `tgimg:${m.chat.id}:${m.message_id}`;
+
+/** The picture to show for a deal image alert once it is done (D53): its darkened "✓ BOUGHT" or
+ *  grey "SOLD" version, stored by the deal check, or the original again (`orig`, remembered the
+ *  first time it is swapped). Null for a text alert or one without done versions. */
+async function picture(env: TelegramEnv, m: Message, kind: "bought" | "sold" | "orig"): Promise<string | null> {
+  if (m.text !== undefined || !m.photo?.length) return null;
+  const done = await env.DATA.get<Done>(doneKey(m), "json");
+  if (!done) return null;
+  if (kind !== "orig" && !done.orig) {
+    done.orig = m.photo[m.photo.length - 1].file_id;
+    await env.DATA.put(doneKey(m), JSON.stringify(done), { expirationTtl: 60 * 86400 });
+  }
+  return done[kind] ?? null;
+}
+
+/** Edit the alert: its text, or its caption when it is a photo, swapping the picture for `media`. */
+function editAlert(env: TelegramEnv, m: Message, line: string | null, keyboard: Button[][],
+  opts: { media?: string | null; strike?: boolean } = {}) {
+  const { text, entities } = withMark(m, line, opts.strike);
   const target = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } };
+  if (m.text === undefined && opts.media) {
+    return call(env, "editMessageMedia", { ...target, media: { type: "photo", media: opts.media, caption: text, caption_entities: entities } });
+  }
   if (m.text === undefined) return call(env, "editMessageCaption", { ...target, caption: text, caption_entities: entities });
   return call(env, "editMessageText", {
     ...target, text, entities, link_preview_options: m.link_preview_options ?? { is_disabled: true },
@@ -147,7 +176,8 @@ async function bought(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<v
     saved != null && saved > 0 ? `${eur(saved)} under Cardmarket` : "",
     w.quantity > 1 ? `${w.quantity - 1} more wanted` : "off the want-list",
   ].filter(Boolean).join(" · ");
-  await editAlert(env, m, line, [[{ text: "↩️ Undo", callback_data: `u|${name.slice(EDIT_PREFIX.length)}` }], ...linkRows(m)]);
+  await editAlert(env, m, line, [[{ text: "↩️ Undo", callback_data: `u|${name.slice(EDIT_PREFIX.length)}` }], ...linkRows(m)],
+    { media: await picture(env, m, "bought") });
   await answer(env, q, `Saved. Undo works for ${HOLD_MINUTES} minutes.`);
 }
 
@@ -156,7 +186,8 @@ async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   const edit = await env.DATA.get<{ hold_until: string; tg: { data: string } }>(name, "json");
   const restore = async (data: string) => {
     await env.DATA.delete(`${GUARD}${m.chat.id}:${m.message_id}`);
-    await editAlert(env, m, null, [[{ text: "🛒 Bought it", callback_data: data }], ...linkRows(m)]);
+    await editAlert(env, m, null, [[{ text: "🛒 Bought it", callback_data: data }], ...linkRows(m)],
+      { media: await picture(env, m, "orig") });
   };
   if (edit && Date.parse(edit.hold_until) > Date.now()) {
     await env.DATA.delete(name);
@@ -179,33 +210,25 @@ async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
 async function demo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<void> {
   const links = linkRows(m);
   const kind = (q.data || "").slice(2);
-  if (kind === "undo") return void answer(env, q, "Demo: the real ↩️ Undo takes the purchase back for 5 minutes, as it does today.", true);
-  const photo = m.text === undefined;
-  let old = (photo ? m.caption : m.text) || "";
-  let oldEntities = (photo ? m.caption_entities : m.entities) || [];
-  if (kind === "bought" && old.startsWith("✅ In your CardTrader cart")) {
-    // Once bought, the cart line has done its job: the bought line replaces it.
-    const cut = old.indexOf("\n\n") + 2;
-    old = old.slice(cut);
-    oldEntities = oldEntities.filter((e) => e.offset >= cut).map((e) => ({ ...e, offset: e.offset - cut }));
+  const price = (((m.text ?? m.caption) || "").match(/€\d+\.\d\d/) || ["€?"])[0];
+  const start = [[{ text: "🛒 Add to cart", callback_data: "d|ok" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links];
+  if (kind === "undo") {
+    await editAlert(env, m, null, start, { media: await picture(env, m, "orig") });
+    return void answer(env, q, "Demo: undone.");
   }
-  const price = (old.match(/€\d+\.\d\d/) || ["€?"])[0];
-  const line = kind === "ok" ? "✅ In your CardTrader cart · go pay there"
-    : kind === "bought" ? `🛒 Bought for ${price} · off the want-list`
-    : "❌ Already sold: CardTrader's list was out of date";
-  const shift = line.length + 2;
-  const entities = [{ type: "bold", offset: 0, length: line.length },
-    ...oldEntities.map((e) => ({ ...e, offset: e.offset + shift }))];
-  const keyboard = kind === "ok"
-    ? [[{ text: "🧾 Open cart", url: "https://www.cardtrader.com/cart" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links]
-    : kind === "bought" ? [[{ text: "↩️ Undo", callback_data: "d|undo" }], ...links]
-    : links;
-  const target = { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } };
-  await call(env, photo ? "editMessageCaption" : "editMessageText", photo
-    ? { ...target, caption: `${line}\n\n${old}`, caption_entities: entities }
-    : { ...target, text: `${line}\n\n${old}`, entities });
-  await answer(env, q, kind === "ok" ? "Demo: added to your CardTrader cart."
-    : kind === "bought" ? "Demo: saved. Undo works for 5 minutes." : "Demo: this copy is gone, so nothing was added.", kind === "sold");
+  if (kind === "ok") {
+    await editAlert(env, m, "✅ In your CardTrader cart · go pay there",
+      [[{ text: "🧾 Open cart", url: "https://www.cardtrader.com/cart" }, { text: "✅ Bought it", callback_data: "d|bought" }], ...links]);
+    return void answer(env, q, "Demo: added to your CardTrader cart.");
+  }
+  if (kind === "bought") {
+    await editAlert(env, m, `${MARK} for ${price} · off the want-list`, [[{ text: "↩️ Undo", callback_data: "d|undo" }], ...links],
+      { media: await picture(env, m, "bought") });
+    return void answer(env, q, "Demo: saved. Undo works for 5 minutes.");
+  }
+  await editAlert(env, m, "❌ Already sold: CardTrader's list was out of date", links,
+    { media: await picture(env, m, "sold"), strike: true });
+  await answer(env, q, "Demo: this copy is gone, so nothing was added.", true);
 }
 
 /** Telegram's webhook (POST /api/telegram on the website, passed on here). Only my chat counts; anything else is acknowledged and dropped. */

@@ -70,6 +70,12 @@ class Site:
         self._send("POST", key, content=body.encode(),
                    headers=self._headers() | {"Content-Type": "application/json"}).raise_for_status()
 
+    def put_image(self, name: str, jpeg: bytes) -> str:
+        """Store a picture the bot can show (a deal image's done version); its public URL."""
+        self._send("POST", f"img/{name}", content=jpeg,
+                   headers=self._headers() | {"Content-Type": "image/jpeg"}).raise_for_status()
+        return f"{self.url}/img/{name}.jpg"
+
     def get(self, key: str) -> Any | None:
         response = self._send("GET", key, headers=self._headers())
         if response.status_code == 404:

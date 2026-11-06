@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import secrets
 import shutil
 import sys
 import time
@@ -616,12 +617,21 @@ def check_deals(args: argparse.Namespace) -> int:
         def rich(d: deals.Deal):
             # The deal's image (D53) is drawn only for alerts that go out on their own.
             image = None if args.dry_run else dealimage.deal_image(client, d)
+            done = None
+            if image and site_store:  # its done versions, swapped in when I buy it or it is gone
+                try:
+                    done = {kind: site_store.put_image(secrets.token_urlsafe(16), jpeg)
+                            for kind, jpeg in dealimage.stamps(image, f"€{d.listing.price:.2f}").items()}
+                except httpx.HTTPError as e:
+                    print(f"WARNING  done images not stored: {e}", file=sys.stderr)
             foil = d.listing.foil or (bool(d.wish.get("finishes")) and "nonfoil" not in d.wish["finishes"])
             cm = deals.trend_points(history_rows.get(d.wish.get("scryfall_id") or "", []), foil)
             ct = deals.cardtrader_points(ct_rows.get(d.wish["blueprint_id"], []), d.wish)
             trends = [deals.price_trend(cm, d.cardmarket, "📈 Cardmarket trend"),
                       deals.price_trend(ct, None, "📉 CardTrader, cheapest copy", min_days=5)]
-            return deals.telegram(d, site_url, preview(d), image, trends)
+            out = deals.telegram(d, site_url, preview(d), image, trends)
+            out.stamps = done
+            return out
 
         messages = ([(*deals.message(d), rich(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
                     + [(*deals.message(d), None) for d in result.new[MAX_DEAL_MESSAGES:]]
@@ -647,6 +657,12 @@ def check_deals(args: argparse.Namespace) -> int:
         if args.dry_run:
             return 0
         sent = [alert(client, title, text, telegram=tg) for title, text, tg in messages[:MAX_DEAL_MESSAGES]]
+        for _, _, tg in messages[:MAX_DEAL_MESSAGES]:
+            if tg and tg.stamps and tg.message_id and site_store:  # where the bot finds them on a tap
+                try:
+                    site_store.put(f"tgimg/{os.environ['TELEGRAM_CHAT_ID']}/{tg.message_id}", tg.stamps)
+                except httpx.HTTPError as e:
+                    print(f"WARNING  done images not linked: {e}", file=sys.stderr)
         if len(messages) > MAX_DEAL_MESSAGES:
             rest = [title for title, _, _ in messages[MAX_DEAL_MESSAGES:]]
             sent.append(alert(client, f"{len(rest)} more deals", "\n".join(rest)))

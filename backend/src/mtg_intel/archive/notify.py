@@ -23,6 +23,8 @@ class Rich:
     preview: str | None = None
     photo: bytes | None = None
     caption: str | None = None
+    stamps: dict[str, str] | None = None  # done versions of the photo (bought, sold): their URLs on the site
+    message_id: int | None = None  # set once sent
 
 NTFY_URL = "https://ntfy.sh"
 TELEGRAM_API = "https://api.telegram.org"
@@ -34,9 +36,11 @@ def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None 
     gets title and message."""
     token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if token and chat_id:
-        if telegram and telegram.photo and send_photo(client, token, chat_id, telegram.photo,
-                                                       telegram.caption or telegram.html, telegram.buttons):
-            return True
+        if telegram and telegram.photo:
+            sent = send_photo(client, token, chat_id, telegram.photo, telegram.caption or telegram.html, telegram.buttons)
+            if sent is not None:
+                telegram.message_id = sent.get("message_id")
+                return True
         if telegram and send_telegram(client, token, chat_id, telegram.html, html=True, buttons=telegram.buttons,
                                       preview=telegram.preview):
             return True
@@ -58,8 +62,9 @@ def send_telegram(client: httpx.Client, token: str, chat_id: str, text: str, htm
 
 
 def send_photo(client: httpx.Client, token: str, chat_id: str, png: bytes, caption: str,
-               buttons: list[list[dict[str, str]]] | None = None) -> bool:
-    """A photo with an HTML caption (at most 1024 characters) and buttons. Never raises."""
+               buttons: list[list[dict[str, str]]] | None = None) -> dict | None:
+    """A photo with an HTML caption (at most 1024 characters) and buttons: the sent message, or
+    None. Never raises."""
     data = {"chat_id": chat_id, "caption": caption[:1024], "parse_mode": "HTML"}
     if buttons:
         data["reply_markup"] = json.dumps({"inline_keyboard": buttons})
@@ -67,9 +72,9 @@ def send_photo(client: httpx.Client, token: str, chat_id: str, png: bytes, capti
         response = client.post(f"{TELEGRAM_API}/bot{token}/sendPhoto", data=data,
                                files={"photo": ("deal.png", png, "image/png")}, timeout=60)
         response.raise_for_status()
-        return True
-    except httpx.HTTPError:
-        return False
+        return response.json().get("result") or {}
+    except (httpx.HTTPError, ValueError):
+        return None
 
 
 def telegram_call(client: httpx.Client, token: str, method: str, body: dict) -> dict | None:
