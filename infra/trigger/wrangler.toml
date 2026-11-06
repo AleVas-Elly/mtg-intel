@@ -6,12 +6,21 @@ workers_dev = false
 [triggers]
 crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *", "17 2,8,14 * * *", "* * * * *"]
 
-# The website's KV (frontend/wrangler.toml): read to see want-list edits waiting (D50) and the time of
-# the last deal check (watchdog). Written: `watchdog`, and purchases from the bot's "Bought it" button
-# (`edit:*`, `tg:bought:*`, D53).
+# The website's KV (frontend/wrangler.toml): the `wants` document and the bot's small keys
+# (`tg:bought:*`, `tgimg:*`, `fast:*`).
 [[kv_namespaces]]
 binding = "DATA"
 id = "fe194e1ee4754791801ac6024a93905a"
+
+# The website's D1 (D67): the edit queue (D50, purchases from the bot's buttons, D53), the time of
+# the last deal check and the fast-lane list (in `docs` and `meta`), the watchdog.
+[[d1_databases]]
+binding = "DB"
+database_name = "mtg-intel"
+database_id = "223f438f-678c-48cf-8fa9-d6679a7668da"
+
+[observability]
+enabled = true
 
 [vars]
 GITHUB_REPO = "AleVas-Elly/mtg-intel"

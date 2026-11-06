@@ -28,13 +28,20 @@ function sameSecret(a: string, b: string): boolean {
 
 export interface TelegramEnv {
   DATA: KVNamespace;
+  DB: D1Database; // the site's edit queue (D67) and the fast-lane list
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   CARDTRADER_TOKEN?: string; // Skip, Check now and the fast lane (D58)
 }
 
 const HOLD_MINUTES = 5;
-const EDIT_PREFIX = "edit:"; // the site's edit queue (index.ts)
+// The Undo button carries `u|<at>:<id>`, the edit's row name in the site's D1 (`edits.name`).
+const EDIT_PREFIX = "edit:";
+
+function queueEdit(env: TelegramEnv, e: { id: string; at: string; hold_until?: string; [k: string]: unknown }) {
+  return env.DB.prepare("INSERT INTO edits (name, id, at, hold_until, doc) VALUES (?, ?, ?, ?, ?)")
+    .bind(`${e.at}:${e.id}`, e.id, e.at, e.hold_until ?? null, JSON.stringify(e)).run();
+}
 const GUARD = "tg:bought:"; // one purchase per alert message, even with two quick taps
 const MARK = "🛒 Bought";
 // The lines the bot puts on top of an alert; any of them is replaced by the next (or removed).
@@ -169,7 +176,7 @@ async function bought(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<v
     hold_until: holdUntil,
     tg: { chat: m.chat.id, message: m.message_id, data: q.data, links: linkRows(m).flat() },
   };
-  await env.DATA.put(name, JSON.stringify(edit), { metadata: { hold_until: holdUntil } });
+  await queueEdit(env, edit);
   await env.DATA.put(guard, q.data!, { expirationTtl: 2 * 86400 });
   const saved = trend ? trend - paid : null;
   const line = [
@@ -184,14 +191,15 @@ async function bought(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<v
 
 async function undo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<void> {
   const name = EDIT_PREFIX + (q.data || "").slice(2);
-  const edit = await env.DATA.get<{ hold_until: string; tg: { data: string } }>(name, "json");
+  const row = await env.DB.prepare("SELECT doc FROM edits WHERE name = ?").bind(name.slice(EDIT_PREFIX.length)).first<{ doc: string }>();
+  const edit = row ? (JSON.parse(row.doc) as { hold_until: string; tg: { data: string } }) : null;
   const restore = async (data: string) => {
     await env.DATA.delete(`${GUARD}${m.chat.id}:${m.message_id}`);
     await editAlert(env, m, null, [[{ text: "🛒 Bought it", callback_data: data }], ...linkRows(m)],
       { media: await picture(env, m, "orig") });
   };
   if (edit && Date.parse(edit.hold_until) > Date.now()) {
-    await env.DATA.delete(name);
+    await env.DB.prepare("DELETE FROM edits WHERE name = ?").bind(name.slice(EDIT_PREFIX.length)).run();
     await restore(edit.tg.data);
     return void answer(env, q, "Undone: nothing was recorded.");
   }
@@ -254,9 +262,7 @@ async function setTarget(env: TelegramEnv, q: CallbackQuery, m: Message, onEdit?
   const target = (Number(cents) / 100).toFixed(2);
   const at = new Date().toISOString();
   const id = randomToken(12);
-  await env.DATA.put(`${EDIT_PREFIX}${at}:${id}`, JSON.stringify({
-    id, at, op: "update", key: keyOf(card, language, foil), settings: { max_price_eur: target },
-  }));
+  await queueEdit(env, { id, at, op: "update", key: keyOf(card, language, foil), settings: { max_price_eur: target } });
   if (onEdit) await onEdit().catch(() => undefined);
   const keyboard = (m.reply_markup?.inline_keyboard || []).map((row) => row.map((b) =>
     b.callback_data === q.data ? { text: `✓ ${b.text.replace(/^Set /, "")}`, callback_data: "x|done" } : b));

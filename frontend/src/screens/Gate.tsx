@@ -15,7 +15,8 @@ export function useAuth(): Auth {
   const [passkeys, setPasskeys] = useState(1);
   const check = () =>
     fetch("/api/auth/status", { credentials: "same-origin" })
-      .then((r) => r.json())
+      // A server error is not "no passkeys": it used to show "Not set up yet" (2026-11-06).
+      .then((r) => { if (!r.ok) throw new Error(`status ${r.status}`); return r.json(); })
       .then((s: { signedIn: boolean; passkeys: number }) => {
         setPasskeys(s.passkeys);
         setState(s.signedIn ? "in" : "out");

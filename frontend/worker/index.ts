@@ -1,5 +1,7 @@
 // mtg-intel website Worker (spec D49). Serves the app, signs me in with a passkey, serves my data
 // from KV to the signed-in browser, and takes new data from the GitHub jobs (ingest token).
+// Small state that changes often (passkeys, the edit queue, document versions) lives in D1 (D67):
+// KV's free plan allows 1,000 writes and lists a day and ran out of reads on 2026-11-06.
 
 import {
   generateAuthenticationOptions,
@@ -12,6 +14,7 @@ import { b64url, fromB64url, randomToken, sameSecret, sha256Hex, sign, verify } 
 
 interface Env {
   DATA: KVNamespace;
+  DB: D1Database;
   ASSETS: Fetcher;
   SESSION_SECRET: string;
   INGEST_TOKEN: string;
@@ -32,21 +35,21 @@ interface Passkey {
   aaguid?: string; // which passkey app holds it
 }
 
-/** Last time a device used the site: one KV key per passkey, written at most every few hours. */
+/** Last time a device used the site: one row per passkey, written at most every few hours. */
 interface Seen { at: string; browser: string; place: Place }
 
 const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
 const INVITE_MINUTES = 15;
 const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|purchases|targets|prices-\d{1,2})$/;
-// Want-list edits made on the site (D50): one KV key per waiting edit, so writes from different
+// Want-list edits made on the site (D50): one row per waiting edit, so writes from different
 // places never overwrite each other; the GitHub job reads them all and reports which are done.
-const EDIT_PREFIX = "edit:";
-const EDITS_FAILED = "edits:failed";
 const MAX_EDITS = 200;
-const PASSKEYS = "auth:passkeys";
-const SEEN_PREFIX = "auth:seen:";
 const SEEN_HOURS = 6;
+// Where these lived in KV before D67: read once to move them over, never written again.
+const KV_PASSKEYS = "auth:passkeys";
+const KV_EDIT_PREFIX = "edit:";
+const KV_EDITS_FAILED = "edits:failed";
 // A brand-new session is trusted for a moment even if this location's copy of the passkey list
 // doesn't show its passkey yet; after that, a removed passkey's sessions stop working.
 const FRESH_SESSION_MS = 2 * 60e3;
@@ -85,8 +88,49 @@ function readCookie(request: Request, name: string): string | null {
   return null;
 }
 
+async function getMeta(env: Env, key: string): Promise<string | null> {
+  return (await env.DB.prepare("SELECT value FROM meta WHERE key = ?").bind(key).first<{ value: string }>())?.value ?? null;
+}
+
+const setMeta = (env: Env, key: string, value: string) =>
+  env.DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").bind(key, value);
+
+const savePasskey = (env: Env, p: Passkey, verb = "INSERT OR REPLACE") =>
+  env.DB.prepare(`${verb} INTO passkeys (id, created, doc) VALUES (?, ?, ?)`).bind(p.id, p.created, JSON.stringify(p));
+
+const queueEdit = (env: Env, e: Edit & { hold_until?: string }, verb = "INSERT") =>
+  env.DB.prepare(`${verb} INTO edits (name, id, at, hold_until, doc) VALUES (?, ?, ?, ?, ?)`)
+    .bind(`${e.at}:${e.id}`, e.id, e.at, e.hold_until ?? null, JSON.stringify(e));
+
+/** Once, after the move to D1 (D67): the passkeys, waiting edits and failed edits still in KV come
+ *  over. The KV copies stay as they were. Safe to run twice at once (rows are inserted or ignored). */
+let movedFromKv = false;
+async function moveFromKv(env: Env): Promise<void> {
+  if (movedFromKv) return;
+  if (await getMeta(env, "kv_moved")) {
+    movedFromKv = true;
+    return;
+  }
+  const keys = (await env.DATA.get<Passkey[]>(KV_PASSKEYS, "json")) || [];
+  const listed = await env.DATA.list({ prefix: KV_EDIT_PREFIX });
+  const edits = await Promise.all(listed.keys.map((k) => env.DATA.get<Edit & { hold_until?: string }>(k.name, "json")));
+  const failed = await env.DATA.get(KV_EDITS_FAILED);
+  await env.DB.batch([
+    ...keys.map((p) => savePasskey(env, p, "INSERT OR IGNORE")),
+    ...edits.filter((e): e is Edit => !!e).map((e) => queueEdit(env, e, "INSERT OR IGNORE")),
+    ...(failed ? [env.DB.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('edits_failed', ?)").bind(failed)] : []),
+    setMeta(env, "kv_moved", new Date().toISOString()),
+  ]);
+  movedFromKv = true;
+}
+
 async function passkeys(env: Env): Promise<Passkey[]> {
-  return (await env.DATA.get<Passkey[]>(PASSKEYS, "json")) || [];
+  const read = async () => (await env.DB.prepare("SELECT doc FROM passkeys ORDER BY created").all<{ doc: string }>())
+    .results.map((r) => JSON.parse(r.doc) as Passkey);
+  const list = await read();
+  if (list.length || movedFromKv) return list;
+  await moveFromKv(env);
+  return read();
 }
 
 /** The passkey this browser signed in with, or null. A session ends when its passkey is removed. */
@@ -94,7 +138,8 @@ async function sessionCred(request: Request, env: Env): Promise<string | null> {
   const token = await verify<{ cred: string; exp: number }>(env.SESSION_SECRET, readCookie(request, "sid"));
   if (!token) return null;
   if (token.exp - SESSION_DAYS * 864e5 > Date.now() - FRESH_SESSION_MS) return token.cred;
-  return (await passkeys(env)).some((p) => p.id === token.cred) ? token.cred : null;
+  if (await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = ?").bind(token.cred).first()) return token.cred;
+  return (await passkeys(env)).some((p) => p.id === token.cred) ? token.cred : null;  // before the move only
 }
 
 async function signedIn(request: Request, env: Env): Promise<boolean> {
@@ -123,17 +168,22 @@ function browserName(request: Request): string {
 
 async function markSeen(request: Request, env: Env, cred: string): Promise<string> {
   const seen: Seen = { at: new Date().toISOString(), browser: browserName(request), place: place(request) };
-  await env.DATA.put(SEEN_PREFIX + cred, JSON.stringify(seen));
+  await env.DB.prepare("INSERT OR REPLACE INTO seen (cred, doc) VALUES (?, ?)").bind(cred, JSON.stringify(seen)).run();
   return cookie("seen", "1", SEEN_HOURS * 3600);
 }
 
 async function devices(env: Env, current: string | null) {
   const list = await passkeys(env);
-  const seen = await Promise.all(list.map((p) => env.DATA.get<Seen>(SEEN_PREFIX + p.id, "json")));
-  return list.map((p, i) => ({
+  const rows = (await env.DB.prepare("SELECT cred, doc FROM seen").all<{ cred: string; doc: string }>()).results;
+  const seen = new Map(rows.map((r) => [r.cred, JSON.parse(r.doc) as Seen]));
+  return list.map((p) => ({
     id: p.id, device: p.device, created: p.created, browser: p.browser ?? null, place: p.place ?? null,
-    app: (p.aaguid && PASSKEY_APPS[p.aaguid]) || null, seen: seen[i], current: p.id === current,
+    app: (p.aaguid && PASSKEY_APPS[p.aaguid]) || null, seen: seen.get(p.id) ?? null, current: p.id === current,
   }));
+}
+
+async function inviteUsed(env: Env, id: string): Promise<boolean> {
+  return !!(await env.DB.prepare("SELECT 1 FROM used_invites WHERE id = ?").bind(id).first());
 }
 
 function deviceName(request: Request): string {
@@ -166,7 +216,7 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
 
   if (path === "register/options") {
     const ticket = await verify<{ kind: string; id: string; exp: number }>(env.SESSION_SECRET, body.invite);
-    if (!ticket || ticket.kind !== "invite" || (await env.DATA.get(`auth:used:${ticket.id}`))) {
+    if (!ticket || ticket.kind !== "invite" || (await inviteUsed(env, ticket.id))) {
       return json({ error: "This setup link has expired or was already used. Make a new one." }, 403);
     }
     const existing = await passkeys(env);
@@ -189,7 +239,7 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
   if (path === "register/verify") {
     const chal = await verify<{ kind: string; c: string; invite: string; exp: number }>(
       env.SESSION_SECRET, readCookie(request, "chal"));
-    if (!chal || chal.kind !== "reg" || (await env.DATA.get(`auth:used:${chal.invite}`))) {
+    if (!chal || chal.kind !== "reg" || (await inviteUsed(env, chal.invite))) {
       return json({ error: "Setup took too long. Open the link again." }, 403);
     }
     const result = await verifyRegistrationResponse({
@@ -200,14 +250,16 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
       return json({ error: "The passkey could not be checked. Try again." }, 400);
     }
     const { credential, aaguid } = result.registrationInfo;
-    const list = (await passkeys(env)).filter((p) => p.id !== credential.id);
-    list.push({
-      id: credential.id, publicKey: b64url(credential.publicKey), counter: credential.counter,
-      transports: credential.transports, device: deviceName(request), created: new Date().toISOString(),
-      browser: browserName(request), place: place(request), aaguid,
-    });
-    await env.DATA.put(PASSKEYS, JSON.stringify(list));
-    await env.DATA.put(`auth:used:${chal.invite}`, "1", { expirationTtl: INVITE_MINUTES * 60 * 2 });
+    await passkeys(env);  // brings any passkeys still in KV over first
+    await env.DB.batch([
+      savePasskey(env, {
+        id: credential.id, publicKey: b64url(credential.publicKey), counter: credential.counter,
+        transports: credential.transports, device: deviceName(request), created: new Date().toISOString(),
+        browser: browserName(request), place: place(request), aaguid,
+      }),
+      env.DB.prepare("INSERT OR REPLACE INTO used_invites (id, until) VALUES (?, ?)").bind(chal.invite, Date.now() + INVITE_MINUTES * 60e3 * 2),
+      env.DB.prepare("DELETE FROM used_invites WHERE until < ?").bind(Date.now()),
+    ]);
     const headers = new Headers({ "Content-Type": "application/json" });
     headers.append("Set-Cookie", await session(env, credential.id));
     headers.append("Set-Cookie", cookie("chal", "", 0));
@@ -238,7 +290,7 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
     const next = "authenticationInfo" in result ? result.authenticationInfo.newCounter : found.counter;
     if (next !== found.counter) {  // synced passkeys stay at 0: no write needed
       found.counter = next;
-      await env.DATA.put(PASSKEYS, JSON.stringify(list));
+      await savePasskey(env, found).run();
     }
     const headers = new Headers({ "Content-Type": "application/json" });
     headers.append("Set-Cookie", await session(env, found.id));
@@ -260,8 +312,10 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
     const list = await passkeys(env);
     if (!list.some((p) => p.id === removing[1])) return json({ error: "That device was already removed." }, 404);
     if (list.length <= 1) return json({ error: "This is the only device with a passkey. Add another one first." }, 409);
-    await env.DATA.put(PASSKEYS, JSON.stringify(list.filter((p) => p.id !== removing[1])));
-    await env.DATA.delete(SEEN_PREFIX + removing[1]);
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM passkeys WHERE id = ?").bind(removing[1]),
+      env.DB.prepare("DELETE FROM seen WHERE cred = ?").bind(removing[1]),
+    ]);
     const self = removing[1] === me;
     return json({ devices: self ? [] : await devices(env, me), signedOut: self }, 200,
       self ? { "Set-Cookie": cookie("sid", "", 0) } : {});
@@ -277,43 +331,53 @@ interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "boug
   settings?: Record<string, string>; card?: Record<string, unknown>; purchase?: Record<string, string> }
 
 async function waitingEdits(env: Env): Promise<Edit[]> {
-  const listed = await env.DATA.list({ prefix: EDIT_PREFIX });
-  const edits = await Promise.all(listed.keys.map((k) => env.DATA.get<Edit>(k.name, "json")));
-  return edits.filter((e): e is Edit => !!e).sort((a, b) => a.at.localeCompare(b.at));
+  try {
+    await moveFromKv(env);
+  } catch {
+    // KV unavailable: the queue in D1 still works, and the move is tried again next time
+  }
+  return (await env.DB.prepare("SELECT doc FROM edits ORDER BY at, name").all<{ doc: string }>())
+    .results.map((r) => JSON.parse(r.doc) as Edit);
+}
+
+async function failedEdits(env: Env): Promise<unknown[]> {
+  const value = await getMeta(env, "edits_failed");
+  return value ? (JSON.parse(value) as unknown[]) : [];
 }
 
 async function editsDoc(env: Env) {
-  return { ops: await waitingEdits(env), failed: (await env.DATA.get(EDITS_FAILED, "json")) ?? [] };
+  return { ops: await waitingEdits(env), failed: await failedEdits(env) };
 }
 
 /** POST /api/edits (one edit), DELETE /api/edits/<id> (undo a waiting edit), DELETE /api/edits/failed. */
 async function edits(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
   if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
   if (request.method === "DELETE" && rest === "failed") {
-    await env.DATA.delete(EDITS_FAILED);
+    await env.DB.prepare("DELETE FROM meta WHERE key = 'edits_failed'").run();
     return json(await editsDoc(env));
   }
   if (request.method === "DELETE" && /^[A-Za-z0-9_-]{8,40}$/.test(rest)) {
-    const listed = await env.DATA.list({ prefix: EDIT_PREFIX });
-    const found = listed.keys.find((k) => k.name.endsWith(`:${rest}`));
-    if (found) await env.DATA.delete(found.name);
+    await env.DB.prepare("DELETE FROM edits WHERE id = ?").bind(rest).run();
     return json(await editsDoc(env));
   }
   if (request.method !== "POST" || rest) return json({ error: "Not found" }, 404);
   const body = (await request.json().catch(() => null)) as Partial<Edit> | null;
   const ok = body && (body.op === "add" ? typeof body.scryfall_id === "string" : (body.op === "update" || body.op === "remove" || body.op === "bought") && typeof body.key === "string");
   if (!ok || JSON.stringify(body).length > 4000) return json({ error: "That change isn't valid." }, 400);
-  if ((await env.DATA.list({ prefix: EDIT_PREFIX })).keys.length >= MAX_EDITS) {
+  const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM edits").first<{ n: number }>();
+  if ((count?.n ?? 0) >= MAX_EDITS) {
     return json({ error: "Too many changes are waiting. Try again in a few minutes." }, 429);
   }
   const at = new Date().toISOString();
   const edit: Edit = { id: randomToken(12), at, op: body.op!, key: body.key, scryfall_id: body.scryfall_id,
     settings: body.settings ?? {}, card: body.card, purchase: body.purchase };
-  await env.DATA.put(`${EDIT_PREFIX}${at}:${edit.id}`, JSON.stringify(edit));
+  await queueEdit(env, edit).run();
   if (env.TRIGGER) ctx.waitUntil(env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined));
   return json(await editsDoc(env));
 }
 
+/** A document for the signed-in browser. Its version is kept in D1 (D67), so the usual answer to
+ *  a refresh, "not changed", costs no KV read; only a changed document is read from KV. */
 async function data(request: Request, env: Env, key: string): Promise<Response> {
   if (key === "edits") {
     if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
@@ -321,18 +385,25 @@ async function data(request: Request, env: Env, key: string): Promise<Response> 
   }
   if (!DATA_KEY.test(key)) return json({ error: "Not found" }, 404);
   if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
+  const known = await env.DB.prepare("SELECT etag, at FROM docs WHERE key = ?").bind(key).first<{ etag: string; at: string }>();
+  const headersFor = (etag: string, at: string) => ({
+    "Content-Type": "application/json", "Cache-Control": "private, no-cache", ETag: `"${etag}"`, "X-Updated": at,
+  });
+  if (known && request.headers.get("If-None-Match") === `"${known.etag}"`) {
+    return new Response(null, { status: 304, headers: headersFor(known.etag, known.at) });
+  }
   const { value, metadata } = await env.DATA.getWithMetadata<{ etag: string; at: string }>(key, "stream");
   if (value === null) return json({ error: "Not there yet" }, 404);
-  const etag = `"${metadata?.etag || "0"}"`;
-  const headers = {
-    "Content-Type": "application/json", "Cache-Control": "private, no-cache", ETag: etag,
-    "X-Updated": metadata?.at || "",
-  };
-  if (request.headers.get("If-None-Match") === etag) {
-    await value.cancel();
-    return new Response(null, { status: 304, headers });
+  const etag = metadata?.etag || "0";
+  if (!known && metadata?.etag) {
+    // A document uploaded before D67: remember its version from now on.
+    await env.DB.prepare("INSERT OR IGNORE INTO docs (key, etag, at) VALUES (?, ?, ?)").bind(key, metadata.etag, metadata.at || "").run();
   }
-  return new Response(value, { headers });
+  if (request.headers.get("If-None-Match") === `"${etag}"`) {
+    await value.cancel();
+    return new Response(null, { status: 304, headers: headersFor(etag, metadata?.at || "") });
+  }
+  return new Response(value, { headers: headersFor(etag, metadata?.at || "") });
 }
 
 async function ingest(request: Request, env: Env, path: string, url: URL): Promise<Response> {
@@ -348,26 +419,27 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
     if (!Array.isArray(ops) || ops.length > 500 || ops.some((o) => !kinds.includes(o.op) || JSON.stringify(o).length > 6000)) {
       return json({ error: "Not valid" }, 400);
     }
-    for (const o of ops) {
-      const id = /^[A-Za-z0-9_-]{8,40}$/.test(o.id) ? o.id : randomToken(12);
-      const at = new Date().toISOString();
-      await env.DATA.put(`${EDIT_PREFIX}${at}:${id}`, JSON.stringify({ ...o, id, at }));
-    }
+    const at = new Date().toISOString();
+    const rows = ops.map((o) => ({ ...o, id: /^[A-Za-z0-9_-]{8,40}$/.test(o.id) ? o.id : randomToken(12), at }));
+    if (rows.length) await env.DB.batch(rows.map((e) => queueEdit(env, e, "INSERT OR IGNORE")));
     if (env.TRIGGER && ops.length) await env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined);
     return json({ ok: true, added: ops.length });
   }
   if (path === "edits-applied" && request.method === "POST") {
     // The GitHub job's report: done edits leave the queue, failed ones are kept to show on the site.
     const { results } = (await request.json()) as { results: { id: string; ok: boolean; message: string }[] };
-    const waiting = await env.DATA.list({ prefix: EDIT_PREFIX });
-    const byId = new Map(waiting.keys.map((k) => [k.name.split(":").pop()!, k.name]));
-    const failed: unknown[] = (await env.DATA.get(EDITS_FAILED, "json")) ?? [];
+    const waiting = (await env.DB.prepare("SELECT id, doc FROM edits").all<{ id: string; doc: string }>()).results;
+    const byId = new Map(waiting.map((r) => [r.id, r.doc]));
+    const failed = await failedEdits(env);
+    const done: D1PreparedStatement[] = [];
     for (const r of results) {
-      const name = byId.get(r.id);
-      if (!r.ok && name) failed.push({ ...(await env.DATA.get<Edit>(name, "json")), message: r.message });
-      if (name) await env.DATA.delete(name);
+      const doc = byId.get(r.id);
+      if (doc === undefined) continue;
+      if (!r.ok) failed.push({ ...JSON.parse(doc), message: r.message });
+      done.push(env.DB.prepare("DELETE FROM edits WHERE id = ?").bind(r.id));
     }
-    if (results.some((r) => !r.ok)) await env.DATA.put(EDITS_FAILED, JSON.stringify(failed.slice(-20)));
+    if (results.some((r) => !r.ok)) done.push(setMeta(env, "edits_failed", JSON.stringify(failed.slice(-20))));
+    if (done.length) await env.DB.batch(done);
     return json({ ok: true });
   }
   // Done versions of a deal alert's picture (D53): stored for 60 days, served publicly by an
@@ -395,12 +467,19 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
   }
   if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const text = await request.text();
+  let doc: unknown;
   try {
-    JSON.parse(text);
+    doc = JSON.parse(text);
   } catch {
     return json({ error: "Not JSON" }, 400);
   }
-  await env.DATA.put(path, text, { metadata: { etag: (await sha256Hex(text)).slice(0, 16), at: new Date().toISOString() } });
+  const etag = (await sha256Hex(text)).slice(0, 16);
+  const at = new Date().toISOString();
+  await env.DATA.put(path, text, { metadata: { etag, at } });
+  // Its version in D1 (D67), and for `live` the fast-lane list the timer Worker reads every minute.
+  const rows = [env.DB.prepare("INSERT OR REPLACE INTO docs (key, etag, at) VALUES (?, ?, ?)").bind(path, etag, at)];
+  if (path === "live") rows.push(setMeta(env, "fast", JSON.stringify((doc as { fast?: unknown[] }).fast ?? [])));
+  await env.DB.batch(rows);
   return json({ ok: true, bytes: text.length });
 }
 

@@ -41,9 +41,12 @@ export function isDeal(f: Fast, price: number): boolean {
 /** The fast-lane cards that turned into a deal since the last full check. */
 export async function fastLane(env: TelegramEnv): Promise<number[]> {
   if (!env.CARDTRADER_TOKEN) return [];
-  const live = await env.DATA.get<{ fast?: Fast[] }>("live", "json");
+  // The list from the last `live` upload, copied to D1 by the site (D67): one row read a minute
+  // instead of a KV read of the whole document.
+  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'fast'").first<{ value: string }>();
+  const fast: Fast[] = row ? JSON.parse(row.value) : [];
   const found: number[] = [];
-  for (const f of live?.fast || []) {
+  for (const f of fast) {
     const query = `blueprint_id=${f.bp}` + (f.lang !== "any" ? `&language=${f.lang}` : "");
     const answer = await cardtrader(env, "GET", `/marketplace/products?${query}`);
     const copy = cheapest(f, answer?.[String(f.bp)] || []);

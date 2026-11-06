@@ -45,42 +45,53 @@ async function dispatch(env, workflow) {
   return problem;
 }
 
-// Want-list edits made on the website (D50) wait in the site's KV; a run that missed them (KV is
-// only eventually consistent across places) is caught up on the next 10-minute tick.
+// Want-list edits made on the website (D50) wait in the site's D1 (D67). The site starts the
+// `wantlist` run at once; a run that missed them is caught up on a deal-check tick once they are
+// 3 minutes old. While the same edits stay waiting (a run failing, as on 2026-11-06, when one run
+// every 5 minutes failed and mailed), the catch-up is tried at most every 30 minutes; a newer edit
+// is caught up at once.
 const EDITS_LATE_MS = 3 * 60 * 1000;
+const CATCHUP_MS = 30 * 60 * 1000;
 
 async function editsWaiting(env) {
-  if (!env.DATA) return false;
+  if (!env.DB) return false;
   try {
-    const listed = await env.DATA.list({ prefix: "edit:" });
+    const now = new Date();
     // A purchase from the Telegram button is held until `hold_until` so its Undo works (D53).
-    return listed.keys.some((k) => Date.now() - Date.parse(k.name.slice(5, 29)) > EDITS_LATE_MS
-      && !(k.metadata?.hold_until && Date.parse(k.metadata.hold_until) > Date.now()));
+    const row = await env.DB.prepare(
+      "SELECT MAX(name) AS newest FROM edits WHERE at < ? AND (hold_until IS NULL OR hold_until < ?)",
+    ).bind(new Date(now.getTime() - EDITS_LATE_MS).toISOString(), now.toISOString()).first();
+    if (!row?.newest) return false;
+    const last = await env.DB.prepare("SELECT value FROM meta WHERE key = 'catchup'").first();
+    const prev = last ? JSON.parse(last.value) : null;
+    if (prev && prev.newest >= row.newest && now.getTime() - Date.parse(prev.at) < CATCHUP_MS) return false;
+    await env.DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('catchup', ?)")
+      .bind(JSON.stringify({ at: now.toISOString(), newest: row.newest })).run();
+    return true;
   } catch {
     return false; // never let the edit queue stop the deal check
   }
 }
 
-// Watchdog (D48): the deal check writes `live` to the site's KV after every run. If that is old,
-// something upstream broke (a crashing job, an expired token, GitHub not starting runs) even though
-// every dispatch here succeeded. Checked once an hour; one message when it breaks, one when it is
-// back, remembered under WATCHDOG_KEY (the only key this Worker writes).
+// Watchdog (D48): the deal check uploads `live` to the site after every run, and the site notes the
+// time in D1. If that is old, something upstream broke (a crashing job, an expired token, GitHub not
+// starting runs) even though every dispatch here succeeded. Checked once an hour; one message when
+// it breaks, one when it is back, remembered in D1's `meta` (`watchdog`).
 const STALE_MS = 45 * 60 * 1000;
-const WATCHDOG_KEY = "watchdog";
 
 async function watchdog(env) {
-  if (!env.DATA) return;
-  const live = await env.DATA.get("live", "json");
-  const at = live && Date.parse(live.checked_at);
+  if (!env.DB) return;
+  const live = await env.DB.prepare("SELECT at FROM docs WHERE key = 'live'").first();
+  const at = live && Date.parse(live.at);
   const stale = !at || Date.now() - at > STALE_MS;
-  const known = await env.DATA.get(WATCHDOG_KEY, "json");
+  const known = await env.DB.prepare("SELECT value FROM meta WHERE key = 'watchdog'").first();
   if (stale && !known) {
-    const since = at ? `${Math.round((Date.now() - at) / 60000)} minutes ago (${live.checked_at})` : "never";
+    const since = at ? `${Math.round((Date.now() - at) / 60000)} minutes ago (${live.at})` : "never";
     await telegram(env, `mtg-intel deal checks have stopped\n\nLast finished check: ${since}.\nhttps://github.com/${env.GITHUB_REPO}/actions/workflows/deals.yml`);
-    await env.DATA.put(WATCHDOG_KEY, JSON.stringify({ since: new Date().toISOString() }));
+    await env.DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('watchdog', ?)").bind(new Date().toISOString()).run();
   } else if (!stale && known) {
-    await telegram(env, `mtg-intel deal checks are running again (last check ${live.checked_at}).`);
-    await env.DATA.delete(WATCHDOG_KEY);
+    await telegram(env, `mtg-intel deal checks are running again (last check ${live.at}).`);
+    await env.DB.prepare("DELETE FROM meta WHERE key = 'watchdog'").run();
   }
 }
 
