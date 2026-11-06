@@ -166,29 +166,27 @@ def render(p: Panel, card: Image.Image) -> bytes:
 
 
 def stamp(png: bytes, kind: str, note: str = "") -> bytes:
-    """The alert's image once it is done (user, 2026-11-06): darkened, with a large ✓ BOUGHT stamp,
-    or grey and darkened with a SOLD stamp when the copy turned out to be gone. JPEG, for Telegram."""
+    """The alert's image once it is done (user, 2026-11-06): darkened, with a large green ✓ BOUGHT
+    stamp, or the same with a red ✕ SOLD OUT when the copy turned out to be gone. JPEG, for Telegram."""
     base = Image.open(io.BytesIO(png)).convert("RGB")
-    if kind == "sold":
-        base = base.convert("L").convert("RGB")
     w, h = base.size
-    img = Image.blend(base, Image.new("RGB", base.size, "#000000"), 0.62 if kind == "sold" else 0.55).resize((w * S, h * S))
+    img = Image.blend(base, Image.new("RGB", base.size, "#000000"), 0.55).resize((w * S, h * S))
     r = 120 * S
     cx, cy = w * S // 2, h * S // 2 - 70 * S
     glow = Image.new("L", img.size, 0)  # a soft dark patch behind the stamp, so its words stay readable
     ImageDraw.Draw(glow).ellipse((cx - 420 * S, cy - 230 * S, cx + 420 * S, cy + 360 * S), fill=170)
     img.paste(Image.new("RGB", img.size, "#000000"), (0, 0), glow.filter(ImageFilter.GaussianBlur(70 * S)))
     draw = ImageDraw.Draw(img)
-    colour = GOOD if kind == "bought" else "#d4d4d8"
+    colour = GOOD if kind == "bought" else BAD
     draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=colour)
-    ink, width = "#0b2e22" if kind == "bought" else "#27272a", 26 * S
+    ink, width = "#0b2e22" if kind == "bought" else "#3d0d0a", 26 * S
     if kind == "bought":  # a tick
         draw.line([(cx - 58 * S, cy + 4 * S), (cx - 14 * S, cy + 50 * S), (cx + 64 * S, cy - 44 * S)], fill=ink, width=width, joint="curve")
     else:  # a cross
         for a, b in (((-50, -50), (50, 50)), ((-50, 50), (50, -50))):
             draw.line([(cx + a[0] * S, cy + a[1] * S), (cx + b[0] * S, cy + b[1] * S)], fill=ink, width=width)
     title = _font(76, 800)
-    draw.text((cx, cy + r + 34 * S), "BOUGHT" if kind == "bought" else "SOLD", font=title, fill="#ffffff", anchor="mt")
+    draw.text((cx, cy + r + 34 * S), "BOUGHT" if kind == "bought" else "SOLD OUT", font=title, fill="#ffffff", anchor="mt")
     if note:
         draw.text((cx, cy + r + 128 * S), note, font=_font(38, 550), fill="#e4e4e7", anchor="mt")
     out = io.BytesIO()
