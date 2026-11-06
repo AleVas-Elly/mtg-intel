@@ -296,7 +296,7 @@ def caption(alert: dict[str, Any], line: str, done: bool = False) -> str:
     head = alert["head"]
     if done and not line.startswith("✅"):
         head = f"<s>{head}</s>"
-    parts = [head, _h(alert["copy"]), f"<b>{_h(line)}</b>" if line else ""]
+    parts = [head, _h(alert["copy"]), _h(alert.get("tip") or ""), f"<b>{_h(line)}</b>" if line else ""]
     text = "\n".join(p for p in parts if p)
     return text + (f"\n\n{alert['details']}" if alert.get("details") else "")
 

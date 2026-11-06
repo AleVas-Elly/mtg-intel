@@ -231,8 +231,25 @@ async function demo(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<voi
   await answer(env, q, "Demo: this copy is gone, so nothing was added.", true);
 }
 
+/** "Set €13.50" under a weekly target suggestion (D55): the wish's target changes through the edit
+ *  queue, like a change made on the site, and the button turns into a tick. */
+async function setTarget(env: TelegramEnv, q: CallbackQuery, m: Message, onEdit?: () => Promise<unknown>): Promise<void> {
+  const [, card, language, foil, cents] = (q.data || "").split("|");
+  const target = (Number(cents) / 100).toFixed(2);
+  const at = new Date().toISOString();
+  const id = randomToken(12);
+  await env.DATA.put(`${EDIT_PREFIX}${at}:${id}`, JSON.stringify({
+    id, at, op: "update", key: keyOf(card, language, foil), settings: { max_price_eur: target },
+  }));
+  if (onEdit) await onEdit().catch(() => undefined);
+  const keyboard = (m.reply_markup?.inline_keyboard || []).map((row) => row.map((b) =>
+    b.callback_data === q.data ? { text: `✓ ${b.text.replace(/^Set /, "")}`, callback_data: "x|done" } : b));
+  await call(env, "editMessageReplyMarkup", { chat_id: m.chat.id, message_id: m.message_id, reply_markup: { inline_keyboard: keyboard } });
+  await answer(env, q, `Target set to €${target}. The want-list updates in a few minutes.`);
+}
+
 /** Telegram's webhook (POST /api/telegram on the website, passed on here). Only my chat counts; anything else is acknowledged and dropped. */
-export async function telegramUpdate(request: Request, env: TelegramEnv): Promise<Response> {
+export async function telegramUpdate(request: Request, env: TelegramEnv, onEdit?: () => Promise<unknown>): Promise<Response> {
   const ok = new Response("ok");
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID || request.method !== "POST") return new Response("Not found", { status: 404 });
   const secret = await sha256Hex(`mtg-intel-webhook:${env.TELEGRAM_BOT_TOKEN}`);
@@ -244,6 +261,8 @@ export async function telegramUpdate(request: Request, env: TelegramEnv): Promis
     if (q.data?.startsWith("b|")) await bought(env, q, q.message!);
     else if (q.data?.startsWith("u|")) await undo(env, q, q.message!);
     else if (q.data?.startsWith("d|")) await demo(env, q, q.message!);
+    else if (q.data?.startsWith("t|")) await setTarget(env, q, q.message!, onEdit);
+    else if (q.data === "x|done") await answer(env, q, "Already set.");
     else await answer(env, q, "This button no longer works.");
   } else if (update?.message && mine(update.message)) {
     await call(env, "sendMessage", {

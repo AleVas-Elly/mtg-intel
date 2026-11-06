@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from statistics import median
 from typing import Any
 from urllib.parse import quote
@@ -495,6 +495,35 @@ def price_trend(points: list[tuple[str, float]], now: float | None, title: str, 
             *([change(quarter, "in 3 months")] if quarter else []),
             f"Lowest €{low[1]:.2f} · {day(low[0])}",
             f"Highest €{high[1]:.2f} · {day(high[0])}"]
+
+
+LOW_SLACK = 1.02  # within 2% of the lowest price seen counts as the lowest
+DROP_PCT = 5.0  # Cardmarket's trend down this much in a month: it could drop further
+
+
+def buy_tip(price: float, cardmarket: list[tuple[str, float]], cardtrader: list[tuple[str, float]],
+            now: date | None = None) -> str:
+    """One line on timing (user, 2026-11-06): "Buy now" when this copy is the lowest price of the last
+    90 days on either market, "Could drop" when Cardmarket's trend has fallen over the last month
+    and this copy is well above that low; otherwise nothing."""
+    from datetime import date as day
+
+    if not cardmarket and not cardtrader:
+        return ""
+    last = max(day.fromisoformat(d) for d, _ in cardmarket + cardtrader)
+    recent = [v for d, v in cardmarket + cardtrader if (last - day.fromisoformat(d)).days <= TREND_DAYS and v]
+    first = min(day.fromisoformat(d) for d, _ in cardmarket + cardtrader)
+    window = "in 90 days" if (last - first).days >= 85 else f"since {first.strftime('%-d %b')}"
+    low = min(recent) if recent else None
+    if low and price <= low * LOW_SLACK:
+        return f"💡 Buy now · the lowest price {window}"
+    month = [(abs((last - day.fromisoformat(d)).days - 30), v) for d, v in cardmarket
+             if 25 <= (last - day.fromisoformat(d)).days <= 35]
+    if cardmarket and month:
+        change = (cardmarket[-1][1] / min(month)[1] - 1) * 100
+        if change <= -DROP_PCT and low and price > low * 1.10:
+            return f"💡 Could drop · Cardmarket down {-change:.0f}% in a month"
+    return ""
 
 
 def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None,

@@ -20,6 +20,10 @@ export interface Wish {
   prints?: string;  // a card being added: where Scryfall lists its other printings  // a change made on the site, not yet in the want-list file
 }
 
+/** A target price I'd realistically hit (D55): reached on `reached` of the last `days` days. */
+export interface TargetSuggestion { key: string; target: number; reached: number; days: number; usual: number; current: number | null; reason: string }
+export interface TargetsDoc { built_at: string; targets: Record<string, TargetSuggestion> }
+
 export interface WantsDoc { built_at: string; price_date: string | null; languages: Record<string, string>; wishes: Wish[] }
 
 export interface Listing { id: number; price: number; condition: string; language: string; foil: boolean; zero: boolean; country: string }

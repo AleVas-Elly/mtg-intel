@@ -12,7 +12,7 @@ import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, I
 import { BoughtSheet } from "../ui/BoughtSheet";
 import { Confirm } from "../ui/Confirm";
 import { ManaCost, SetSymbol } from "../ui/symbols";
-import type { CtHistoryDoc, HistoryDoc, RecentDoc, Wish } from "../types";
+import type { CtHistoryDoc, HistoryDoc, RecentDoc, Wish, TargetsDoc } from "../types";
 
 function series(w: Wish, history: HistoryDoc | null | undefined, foil: boolean): Point[] {
   if (!history?.base || !w.scryfall_id) return [];
@@ -50,6 +50,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const history = useDoc<HistoryDoc>("history");
   const older = useDoc<CtHistoryDoc>("ct-history");
   const recent = useDoc<RecentDoc>("ct-recent", 120_000);
+  const suggestions = useDoc<TargetsDoc>("targets").doc;
   const live = data.liveOf(wishKey);
   const deal = data.dealOf(wishKey);
   const bothFinishes = !!w && w.foil === "any" && !foilOnly(w) && w.finishes.some((f) => f !== "nonfoil");
@@ -178,6 +179,27 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           {w.note && <div class="kv"><dt>Note</dt><dd>{w.note}</dd></div>}
         </dl>
 
+        {(() => {
+          const s = suggestions?.targets[w.key];
+          if (!s || (w.max_price != null && Math.abs(w.max_price - s.target) <= s.target * 0.05)) return null;
+          return (
+            <>
+              <div class="group-title">Suggested target</div>
+              <div class="group">
+                <div class="kv"><dt>{eur(s.target)}</dt><dd>reached on {s.reached} of {s.days} days · usually {eur(s.usual)}</dd></div>
+                <p class="hint">{s.reason.charAt(0).toUpperCase() + s.reason.slice(1)}. A price you'd realistically hit, from the last 90 days.</p>
+                <div style={{ padding: "0 14px 12px" }}>
+                  <button class="btn sm primary" type="button" onClick={async () => {
+                    try {
+                      await saveEdit({ op: "update", key: w.key, settings: { max_price_eur: s.target.toFixed(2) } });
+                      toast(`Target set to ${eur(s.target)}.`);
+                    } catch (err) { toast(err instanceof Error ? err.message : "Couldn't save. Try again."); }
+                  }}>Use {eur(s.target)}</button>
+                </div>
+              </div>
+            </>
+          );
+        })()}
         {flags.length > 0 && (
           <>
             <div class="group-title">Needs a look</div>

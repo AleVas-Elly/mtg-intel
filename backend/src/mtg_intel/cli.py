@@ -10,6 +10,7 @@ import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -91,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("apply-edits", help="apply the want-list edits waiting on the website, then rebuild the tables")
     deal_check = commands.add_parser("check-deals", help="check CardTrader for want-list deals and alert (phase 3)")
     deal_check.add_argument("--dry-run", action="store_true", help="print deals; send and save nothing")
+    suggest = commands.add_parser("suggest-targets", help="target price suggestions from 90 days of prices (D55)")
+    suggest.add_argument("--send", action="store_true", help="also send the Telegram note")
     args = parser.parse_args(argv)
 
     load_env_file(REPO_ROOT / ".env")
@@ -106,6 +109,9 @@ def main(argv: list[str] | None = None) -> int:
         return telegram_setup()
     if args.command == "telegram-webhook":
         return telegram_webhook()
+    if args.command == "suggest-targets":
+        with httpx.Client(timeout=60) as client:
+            return suggest_targets(client, tables_store(None), None, datetime.now(UTC), args.send)
     if args.command == "alert":
         with httpx.Client() as client:
             sent = alert(client, args.title, args.message)
@@ -572,7 +578,8 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
         out = rich(d)
         record = {"key": d.key, "name": d.wish["name"], "blueprint_id": d.wish["blueprint_id"], "product_id": d.listing.id,
                   "price": d.listing.price, "zero": d.listing.zero, "added": status == "added", "there": status == "there",
-                  "head": out.head, "copy": deals.copy_line(d.listing), "details": out.details, "links": out.links,
+                  "head": out.head, "copy": deals.copy_line(d.listing), "tip": getattr(out, "tip", ""),
+                  "details": out.details, "links": out.links,
                   "stamps": out.stamps or {}, "photo": bool(out.photo), "created": now.isoformat()}
         line = (lifecycle.cart_line(cart, now) if status in ("added", "there")
                 else "⚠️ Not checked live: CardTrader's cart didn't answer")
@@ -588,6 +595,52 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
             account.remove(d.listing.id)
     lifecycle.prune(alerts, now)
     return sent
+
+
+TARGETS_WEEKDAY, TARGETS_HOUR = 6, 10  # the target note: Sundays, with the first check from 10:00 (Amsterdam)
+
+
+def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: datetime, send: bool) -> int:
+    """Target suggestions for every wish (D55): sent to the site, and as the weekly Telegram note."""
+    import pyarrow.parquet as pq
+
+    from mtg_intel import targets
+    from mtg_intel.archive.notify import telegram_call
+    from mtg_intel.site import Site
+
+    if watch is None:
+        watch = pq.read_table(store.fetch("my/watch.parquet")).to_pylist()
+    ids = sorted({w["scryfall_id"] for w in watch if w.get("scryfall_id")})
+    path = store.fetch("my/price_history.parquet", fresh=False)
+    price_rows: dict[str, list[dict]] = {}
+    for r in pq.read_table(path, filters=[("scryfall_id", "in", ids)]).to_pylist() if path and ids else []:
+        price_rows.setdefault(r["scryfall_id"], []).append(r)
+    check_rows: dict[int, list[dict]] = {}
+    found = False
+    for days_back in range(1, 91):
+        daily = store.fetch(daily_checks_path((now - timedelta(days=days_back)).date()), fresh=False)
+        if daily is None:
+            if found:
+                break
+            continue
+        found = True
+        for r in pq.read_table(daily).to_pylist():
+            check_rows.setdefault(r["blueprint_id"], []).append(r)
+    found_targets = targets.all_suggestions(watch, price_rows, check_rows)
+    print(f"target suggestions: {len(found_targets)}")
+    for t in found_targets[:10]:
+        print(f"  {t.name} {t.where}: €{t.target:.2f} ({t.reached}/{t.days} days, usually €{t.usual:.2f}) · {t.reason}")
+    site_store = Site.from_env(client)
+    if site_store:
+        site_store.put("targets", targets.site_doc(found_targets, now.isoformat()))
+    note = targets.weekly_note(found_targets, os.environ.get("SITE_URL"))
+    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    if send and note and token and chat:
+        sent = telegram_call(client, token, "sendMessage", {
+            "chat_id": chat, "text": note[0], "parse_mode": "HTML", "disable_notification": True,
+            "link_preview_options": {"is_disabled": True}, "reply_markup": {"inline_keyboard": note[1]}})
+        print(f"target note sent: {sent is not None}")
+    return 0
 
 
 PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c); phase 4's collection starts here
@@ -732,6 +785,7 @@ def check_deals(args: argparse.Namespace) -> int:
                       deals.price_trend(ct, None, "📉 CardTrader, cheapest copy", min_days=5)]
             out = deals.telegram(d, site_url, preview(d), image, trends)
             out.stamps = done
+            out.tip = deals.buy_tip(d.listing.price, cm, ct)
             return out
 
         messages = [(title, text, None) for title, text in targets]  # Cardmarket target prices: plain alerts
@@ -763,6 +817,13 @@ def check_deals(args: argparse.Namespace) -> int:
         note = deals.digest(state, result, watch, now, os.environ.get("SITE_URL"))
         if note:
             print(f"daily digest sent: {alert(client, *note)}")
+        local = now.astimezone(ZoneInfo("Europe/Amsterdam"))
+        if local.weekday() == TARGETS_WEEKDAY and local.hour >= TARGETS_HOUR and state.get("targets_on") != local.date().isoformat():
+            state["targets_on"] = local.date().isoformat()
+            try:
+                suggest_targets(client, store, watch, now, send=True)
+            except Exception as e:  # noqa: BLE001 - never stops the check
+                print(f"WARNING  target suggestions failed: {e}", file=sys.stderr)
         if site_store:
             try:  # the website's copy (D49); a failure here never stops the alerts or the saved check
                 site_store.put("live", site.live_doc(result, watch, now, site_store.get("live")))

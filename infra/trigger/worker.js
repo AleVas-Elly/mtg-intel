@@ -122,7 +122,9 @@ export default {
   // No public URL: only the website Worker reaches this, through its service binding, right after
   // I edit the want-list there, and to pass on the bot's button taps (telegram.ts).
   async fetch(request, env) {
-    if (new URL(request.url).pathname === "/telegram") return telegramUpdate(request, env);
+    if (new URL(request.url).pathname === "/telegram") {
+      return telegramUpdate(request, env, () => dispatch(env, "wantlist.yml"));  // an edit from a button: apply it now
+    }
     if (request.method !== "POST" || new URL(request.url).pathname !== "/wantlist" || !env.GITHUB_TOKEN) {
       return new Response("Not found", { status: 404 });
     }

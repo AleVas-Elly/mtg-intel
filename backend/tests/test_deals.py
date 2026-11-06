@@ -380,3 +380,16 @@ def test_copies_the_cart_said_are_gone_count_for_nothing():
     result = deals.check(fake_session(listings), watch, {}, NOW, ignore={1})
     assert [d.listing.id for d in result.deals] == [2] and 1 not in result.seen
     assert all(r["min_price"] == 3.0 for r in result.summary)  # nor does it lower the usual price
+
+
+def test_buy_tip_says_buy_now_at_the_low_and_could_drop_on_a_falling_trend():
+    from datetime import date, timedelta
+
+    start = date(2026, 8, 8)
+    falling = [((start + timedelta(days=i)).isoformat(), 20.0 - i * 0.08) for i in range(90)]  # 20 -> 12.88
+    ct = [("2026-10-20", 14.0), ("2026-11-05", 13.5)]
+    assert deals.buy_tip(12.70, falling, ct) == "💡 Buy now · the lowest price in 90 days"
+    assert deals.buy_tip(15.0, falling, ct) == "💡 Could drop · Cardmarket down 16% in a month"
+    flat = [((start + timedelta(days=i)).isoformat(), 10.0) for i in range(90)]
+    assert deals.buy_tip(10.5, flat, []) == ""
+    assert deals.buy_tip(5.0, [], [("2026-10-20", 6.0), ("2026-11-05", 5.5)]) == "💡 Buy now · the lowest price since 20 Oct"

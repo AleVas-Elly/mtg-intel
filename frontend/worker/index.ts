@@ -38,7 +38,7 @@ interface Seen { at: string; browser: string; place: Place }
 const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
 const INVITE_MINUTES = 15;
-const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|purchases|prices-\d{1,2})$/;
+const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|purchases|targets|prices-\d{1,2})$/;
 // Want-list edits made on the site (D50): one KV key per waiting edit, so writes from different
 // places never overwrite each other; the GitHub job reads them all and reports which are done.
 const EDIT_PREFIX = "edit:";

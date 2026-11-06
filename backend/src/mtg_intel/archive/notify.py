@@ -29,6 +29,7 @@ class Rich:
     details: str = ""  # the caption's quote behind a tap (HTML)
     links: list[dict[str, str]] = field(default_factory=list)  # the marketplace and site buttons
     silent: bool = False  # arrives without ringing
+    tip: str = ""  # one line on timing: buy now, could drop (D55)
 
 NTFY_URL = "https://ntfy.sh"
 TELEGRAM_API = "https://api.telegram.org"
