@@ -14,25 +14,36 @@ NTFY_URL = "https://ntfy.sh"
 TELEGRAM_API = "https://api.telegram.org"
 
 
-def alert(client: httpx.Client, title: str, message: str) -> bool:
-    """Send to whichever channel is configured. Never raises."""
+def alert(client: httpx.Client, title: str, message: str,
+          telegram: tuple[str, list[list[dict[str, str]]]] | None = None) -> bool:
+    """Send to whichever channel is configured. Never raises. `telegram` is a richer version for
+    Telegram (HTML text and buttons, e.g. a deal's "Bought it"); ntfy gets title and message."""
     token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if token and chat_id:
+        if telegram and send_telegram(client, token, chat_id, telegram[0], html=True, buttons=telegram[1]):
+            return True
         return send_telegram(client, token, chat_id, f"{title}\n\n{message}")
     return send_alert(client, os.environ.get("NTFY_TOPIC"), title, message)
 
 
-def send_telegram(client: httpx.Client, token: str, chat_id: str, text: str) -> bool:
+def send_telegram(client: httpx.Client, token: str, chat_id: str, text: str, html: bool = False,
+                  buttons: list[list[dict[str, str]]] | None = None) -> bool:
+    body: dict = {"chat_id": chat_id, "text": text[:4096], "link_preview_options": {"is_disabled": True}}
+    if html:
+        body["parse_mode"] = "HTML"
+    if buttons:
+        body["reply_markup"] = {"inline_keyboard": buttons}
+    return telegram_call(client, token, "sendMessage", body) is not None
+
+
+def telegram_call(client: httpx.Client, token: str, method: str, body: dict) -> dict | None:
+    """One Bot API call; its result, or None when it failed. Never raises."""
     try:
-        response = client.post(
-            f"{TELEGRAM_API}/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text[:4096]},
-            timeout=20,
-        )
+        response = client.post(f"{TELEGRAM_API}/bot{token}/{method}", json=body, timeout=20)
         response.raise_for_status()
-        return True
-    except httpx.HTTPError:
-        return False
+        return response.json().get("result") or {}
+    except (httpx.HTTPError, ValueError):
+        return None
 
 
 def send_alert(client: httpx.Client, topic: str | None, title: str, message: str) -> bool:

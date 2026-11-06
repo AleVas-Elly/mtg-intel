@@ -162,6 +162,32 @@ def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
     assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&sellerCountry=23&language=1&minCondition=2&isFoil=N" in text
 
 
+def test_telegram_message_is_short_with_details_behind_a_tap_and_buttons():
+    deal = deals.best_deal(wish(scryfall_id="0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50", language="en", foil="no"),
+                           [listing(id=1, cents=288), listing(id=2, cents=450)])
+    html, buttons = deals.telegram(deal, "https://site.example/")
+    top, more = html.split("<blockquote expandable>")
+    assert top.splitlines() == ["✅ Good deal · 38% under", "<b>Loki, God of Mischief</b>", "€2.88 · usually €4.67",
+                                "MSH #343 · Borderless · NM · EN · Non-foil · Zero"]
+    assert "Cardmarket trend €4.67 (38% less)" in more and "Seller in IT · List: Marvel" in more
+    assert more.endswith("</blockquote>")
+    assert buttons[0] == [{"text": "🛒 Bought it", "callback_data": "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|en|no|288|NM|0|en"}]
+    assert [b["text"] for b in buttons[1]] == ["CardTrader", "Cardmarket", "Site"]
+    assert buttons[1][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
+
+
+def test_bought_button_data_fits_telegram_and_names_the_copy():
+    # Japanese wish of any finish, a foil Slightly Played copy: CardTrader's "jp" is the want-list's "ja".
+    deal = deals.best_deal(wish(scryfall_id="0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50", language="ja", min_condition="SP",
+                                max_price_eur=200.0),
+                           [listing(cents=12345, language="jp", foil=True, condition="Slightly Played")])
+    data = deals.bought_data(deal)
+    assert data == "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|ja|any|12345|SP|1|ja" and len(data.encode()) <= 64
+    assert deals.bought_data(deals.best_deal(wish(scryfall_id=None), [listing(cents=100)])).startswith("b|10|")
+    # Names in HTML are escaped.
+    assert "<b>R&amp;D's &lt;Secret&gt;</b>" in deals.telegram(deals.best_deal(wish(name="R&D's <Secret>"), [listing(cents=100)]))[0]
+
+
 def test_cardmarket_target_alerts_once_and_again_when_lower():
     alerted: dict = {}
     watch = [wish(max_price_eur=5.0), wish(scryfall_id="sf-x", max_price_eur=1.0)]

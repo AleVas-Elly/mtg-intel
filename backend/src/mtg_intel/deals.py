@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from statistics import median
 from typing import Any
+from urllib.parse import quote
 
 import duckdb
 import pyarrow as pa
@@ -353,17 +354,92 @@ def message(deal: Deal) -> tuple[str, str]:
         f"Open on CardTrader: https://www.cardtrader.com/cards/{w['blueprint_id']}",
     ]
     if w.get("cardmarket_id"):
-        params = [f"idProduct={w['cardmarket_id']}", f"sellerCountry={CM_SELLER_COUNTRY}"]
-        if w["language"] in CM_LANGUAGES:
-            params.append(f"language={CM_LANGUAGES[w['language']]}")
-        params.append(f"minCondition={CM_MIN_CONDITION.get(w['min_condition'], 2)}")
-        if w["foil"] in ("yes", "no"):
-            params.append(f"isFoil={'Y' if w['foil'] == 'yes' else 'N'}")
-        lines.append("Open on Cardmarket: https://www.cardmarket.com/en/Magic/Products?" + "&".join(params))
+        lines.append("Open on Cardmarket: " + cardmarket_url(w))
     if w.get("list"):
         lines.append(f"List: {w['list']}")
     pct = f" ({deal.below_pct:.0f}% under)" if deal.tier else ""
     return f"{label}: {w['name']} €{x.price:.2f}{pct}", "\n".join(line for line in lines if line)
+
+
+CONDITION_GRADE = {"Mint": "NM", "Near Mint": "NM", "Slightly Played": "SP", "Moderately Played": "MP",
+                   "Played": "PL", "Heavily Played": "PL", "Poor": "PO"}  # CardTrader words -> want-list grades
+CALLBACK_LIMIT = 64  # bytes Telegram allows in a button's callback data
+
+
+def bought_data(deal: Deal) -> str | None:
+    """What the "Bought it" button sends back (the site Worker reads it): the wish key and the
+    copy bought, packed under Telegram's 64 bytes. `b|<scryfall id without dashes, or blueprint>|
+    <wish language>|<wish foil>|<price in cents>|<grade>|<copy foil 1/0>|<copy language>`."""
+    x = deal.listing
+    card, language, foil = deal.key.split("|")
+    card = card.replace("-", "")
+    copy_language = {v: k for k, v in LANGUAGES.items()}.get(x.language, x.language)
+    data = "|".join(["b", card, language, foil, str(round(x.price * 100)),
+                     CONDITION_GRADE.get(x.condition, "NM"), "1" if x.foil else "0", copy_language])
+    return data if len(data.encode()) <= CALLBACK_LIMIT and "|" not in card else None
+
+
+def _h(text: object) -> str:
+    """Escape text for Telegram's HTML."""
+    return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def telegram(deal: Deal, site_url: str | None = None) -> tuple[str, list[list[dict[str, str]]]]:
+    """The deal as a Telegram message (user, 2026-11-06: less at once): the strength, card, price
+    and version up top, the reasoning in a quote that opens on a tap, and buttons for "Bought it"
+    and the marketplaces instead of long links."""
+    w, x = deal.wish, deal.listing
+    label = deal.tier[1] if deal.tier else "🎯 Target price"
+    head = f"{label} · {deal.below_pct:.0f}% under" if deal.tier else label
+    price = f"€{x.price:.2f}" + (f" · usually €{deal.reference:.2f}" if deal.reference else "")
+    version = [f"{(w.get('set_code') or '').upper()} #{w.get('collector_number')}" if w.get("set_code") else "",
+               ", ".join(t.capitalize() for t in w.get("special_tags") or []),
+               CONDITION_GRADE.get(x.condition, x.condition), x.language.upper(),
+               "Foil" if x.foil else "Non-foil", "Zero" if x.zero else ""]
+
+    def off(reference: float) -> str:
+        pct = (1 - x.price / reference) * 100
+        return f"{pct:.0f}% less" if pct >= 0 else f"{-pct:.0f}% more"
+
+    more = [deal.tier[2] if deal.tier else "At or under the price I set."]
+    if deal.tier:
+        more.append(f"A deal from {deal.floor:.0f}% under the usual price.")
+    if w.get("max_price_eur") is not None and x.price <= w["max_price_eur"]:
+        more.append(f"At or under my €{w['max_price_eur']:.2f} target.")
+    if deal.cardmarket:
+        more.append(f"Cardmarket trend €{deal.cardmarket:.2f} ({off(deal.cardmarket)})" if deal.cardmarket_trusted
+                    else f"Cardmarket trend €{deal.cardmarket:.2f} (looks wrong, not used)")
+    if deal.cardtrader:
+        more.append(f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f} ({off(deal.cardtrader)})")
+    more.append(cardmarket_context(w, x.foil).replace("Cardmarket: ", "Cardmarket "))
+    more.append(" · ".join(p for p in [f"Seller in {x.country}" if x.country else "",
+                                        f"List: {w['list']}" if w.get("list") else ""] if p))
+    html = "\n".join([
+        _h(head), f"<b>{_h(w['name'])}</b>", _h(price), _h(" · ".join(v for v in version if v)),
+        "<blockquote expandable>" + "\n".join(_h(m) for m in more if m) + "</blockquote>",
+    ])
+    buttons: list[list[dict[str, str]]] = []
+    data = bought_data(deal)
+    if data:
+        buttons.append([{"text": "🛒 Bought it", "callback_data": data}])
+    links = [{"text": "CardTrader", "url": f"https://www.cardtrader.com/cards/{w['blueprint_id']}"}]
+    if w.get("cardmarket_id"):
+        links.append({"text": "Cardmarket", "url": cardmarket_url(w)})
+    if site_url:
+        links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
+    buttons.append(links)
+    return html, buttons
+
+
+def cardmarket_url(w: dict[str, Any]) -> str:
+    """Cardmarket product page filtered to Dutch sellers and the wish's language, condition and foil."""
+    params = [f"idProduct={w['cardmarket_id']}", f"sellerCountry={CM_SELLER_COUNTRY}"]
+    if w["language"] in CM_LANGUAGES:
+        params.append(f"language={CM_LANGUAGES[w['language']]}")
+    params.append(f"minCondition={CM_MIN_CONDITION.get(w['min_condition'], 2)}")
+    if w["foil"] in ("yes", "no"):
+        params.append(f"isFoil={'Y' if w['foil'] == 'yes' else 'N'}")
+    return "https://www.cardmarket.com/en/Magic/Products?" + "&".join(params)
 
 
 def cardmarket_targets(watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime) -> list[tuple[str, str]]:

@@ -286,6 +286,17 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
   return json({ ok: true, bytes: text.length });
 }
 
+/** Telegram's webhook for the bot's buttons (D53): passed to the timer Worker, which holds the bot
+ *  token, checks Telegram's secret header and records the purchase. */
+async function telegram(request: Request, env: Env): Promise<Response> {
+  if (!env.TRIGGER || request.method !== "POST") return json({ error: "Not found" }, 404);
+  const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
+  return env.TRIGGER.fetch("https://trigger/telegram", {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": secret },
+    body: await request.text(),
+  });
+}
+
 /** Scryfall's set and mana symbol SVGs, from our own origin so CSS masks can colour them by rarity. */
 async function symbol(request: Request, path: string, ctx: ExecutionContext): Promise<Response> {
   if (!/^(sets|card-symbols)\/[A-Za-z0-9_-]{1,40}\.svg$/.test(path)) return new Response("Not found", { status: 404 });
@@ -318,6 +329,7 @@ export default {
       if (path.startsWith("/api/ingest/")) return await ingest(request, env, path.slice(12), url);
       if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
       if (path.startsWith("/sym/")) return await symbol(request, path.slice(5), ctx);
+      if (path === "/api/telegram") return await telegram(request, env);
       if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     } catch (e) {
       return json({ error: "Something went wrong on the server.", detail: String(e) }, 500);

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 from pathlib import Path
 
 import duckdb
@@ -263,6 +264,13 @@ def _purchase(wish_row: dict[str, str], purchase: dict[str, object]) -> tuple[di
         "price_eur": f"{price:.2f}", "market": p["market"], "cardmarket_trend_eur": trend,
         "list": wish_row.get("list", ""), "note": p.get("note", "").replace("\n", " "),
     }, None
+
+
+def ready_edits(ops: list[dict], now: datetime) -> tuple[list[dict], list[dict]]:
+    """The edits to apply now, and the ones held back: a purchase from the Telegram button waits
+    until its `hold_until`, so its Undo button still works."""
+    held = [op for op in ops if op.get("hold_until") and datetime.fromisoformat(op["hold_until"]) > now]
+    return [op for op in ops if op not in held], held
 
 
 def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[str, int],

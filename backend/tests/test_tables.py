@@ -388,3 +388,10 @@ def test_new_product_lists_rebuild_only_the_products_table(tmp_path: Path):
     report = build.build(raw, store, tmp_path / "staging", NOW)
 
     assert report.written == ["reference/cardmarket_products.parquet (2 rows)"]
+
+
+def test_a_purchase_from_telegram_waits_for_its_undo_window():
+    now = datetime(2026, 11, 6, 10, 0, tzinfo=UTC)
+    site, early, late = {"id": "a"}, {"id": "b", "hold_until": "2026-11-06T10:04:00.000Z"}, {
+        "id": "c", "hold_until": "2026-11-06T09:59:59.000Z"}
+    assert mycards.ready_edits([site, early, late], now) == ([site, late], [early])

@@ -2,6 +2,8 @@
 // at all; a workflow_dispatch call starts a run within seconds. The workflows keep their own
 // schedules as a fallback.
 
+import { telegramUpdate } from "./telegram.ts";
+
 const SCHEDULE = {
   "7,17,27,37,47,57 * * * *": ["deals.yml"], // deal check every 10 minutes
   "17 2,8,14 * * *": ["grab.yml"], // data grab 3 times a day
@@ -49,7 +51,9 @@ async function editsWaiting(env) {
   if (!env.DATA) return false;
   try {
     const listed = await env.DATA.list({ prefix: "edit:" });
-    return listed.keys.some((k) => Date.now() - Date.parse(k.name.slice(5, 29)) > EDITS_LATE_MS);
+    // A purchase from the Telegram button is held until `hold_until` so its Undo works (D53).
+    return listed.keys.some((k) => Date.now() - Date.parse(k.name.slice(5, 29)) > EDITS_LATE_MS
+      && !(k.metadata?.hold_until && Date.parse(k.metadata.hold_until) > Date.now()));
   } catch {
     return false; // never let the edit queue stop the deal check
   }
@@ -116,8 +120,9 @@ export default {
   },
 
   // No public URL: only the website Worker reaches this, through its service binding, right after
-  // I edit the want-list there.
+  // I edit the want-list there, and to pass on the bot's button taps (telegram.ts).
   async fetch(request, env) {
+    if (new URL(request.url).pathname === "/telegram") return telegramUpdate(request, env);
     if (request.method !== "POST" || new URL(request.url).pathname !== "/wantlist" || !env.GITHUB_TOKEN) {
       return new Response("Not found", { status: 404 });
     }

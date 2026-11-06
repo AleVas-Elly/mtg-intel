@@ -56,6 +56,7 @@ def main(argv: list[str] | None = None) -> int:
     wishlists.add_argument("--out", type=Path, default=REPO_ROOT / "data" / "my" / "wantlist.csv")
     commands.add_parser("sync-tables", help="download the tables to data/tables for querying")
     commands.add_parser("telegram-setup", help="find my chat with the bot and send a test message")
+    commands.add_parser("telegram-webhook", help="send the bot's button taps to the website (SITE_URL)")
     test_alert = commands.add_parser("alert", help="send an alert through the configured channel")
     test_alert.add_argument("title")
     test_alert.add_argument("message")
@@ -102,6 +103,8 @@ def main(argv: list[str] | None = None) -> int:
         return sync_tables()
     if args.command == "telegram-setup":
         return telegram_setup()
+    if args.command == "telegram-webhook":
+        return telegram_webhook()
     if args.command == "alert":
         with httpx.Client() as client:
             sent = alert(client, args.title, args.message)
@@ -429,6 +432,10 @@ def apply_site_edits() -> int:
             print("SITE_URL and SITE_INGEST_TOKEN must be set", file=sys.stderr)
             return 2
         ops = (site_store.get("edits") or {}).get("ops") or []
+        # A purchase from the Telegram button waits a few minutes, so its Undo still works.
+        ops, held = mycards.ready_edits(ops, datetime.now(UTC))
+        if held:
+            print(f"{len(held)} edits held for undo")
         if not ops:
             print("no edits waiting")
             return 0
@@ -465,7 +472,28 @@ def apply_site_edits() -> int:
                 site_store.put("purchases", site.purchases_doc(purchases, cards, datetime.now(UTC).replace(microsecond=0)))
             status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
         site_store.put("edits-applied", {"results": results})
+        telegram_edits_done(client, ops, results)
         return status
+
+
+def telegram_edits_done(client: httpx.Client, ops: list[dict], results: list[dict]) -> None:
+    """Purchases made with the Telegram button: once saved, the alert loses its Undo button; one
+    that could not be saved gets a reply saying why."""
+    from mtg_intel.archive.notify import telegram_call
+
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    by_id = {r["id"]: r for r in results}
+    for op in ops:
+        tg, result = op.get("tg"), by_id.get(op.get("id"))
+        if not token or not isinstance(tg, dict) or not result:
+            continue
+        markup = {"inline_keyboard": [tg["links"]] if tg.get("links") else []}
+        telegram_call(client, token, "editMessageReplyMarkup",
+                      {"chat_id": tg["chat"], "message_id": tg["message"], "reply_markup": markup})
+        if not result["ok"]:
+            telegram_call(client, token, "sendMessage", {
+                "chat_id": tg["chat"], "reply_parameters": {"message_id": tg["message"]},
+                "text": f"⚠️ This purchase was not saved: {result['message']}. Record it on the site instead."})
 
 
 PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c); phase 4's collection starts here
@@ -546,7 +574,9 @@ def check_deals(args: argparse.Namespace) -> int:
         result = deals.check(session, watch, alerted, now, history,
                              out_of_time=lambda: time.monotonic() - started > CARDTRADER_BUDGET.total_seconds())
         targets = deals.cardmarket_targets(watch, alerted, now)
-        messages = [deals.message(d) for d in result.new] + targets
+        site_url = os.environ.get("SITE_URL")
+        messages = ([(*deals.message(d), deals.telegram(d, site_url)) for d in result.new]
+                    + [(title, text, None) for title, text in targets])
         problems = []
         try:
             session.summary()
@@ -567,9 +597,9 @@ def check_deals(args: argparse.Namespace) -> int:
               f"{len(result.deals)} deals, {len(messages)} to alert, {len(result.failed_blueprints)} failed")
         if args.dry_run:
             return 0
-        sent = [alert(client, title, text) for title, text in messages[:MAX_DEAL_MESSAGES]]
+        sent = [alert(client, title, text, telegram=tg) for title, text, tg in messages[:MAX_DEAL_MESSAGES]]
         if len(messages) > MAX_DEAL_MESSAGES:
-            rest = [title for title, _ in messages[MAX_DEAL_MESSAGES:]]
+            rest = [title for title, _, _ in messages[MAX_DEAL_MESSAGES:]]
             sent.append(alert(client, f"{len(rest)} more deals", "\n".join(rest)))
         if sent:
             print(f"alerts sent: {sum(sent)} of {len(sent)}")
@@ -639,7 +669,11 @@ def telegram_setup() -> int:
         print("TELEGRAM_BOT_TOKEN is not set (add it to .env)", file=sys.stderr)
         return 2
     with httpx.Client(timeout=20) as client:
-        updates = client.get(f"{TELEGRAM_API}/bot{token}/getUpdates").json().get("result", [])
+        reply = client.get(f"{TELEGRAM_API}/bot{token}/getUpdates").json()
+        if reply.get("error_code") == 409:
+            print("the bot sends its updates to the website (telegram-webhook): TELEGRAM_CHAT_ID is already set up")
+            return 1
+        updates = reply.get("result", [])
         chats = [u["message"]["chat"]["id"] for u in updates if "message" in u]
         if not chats:
             print("no messages yet: send any message to your bot in Telegram, then run this again")
@@ -648,6 +682,27 @@ def telegram_setup() -> int:
         sent = send_telegram(client, token, chat_id, "mtg-intel: alerts will arrive here.")
     print(f"chat id: {chat_id} | test message sent: {sent}")
     return 0 if sent else 1
+
+
+def telegram_webhook() -> int:
+    """Point the bot's updates (button taps) at the website Worker, which checks Telegram's secret
+    header: the SHA-256 of "mtg-intel-webhook:" + the bot token, so no extra secret is needed."""
+    import hashlib
+
+    from mtg_intel.archive.notify import telegram_call
+
+    token, site_url = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("SITE_URL")
+    if not token or not site_url:
+        print("TELEGRAM_BOT_TOKEN and SITE_URL must be set", file=sys.stderr)
+        return 2
+    secret = hashlib.sha256(f"mtg-intel-webhook:{token}".encode()).hexdigest()
+    with httpx.Client() as client:
+        done = telegram_call(client, token, "setWebhook", {
+            "url": f"{site_url.rstrip('/')}/api/telegram", "secret_token": secret,
+            "allowed_updates": ["callback_query", "message"], "drop_pending_updates": True})
+        info = telegram_call(client, token, "getWebhookInfo", {}) or {}
+    print(f"webhook set: {done is not None} | url: {info.get('url')} | last error: {info.get('last_error_message')}")
+    return 0 if done is not None else 1
 
 
 if __name__ == "__main__":
