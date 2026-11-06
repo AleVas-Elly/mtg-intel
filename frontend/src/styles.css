@@ -365,6 +365,27 @@ img { display: block; }
 .kv + .kv { border-top: 0.5px solid var(--line); }
 .kv dt { color: var(--ink-2); }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+/* Settings: a device with a passkey, opens to who it is and a way to remove it */
+.dev + .dev, .dev + .kv { border-top: 0.5px solid var(--line); }
+.dev-row {
+  display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 16px; padding: 11px 14px;
+  border: 0; background: none; color: inherit; font: inherit; font-size: 14.5px; text-align: left; cursor: pointer;
+}
+.dev-row:hover { background: var(--fill); }
+.dev-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; color: var(--ink); }
+.dev-name small { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-name small:empty { display: none; }
+.dev-last { display: inline-flex; align-items: center; gap: 6px; flex: none; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.dev-chev { width: 15px; height: 15px; color: var(--ink-3); transform: rotate(180deg); transition: transform 0.25s var(--ease); }
+.dev-row[aria-expanded="true"] .dev-chev { transform: rotate(270deg); }
+.dev-info { margin: 0 14px 12px; border-radius: 11px; background: var(--fill); overflow: hidden; animation: pop 0.25s var(--spring); }
+.dev-info .kv { padding: 9px 12px; font-size: 13.5px; }
+.dev-info .hint { margin: 0; padding: 9px 12px; border-top: 0.5px solid var(--line); }
+.dev-remove {
+  display: block; width: 100%; padding: 10px 12px; border: 0; border-top: 0.5px solid var(--line); background: none;
+  color: var(--bad); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.dev-remove:hover { background: var(--fill); }
 .markets { display: grid; grid-template-columns: 1fr 1fr; }
 .market { padding: 14px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .market + .market { border-left: 0.5px solid var(--line); }

@@ -10,6 +10,7 @@ import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
 import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
 import { BoughtSheet } from "../ui/BoughtSheet";
+import { Confirm } from "../ui/Confirm";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import type { CtHistoryDoc, HistoryDoc, RecentDoc, Wish } from "../types";
 
@@ -200,29 +201,6 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
           action="Remove" onCancel={() => setConfirming(false)} onConfirm={() => { setConfirming(false); remove(w, data); }} />
       )}
     </>
-  );
-}
-
-/** A small question before something hard to take back. */
-function Confirm({ title, text, action, onCancel, onConfirm }: {
-  title: string; text: string; action: string; onCancel: () => void; onConfirm: () => void;
-}) {
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
-    addEventListener("keydown", esc);
-    return () => removeEventListener("keydown", esc);
-  }, []);
-  return (
-    <div class="sheet-wrap center" role="presentation" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div class="confirm" role="alertdialog" aria-modal="true" aria-label={title}>
-        <h2>{title}</h2>
-        <p>{text}</p>
-        <div class="confirm-actions">
-          <button class="btn" type="button" onClick={onCancel} autoFocus>Cancel</button>
-          <button class="btn danger" type="button" onClick={onConfirm}>{action}</button>
-        </div>
-      </div>
-    </div>
   );
 }
 

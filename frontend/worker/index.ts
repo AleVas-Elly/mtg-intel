@@ -18,6 +18,8 @@ interface Env {
   TRIGGER?: Fetcher; // the timer Worker (service binding): starts the GitHub workflow that applies edits
 }
 
+interface Place { city?: string; country?: string }
+
 interface Passkey {
   id: string;
   publicKey: string; // base64url
@@ -25,7 +27,13 @@ interface Passkey {
   transports?: AuthenticatorTransportFuture[];
   device: string;
   created: string;
+  browser?: string; // "Safari on macOS", at creation (passkeys made before 2026-11-06 lack it)
+  place?: Place; // where it was created, from Cloudflare's guess for the IP
+  aaguid?: string; // which passkey app holds it
 }
+
+/** Last time a device used the site: one KV key per passkey, written at most every few hours. */
+interface Seen { at: string; browser: string; place: Place }
 
 const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
@@ -37,6 +45,26 @@ const EDIT_PREFIX = "edit:";
 const EDITS_FAILED = "edits:failed";
 const MAX_EDITS = 200;
 const PASSKEYS = "auth:passkeys";
+const SEEN_PREFIX = "auth:seen:";
+const SEEN_HOURS = 6;
+// A brand-new session is trusted for a moment even if this location's copy of the passkey list
+// doesn't show its passkey yet; after that, a removed passkey's sessions stop working.
+const FRESH_SESSION_MS = 2 * 60e3;
+// Passkey apps by AAGUID (the ones I'm likely to use; others show no app name).
+const PASSKEY_APPS: Record<string, string> = {
+  "fbfc3007-154e-4ecc-8c0b-6e020557d7bd": "iCloud Keychain",
+  "dd4ec289-e01d-41c9-bb89-70fa845d4bf2": "iCloud Keychain",
+  "ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4": "Google Password Manager",
+  "adce0002-35bc-c60a-648b-0b25f1f05503": "Chrome on Mac",
+  "08987058-cadc-4b81-b6e1-30de50dcbe96": "Windows Hello",
+  "9ddd1817-af5a-4672-a2b9-3e3dd95000a9": "Windows Hello",
+  "6028b017-b1d4-4c02-b4b3-afcdafc96bb2": "Windows Hello",
+  "bada5566-a7aa-401f-bd96-45619a55120d": "1Password",
+  "d548826e-79b4-db40-a3d8-11116f7e8349": "Bitwarden",
+  "531126d6-e717-415c-9320-3d9aa6981239": "Dashlane",
+  "53414d53-554e-4700-0000-000000000000": "Samsung Pass",
+  "50726f74-6f6e-5061-7373-50726f746f6e": "Proton Pass",
+};
 
 const json = (body: unknown, status = 200, headers: HeadersInit = {}) =>
   new Response(JSON.stringify(body), {
@@ -61,13 +89,51 @@ async function passkeys(env: Env): Promise<Passkey[]> {
   return (await env.DATA.get<Passkey[]>(PASSKEYS, "json")) || [];
 }
 
+/** The passkey this browser signed in with, or null. A session ends when its passkey is removed. */
+async function sessionCred(request: Request, env: Env): Promise<string | null> {
+  const token = await verify<{ cred: string; exp: number }>(env.SESSION_SECRET, readCookie(request, "sid"));
+  if (!token) return null;
+  if (token.exp - SESSION_DAYS * 864e5 > Date.now() - FRESH_SESSION_MS) return token.cred;
+  return (await passkeys(env)).some((p) => p.id === token.cred) ? token.cred : null;
+}
+
 async function signedIn(request: Request, env: Env): Promise<boolean> {
-  return (await verify(env.SESSION_SECRET, readCookie(request, "sid"))) !== null;
+  return (await sessionCred(request, env)) !== null;
 }
 
 async function session(env: Env, credential: string): Promise<string> {
   const token = await sign(env.SESSION_SECRET, { cred: credential, exp: Date.now() + SESSION_DAYS * 864e5 });
   return cookie("sid", token, SESSION_DAYS * 86400);
+}
+
+function place(request: Request): Place {
+  const cf = request.cf as IncomingRequestCfProperties | undefined;
+  return { city: cf?.city || undefined, country: cf?.country || undefined };
+}
+
+function browserName(request: Request): string {
+  const ua = request.headers.get("User-Agent") || "";
+  const os = /iPhone/.test(ua) ? "iOS" : /iPad/.test(ua) ? "iPadOS" : /Android/.test(ua) ? "Android"
+    : /Macintosh/.test(ua) ? "macOS" : /Windows/.test(ua) ? "Windows" : /CrOS/.test(ua) ? "ChromeOS"
+    : /Linux/.test(ua) ? "Linux" : "";
+  const app = /Edg[A]?\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /SamsungBrowser/.test(ua) ? "Samsung Internet"
+    : /Firefox|FxiOS/.test(ua) ? "Firefox" : /Chrome|CriOS/.test(ua) ? "Chrome" : /Safari/.test(ua) ? "Safari" : "";
+  return [app, os].filter(Boolean).join(" on ") || "Unknown browser";
+}
+
+async function markSeen(request: Request, env: Env, cred: string): Promise<string> {
+  const seen: Seen = { at: new Date().toISOString(), browser: browserName(request), place: place(request) };
+  await env.DATA.put(SEEN_PREFIX + cred, JSON.stringify(seen));
+  return cookie("seen", "1", SEEN_HOURS * 3600);
+}
+
+async function devices(env: Env, current: string | null) {
+  const list = await passkeys(env);
+  const seen = await Promise.all(list.map((p) => env.DATA.get<Seen>(SEEN_PREFIX + p.id, "json")));
+  return list.map((p, i) => ({
+    id: p.id, device: p.device, created: p.created, browser: p.browser ?? null, place: p.place ?? null,
+    app: (p.aaguid && PASSKEY_APPS[p.aaguid]) || null, seen: seen[i], current: p.id === current,
+  }));
 }
 
 function deviceName(request: Request): string {
@@ -92,7 +158,10 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
   const body = request.method === "POST" ? ((await request.json().catch(() => ({}))) as Record<string, any>) : {};
 
   if (path === "status") {
-    return json({ signedIn: await signedIn(request, env), passkeys: (await passkeys(env)).length });
+    const cred = await sessionCred(request, env);
+    // Note when each device was last here, at most every few hours (KV writes are limited).
+    const headers: HeadersInit = cred && !readCookie(request, "seen") ? { "Set-Cookie": await markSeen(request, env, cred) } : {};
+    return json({ signedIn: cred !== null, passkeys: (await passkeys(env)).length }, 200, headers);
   }
 
   if (path === "register/options") {
@@ -130,17 +199,19 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
     if (!result.verified || !("registrationInfo" in result) || !result.registrationInfo) {
       return json({ error: "The passkey could not be checked. Try again." }, 400);
     }
-    const { credential } = result.registrationInfo;
+    const { credential, aaguid } = result.registrationInfo;
     const list = (await passkeys(env)).filter((p) => p.id !== credential.id);
     list.push({
       id: credential.id, publicKey: b64url(credential.publicKey), counter: credential.counter,
       transports: credential.transports, device: deviceName(request), created: new Date().toISOString(),
+      browser: browserName(request), place: place(request), aaguid,
     });
     await env.DATA.put(PASSKEYS, JSON.stringify(list));
     await env.DATA.put(`auth:used:${chal.invite}`, "1", { expirationTtl: INVITE_MINUTES * 60 * 2 });
     const headers = new Headers({ "Content-Type": "application/json" });
     headers.append("Set-Cookie", await session(env, credential.id));
     headers.append("Set-Cookie", cookie("chal", "", 0));
+    headers.append("Set-Cookie", await markSeen(request, env, credential.id));
     return new Response(JSON.stringify({ ok: true }), { headers });
   }
 
@@ -157,7 +228,7 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
     if (!chal || chal.kind !== "auth") return json({ error: "Sign-in took too long. Try again." }, 403);
     const list = await passkeys(env);
     const found = list.find((p) => p.id === body.response?.id);
-    if (!found) return json({ error: "This passkey isn't registered for mtg-intel." }, 403);
+    if (!found) return json({ error: "This passkey isn't registered for mtg-intel.", unknown: true }, 403);
     const result = await verifyAuthenticationResponse({
       response: body.response, expectedChallenge: chal.c, expectedOrigin: origin, expectedRPID: rpID,
       credential: { id: found.id, publicKey: fromB64url(found.publicKey), counter: found.counter, transports: found.transports },
@@ -172,15 +243,28 @@ async function auth(request: Request, env: Env, path: string, url: URL): Promise
     const headers = new Headers({ "Content-Type": "application/json" });
     headers.append("Set-Cookie", await session(env, found.id));
     headers.append("Set-Cookie", cookie("chal", "", 0));
+    headers.append("Set-Cookie", await markSeen(request, env, found.id));
     return new Response(JSON.stringify({ ok: true }), { headers });
   }
 
-  if (!(await signedIn(request, env))) return json({ error: "Sign in first." }, 401);
+  const me = await sessionCred(request, env);
+  if (!me) return json({ error: "Sign in first." }, 401);
 
   if (path === "invite" && request.method === "POST") return json(await invite(env, origin));
 
-  if (path === "devices") {
-    return json((await passkeys(env)).map(({ id, device, created }) => ({ id: id.slice(0, 8), device, created })));
+  if (path === "devices") return json(await devices(env, me));
+
+  const removing = /^devices\/([A-Za-z0-9_-]{8,512})$/.exec(path);
+  if (removing && request.method === "DELETE") {
+    // Remove a device's passkey: it can't sign in again, and its sessions stop working.
+    const list = await passkeys(env);
+    if (!list.some((p) => p.id === removing[1])) return json({ error: "That device was already removed." }, 404);
+    if (list.length <= 1) return json({ error: "This is the only device with a passkey. Add another one first." }, 409);
+    await env.DATA.put(PASSKEYS, JSON.stringify(list.filter((p) => p.id !== removing[1])));
+    await env.DATA.delete(SEEN_PREFIX + removing[1]);
+    const self = removing[1] === me;
+    return json({ devices: self ? [] : await devices(env, me), signedOut: self }, 200,
+      self ? { "Set-Cookie": cookie("sid", "", 0) } : {});
   }
 
   if (path === "logout" && request.method === "POST") {

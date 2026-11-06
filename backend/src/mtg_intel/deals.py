@@ -519,27 +519,14 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
     if not preview:
         lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
 
-    # The details, behind a tap: the price trends, then why it is a deal and where the copy is. Each
-    # section starts with a bold title and a blank line sits between them (user, 2026-11-06).
-    why = [] if deal.tier else ["At or under the price I set."]
-    if deal.tier:
-        why.append(f"Judged against the higher usual price, €{deal.reference:.2f}; a deal from {deal.floor:.0f}% under.")
-    if w.get("max_price_eur") is not None and x.price <= w["max_price_eur"]:
-        why.append(f"At or under my €{w['max_price_eur']:.2f} target.")
-    if deal.cardmarket:
-        why.append("Cardmarket's prices come from its daily list: any seller, condition and language.")
-    country = COUNTRIES.get(x.country, x.country)
-    if x.seller:
-        why.append(f"Seller: {x.seller}" + (f" ({country})" if country else ""))
-    elif country:
-        why.append(f"Seller in {country}")
-    if w.get("list"):
-        why.append(f"List: {w['list']}")
-    sections = [s for s in (history or []) if s] + [["ℹ️ Why it's a deal" if deal.tier else "ℹ️ Why this alert", *why]]
-    details = "<blockquote expandable>" + "\n\n".join(
+    # The details, behind a tap: the price trends, each a section with a bold title, a blank line
+    # between them (user, 2026-11-06; "why it's a deal", the seller and the list were dropped).
+    sections = [s for s in (history or []) if s]
+    details = ("<blockquote expandable>" + "\n\n".join(
         "\n".join([f"<b>{_h(section[0])}</b>", *(_h(line) for line in section[1:])]) for section in sections
-    ) + "</blockquote>"
-    lines += ["", details]
+    ) + "</blockquote>") if sections else ""
+    if details:
+        lines += ["", details]
     buttons: list[list[dict[str, str]]] = []
     data = bought_data(deal)
     if data:
@@ -551,7 +538,7 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
         links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
     buttons.append(links)
     label = f"{deal.tier[1]} · " if deal.tier else "🎯 Target · "
-    caption = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}\n\n{details}"
+    caption = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}" + (f"\n\n{details}" if details else "")
     return Rich("\n".join(lines), buttons, preview, photo, caption)
 
 

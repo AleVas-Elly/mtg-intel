@@ -44,12 +44,21 @@ export function Gate({ auth, onIn }: { auth: Auth; onIn: () => void }) {
   };
   const signIn = async () => {
     setBusy(true); setError(null);
+    let id: string | undefined;
     try {
       const options = await post<any>("/api/auth/login/options");
       const response = await startAuthentication({ optionsJSON: options });
+      id = response.id;
       await post("/api/auth/login/verify", { response });
       done();
-    } catch (e) { setError(friendly(e)); } finally { setBusy(false); }
+    } catch (e) {
+      setError(friendly(e));
+      // A passkey removed in Settings: ask the browser to drop it from its password manager too.
+      if (id && /isn't registered/.test((e as Error)?.message || "")) {
+        const pk = PublicKeyCredential as unknown as { signalUnknownCredential?: (o: { rpId: string; credentialId: string }) => Promise<void> };
+        pk.signalUnknownCredential?.({ rpId: location.hostname, credentialId: id }).catch(() => {});
+      }
+    } finally { setBusy(false); }
   };
   const register = async () => {
     setBusy(true); setError(null);
