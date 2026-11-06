@@ -294,8 +294,11 @@ img { display: block; }
 
 .card-big {
   width: min(100%, 300px, 30svh); margin: 0 auto; border-radius: 4.75% / 3.4%; position: relative;
-  box-shadow: 0 30px 60px -18px rgba(0, 0, 0, 0.6), var(--card-edge, 0 0 0 0 transparent); transform-style: preserve-3d; will-change: transform;
-  transition: transform 0.6s var(--ease);
+  /* the aura: the card's colour glowing softly around its edges, then the lift */
+  box-shadow: 0 0 36px 2px var(--aura-glow, transparent), 0 0 120px 24px color-mix(in srgb, var(--aura, #2a2a2e) 14%, transparent),
+    0 26px 50px -18px rgba(0, 0, 0, 0.42), var(--card-edge, 0 0 0 0 transparent);
+  transform-style: preserve-3d; will-change: transform;
+  transition: transform 0.6s var(--ease), box-shadow 0.6s var(--smooth);
 }
 .card-big .thumb { width: 100%; border-radius: inherit; }
 
@@ -464,10 +467,18 @@ img { display: block; }
 .detail-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.45); animation: fade var(--t-pane) var(--out); }
 .detail {
   --f: var(--field);
+  /* the card's colour, as a soft aura around its picture (the pane itself stays neutral): the field
+     as it is on warm white, lifted toward white on the dark ground where a dark glow would vanish */
+  --aura: var(--f);
+  --aura-glow: color-mix(in srgb, var(--aura) 46%, transparent);
   position: fixed; z-index: 61; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--bg);
   animation: rise var(--t-pane) var(--out);
   padding: 0 max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
 }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .detail { --aura: color-mix(in oklch, var(--f) 70%, #fff); }
+}
+:root[data-theme="dark"] .detail { --aura: color-mix(in oklch, var(--f) 70%, #fff); }
 @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
 @keyframes fade { from { opacity: 0; } }
 @keyframes slide { from { transform: translateX(48px); opacity: 0; } }
@@ -479,23 +490,16 @@ img { display: block; }
   .detail-backdrop { display: none; }
   .detail { position: sticky; top: 0; height: 100dvh; box-shadow: none; animation: none; z-index: 1; border-left: 1px solid var(--line); }
 }
-/* the card's own colour field at the top of the pane */
+/* the card sits on the pane's own ground; its colour comes back as an aura around the picture (see .card-big) */
 .d-stage {
   margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
-  padding: 4px 16px 26px; background: var(--f); color: #fff; transition: background-color 0.6s var(--smooth);
+  padding: 4px 16px 26px; color: var(--ink);
 }
 .d-top {
   display: flex; justify-content: space-between; align-items: center; position: sticky; z-index: 3;
-  top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--f); color: #fff;
-  transition: background-color 0.6s var(--smooth);
+  top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--bg); color: var(--ink);
 }
-.d-top .icon-btn { background: rgba(255, 255, 255, 0.16); color: #fff; }
-.d-top .icon-btn:hover { background: rgba(255, 255, 255, 0.26); }
-.d-stage .d-name, .d-stage .d-type, .d-stage .d-version { color: #fff; }
-.d-stage .d-type { color: rgba(255, 255, 255, 0.75); }
-.d-stage .chip { background: rgba(255, 255, 255, 0.16); color: #fff; }
 .d-stage .chip.warn { background: #ffb35c; color: #241300; }
-.d-stage .set-sym { filter: drop-shadow(0 0 0.7px rgba(255, 255, 255, 0.8)); }
 .d-name { text-align: center; margin: 20px 0 4px; font-weight: 800; font-stretch: 112%; font-size: 26px; line-height: 1.08; letter-spacing: -0.03em; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
 .d-type { text-align: center; color: var(--ink-2); font-size: 13.5px; }
 .d-version { display: flex; justify-content: center; align-items: center; gap: 7px; flex-wrap: wrap; margin: 12px 0 0; font-size: 13.5px; color: var(--ink-2); }
@@ -953,7 +957,6 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .sheet .filters { padding-bottom: 8px; }
 .sheet .f-opt { min-height: 42px; font-size: 15px; }
 .d-top + .d-stage, .d-top + .pane-mode > .d-stage { margin-top: -10px; }
-.d-stage .hint { color: rgba(255, 255, 255, 0.72); }
 .drop.line .stamp { right: auto; left: 40px; }
 @media (max-width: 640px) { .drop.line .stamp { left: 14px; top: 44px; } }
 .hero .art { order: -1; }
@@ -978,10 +981,11 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .hero .acts { flex-wrap: nowrap; }
 /* a stamp that sits in the flow (the pane, the landing) */
 .stamp.still { position: static; translate: none; rotate: -6deg; align-self: flex-start; animation: none; }
-.d-gone { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 14px; color: rgba(255, 255, 255, 0.85); }
-.d-gone .stamp { border-color: #ff8a80; color: #ff8a80; font-size: 14px; }
+.d-gone { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 14px; color: var(--ink-2); }
+.d-gone .stamp { border-color: var(--stamp); color: var(--stamp); font-size: 14px; }
 .d-gone s { opacity: 0.8; }
-.detail.was-deal .d-stage, .detail.was-deal .d-top { background: color-mix(in srgb, var(--f) 45%, #2a2a2e); }
+/* a gone deal keeps a fainter aura: the card is still there, the drop is not */
+.detail.was-deal { --aura-glow: color-mix(in srgb, var(--aura) 18%, transparent); }
 /* review round 2: drops stay smaller than the hero; foil shimmers when touched, not forever; Steal shines twice */
 .drop-row { grid-template-columns: repeat(auto-fill, minmax(240px, 300px)); }
 .foil::after { animation: none; }
