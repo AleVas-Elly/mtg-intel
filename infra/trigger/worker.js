@@ -3,10 +3,12 @@
 // schedules as a fallback.
 
 import { telegramUpdate } from "./telegram.ts";
+import { fastLane } from "./fastlane.ts";
 
 const SCHEDULE = {
   "2,7,12,17,22,27,32,37,42,47,52,57 * * * *": ["deals.yml"], // deal check every 5 minutes (D55)
   "17 2,8,14 * * *": ["grab.yml"], // data grab 3 times a day
+  "* * * * *": [], // the fast lane: the cards closest to a deal, every minute (D58)
 };
 
 // GitHub's API answers 5xx now and then (a 502 on 2026-11-04): try again before calling it a problem.
@@ -98,6 +100,11 @@ async function telegram(env, text) {
 export default {
   async scheduled(event, env) {
     if (!env.GITHUB_TOKEN) return; // not set up yet
+    if (event.cron === "* * * * *") {
+      const found = await fastLane(env).catch(() => []);
+      if (found.length) await dispatch(env, "deals.yml"); // a full check alerts it, the usual way
+      return;
+    }
     const problems = [];
     const workflows = [...(SCHEDULE[event.cron] || [])];
     if (workflows.includes("deals.yml") && (await editsWaiting(env))) workflows.push("wantlist.yml");
@@ -123,7 +130,7 @@ export default {
   // I edit the want-list there, and to pass on the bot's button taps (telegram.ts).
   async fetch(request, env) {
     if (new URL(request.url).pathname === "/telegram") {
-      return telegramUpdate(request, env, () => dispatch(env, "wantlist.yml"));  // an edit from a button: apply it now
+      return telegramUpdate(request, env, () => dispatch(env, "wantlist.yml"), () => dispatch(env, "deals.yml"));
     }
     if (request.method !== "POST" || new URL(request.url).pathname !== "/wantlist" || !env.GITHUB_TOKEN) {
       return new Response("Not found", { status: 404 });

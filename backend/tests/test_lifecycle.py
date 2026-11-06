@@ -106,7 +106,9 @@ def test_caption_names_the_copy_and_crosses_out_a_finished_deal():
                                               "14:00</b>\n\n<blockquote expandable>x</blockquote>")
     assert lifecycle.caption(alert, "❌ Sold out", done=True).startswith("<s>🚨 Steal · <b>Esika</b> · €9.29</s>")
     assert lifecycle.caption(alert, "✅ Bought for €9.29", done=True).startswith("🚨 Steal")
-    assert lifecycle.keyboard(alert, done=False)[0][0]["url"] == lifecycle.CART_URL
+    open_rows = lifecycle.keyboard(alert | {"product_id": 77}, done=False)
+    assert open_rows[0][0]["url"] == lifecycle.CART_URL
+    assert [b["callback_data"] for b in open_rows[1]] == ["s|77", "c|77"]
     assert lifecycle.keyboard(alert, done=True) == [alert["links"]]
 
 
@@ -239,3 +241,17 @@ def test_zero_box_purchases_are_recorded_and_refunds_taken_back():
     box[0]["quantity"] = {"missing": 1}  # not available after all: refunded
     undo, bought = lifecycle.purchase_edits(lifecycle.box_orders(box), [wish()], book, NOW + timedelta(hours=1))
     assert [(e["op"], e["note"]) for e in undo] == [("unbought", "Zero box 9 #500")] and bought == {}
+
+
+def test_fast_lane_lists_the_cards_closest_to_a_deal_with_what_the_timer_needs():
+    from test_deals import fake_session, item
+
+    watch = [wish(), wish(scryfall_id="sf-b", blueprint_id=11, language="ja", foil="yes", min_condition="SP", via_zero="no")]
+    listings = {10: [item(id=1, cents=400), item(id=9, cents=100)], 11: [item(id=2, cents=430, language="jp", foil=True)]}
+    result = deals.check(fake_session(listings), watch, {}, NOW, ignore={9})
+    fast = lifecycle.fast_lane(result, watch, {"9": NOW.isoformat()})
+    assert [f["bp"] for f in fast] == [10, 11]  # 400 vs 4.67 is 14% under (16 points short) vs 11% for 430 vs 4.83
+    loki = fast[0]
+    assert (loki["lang"], loki["foil"], loki["grade"], loki["zero"], loki["ref"], loki["floor"], loki["best"], loki["gone"]) == \
+        ("en", "any", 1, True, 4.67, 30.0, 4.0, [9])
+    assert (fast[1]["lang"], fast[1]["foil"], fast[1]["grade"], fast[1]["zero"]) == ("jp", "yes", 2, False)

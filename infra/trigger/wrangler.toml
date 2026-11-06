@@ -4,7 +4,7 @@ compatibility_date = "2025-06-01"
 workers_dev = false
 
 [triggers]
-crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *", "17 2,8,14 * * *"]
+crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *", "17 2,8,14 * * *", "* * * * *"]
 
 # The website's KV (frontend/wrangler.toml): read to see want-list edits waiting (D50) and the time of
 # the last deal check (watchdog). Written: `watchdog`, and purchases from the bot's "Bought it" button
@@ -17,4 +17,4 @@ id = "fe194e1ee4754791801ac6024a93905a"
 GITHUB_REPO = "AleVas-Elly/mtg-intel"
 
 # Secrets (wrangler secret put): GITHUB_TOKEN (fine-grained, this repo only, Actions: read and write),
-# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
+# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, CARDTRADER_TOKEN (Skip, Check now, the fast lane: D58).

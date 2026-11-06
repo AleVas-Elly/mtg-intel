@@ -214,13 +214,20 @@ def export_site(store, staged: Path, written: list[str], now: datetime, force: b
         found = local if local.exists() else store.fetch(path, fresh=False)
         return pq.read_table(found) if found else None
 
+    def purchases() -> str | None:
+        from mtg_intel.tables import mycards
+
+        found = store.fetch(PURCHASES)
+        return mycards.read_text(found) if found else None
+
     with httpx.Client() as client:
         target = site.Site.from_env(client)
         if target is None:
             return
         try:
             days = (store.read_state().get("days") or {}).get("cardmarket") or {}
-            sent = site.export_tables(target, load, written, now, force=force, latest_day=max(days, default=None))
+            sent = site.export_tables(target, load, written, now, force=force, latest_day=max(days, default=None),
+                                      purchases=purchases)
         except httpx.HTTPError as e:
             print(f"WARNING  site not updated: {e}", file=sys.stderr)
             return
@@ -481,7 +488,11 @@ def apply_site_edits() -> int:
                 files.append((PURCHASES, out_purchases))
             store.put(files, f"want-list: {sum(r['ok'] for r in results)} edits from the site")
             if changed_purchases:
-                site_store.put("purchases", site.purchases_doc(purchases, cards, datetime.now(UTC).replace(microsecond=0)))
+                # With the latest Cardmarket day, so a new purchase shows what it is worth now too.
+                latest = max((store.read_state().get("days") or {}).get("cardmarket") or {}, default=None)
+                day_path = store.fetch(f"prices/cardmarket/{latest[:4]}/{latest}.parquet", fresh=False) if latest else None
+                site_store.put("purchases", site.purchases_doc(purchases, cards, datetime.now(UTC).replace(microsecond=0),
+                                                               pq.read_table(day_path) if day_path else None, latest))
             if text != before:
                 status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
         site_store.put("edits-applied", {"results": results})
@@ -597,6 +608,11 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
         sent.append(ok)
         if ok and out.message_id:
             alerts[str(out.message_id)] = record | {"message_id": out.message_id, "line": line}
+            if out.stamps and site_store:  # for Skip in the timer Worker: the picture to swap in
+                try:
+                    site_store.put(f"tgimg/{chat}/{out.message_id}", out.stamps)
+                except httpx.HTTPError as e:
+                    print(f"WARNING  done pictures not linked: {e}", file=sys.stderr)
         elif status == "added":  # not alerted: don't leave it in my cart
             account.remove(d.listing.id)
     lifecycle.prune(alerts, now)
@@ -832,7 +848,11 @@ def check_deals(args: argparse.Namespace) -> int:
                 print(f"WARNING  target suggestions failed: {e}", file=sys.stderr)
         if site_store:
             try:  # the website's copy (D49); a failure here never stops the alerts or the saved check
-                site_store.put("live", site.live_doc(result, watch, now, site_store.get("live")))
+                from mtg_intel import lifecycle
+
+                live = site.live_doc(result, watch, now, site_store.get("live"))
+                live["fast"] = lifecycle.fast_lane(result, watch, state.get("gone", {}))  # the timer's minute checks
+                site_store.put("live", live)
                 if now.minute % 10 < 5:  # every other check: the 48-hour chart keeps 10-minute steps,
                     # and the site's free 1,000 writes a day stay well away
                     site_store.put("ct-recent", site.ct_recent_doc(site_store.get("ct-recent"), result, now))

@@ -330,7 +330,12 @@ def caption(alert: dict[str, Any], line: str, done: bool = False) -> str:
 
 
 def keyboard(alert: dict[str, Any], done: bool) -> list[list[dict[str, str]]]:
-    rows = [] if done else [[{"text": "🧾 Pay on CardTrader", "url": CART_URL}]]
+    """Open: Pay, then Skip (that copy leaves my cart and won't alert again) and Check now (a live
+    look at my cart), both handled by the timer Worker (D58); then the links. Done: the links."""
+    pid = alert.get("product_id")
+    rows = [] if done else [[{"text": "🧾 Pay on CardTrader", "url": CART_URL}],
+                            [{"text": "✕ Skip", "callback_data": f"s|{pid}"},
+                             {"text": "🔄 Check now", "callback_data": f"c|{pid}"}]]
     return rows + ([alert["links"]] if alert.get("links") else [])
 
 
@@ -427,6 +432,33 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
                 finish(other, Verdict("got_it", "✓ You already bought this card"), telegram, account, now)
                 log.append(f"{other['name']}: already bought")
     return log
+
+
+FAST_CARDS = 15  # cards the timer Worker checks every minute (D58)
+
+
+def fast_lane(result: deals.CheckResult, watch: list[dict[str, Any]], gone: dict[str, str]) -> list[dict[str, Any]]:
+    """The cards closest to a deal that aren't one yet, with what the timer Worker needs to judge a
+    copy on its own every minute: the wish's language, finish, worst condition and Zero, the usual
+    price and the % under needed (or the target), the cheapest copy this check saw, and the copies
+    the cart said are gone. A copy it finds is handed back to a full check, which alerts."""
+    current = {d.key for d in result.deals}
+    wishes = {deals.wish_key(w): w for w in watch}
+    gone_ids = {int(p) for p in gone}
+    near = sorted(((k, a) for k, a in result.assessed.items()
+                   if k in wishes and k not in current and a.reference and a.below_pct is not None),
+                  key=lambda ka: ka[1].floor - ka[1].below_pct)[:FAST_CARDS]
+    out = []
+    for key, a in near:
+        w = wishes[key]
+        language = w.get("language") or "any"
+        out.append({"bp": w["blueprint_id"], "key": key,
+                    "lang": "any" if language == "any" else deals.LANGUAGES.get(language, language),
+                    "foil": w.get("foil") or "any", "grade": deals.GRADE.get(w.get("min_condition") or "NM", 1),
+                    "zero": w.get("via_zero") == "yes", "ref": round(a.reference, 2), "floor": a.floor,
+                    "max": w.get("max_price_eur"), "best": a.listing.price,
+                    "gone": sorted(p for p in gone_ids if p in result.seen_by.get(w["blueprint_id"], set()))})
+    return out
 
 
 def prune(alerts: dict[str, dict], now: datetime) -> None:

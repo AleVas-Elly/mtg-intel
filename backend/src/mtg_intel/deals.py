@@ -244,6 +244,7 @@ class CheckResult:
     usual: dict[str, tuple[float | None, str]] = field(default_factory=dict)  # wish key -> CardTrader reference
     assessed: dict[str, Assessment] = field(default_factory=dict)  # wish key -> how close to a deal
     seen: set[int] = field(default_factory=set)  # every listing ID this check saw (live alerts, D54)
+    seen_by: dict[int, set[int]] = field(default_factory=dict)  # blueprint -> listing IDs, ghosts included
 
 
 def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) -> list[dict[str, Any]]:
@@ -285,8 +286,9 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
         if not isinstance(body, dict):
             result.failed_blueprints.append(blueprint_id)
             continue
-        listings = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or [])
-                    if x and x.id not in (ignore or ())]
+        raw = [x for x in (Listing.from_api(i) for i in body.get(str(blueprint_id)) or []) if x]
+        result.seen_by[blueprint_id] = {x.id for x in raw}
+        listings = [x for x in raw if x.id not in (ignore or ())]
         result.seen.update(x.id for x in listings)
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:
