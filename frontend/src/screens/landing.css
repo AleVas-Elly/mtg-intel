@@ -5,7 +5,7 @@
   max-width: 1320px; margin: 0 auto; padding: calc(18px + env(safe-area-inset-top)) 20px 18px;
 }
 .l-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; font-stretch: 122%; font-size: 18px; letter-spacing: -0.02em; text-decoration: none; }
-.l-mark img { width: 26px; height: 26px; border-radius: 7px; }
+.l-mark img { width: 28px; height: 28px; }
 .l-bar nav { display: flex; align-items: center; gap: 20px; }
 .l-bar nav > a { font-weight: 600; color: var(--ink-2); text-decoration: none; font-size: 15px; }
 .l-bar nav > a:hover { color: var(--ink); }
