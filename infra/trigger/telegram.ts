@@ -249,10 +249,48 @@ export async function cardtrader(env: TelegramEnv, method: string, path: string,
       method, headers: { Authorization: `Bearer ${env.CARDTRADER_TOKEN}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
+    await ctTokenAnswer(env, r.status);
     return r.ok ? await r.json() : null;
   } catch {
     return null;
   }
+}
+
+// --- the CardTrader token's health (D85) -------------------------------------------------------------
+// An expired token failed silently for days (2026-11-07: the fast lane and Check CardTrader got 401s).
+// Now a refusal sends one Telegram warning, repeated at most once a day while it lasts, and the first
+// answer accepted after it says the token works again. The state is one row in D1 `meta`.
+
+const TOKEN_WARN_MS = 24 * 3600e3;
+let tokenRefused: boolean | null = null; // what this isolate last saw, so a healthy minute costs no D1 read
+
+/** Tell the token's health from a CardTrader answer's status. */
+export async function ctTokenAnswer(env: TelegramEnv, status: number): Promise<void> {
+  const refused = status === 401 || status === 403;
+  if (!refused && tokenRefused === false) return;
+  try {
+    const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'ct_token_refused'").first<{ value: string }>();
+    if (refused) {
+      tokenRefused = true;
+      if (row && Date.now() - Date.parse(row.value) < TOKEN_WARN_MS) return;
+      await notifyMe(env, `⚠️ CardTrader refuses the timer's token (${status}). The fast lane and Check CardTrader on the site are off until it's replaced:\n\ncd infra/trigger && npx --prefix ../../frontend wrangler secret put CARDTRADER_TOKEN\n\n(The deal checks on GitHub use their own copy of the token.)`);
+      await env.DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('ct_token_refused', ?)").bind(new Date().toISOString()).run();
+    } else if (status >= 200 && status < 300) {
+      tokenRefused = false;
+      if (!row) return;
+      await env.DB.prepare("DELETE FROM meta WHERE key = 'ct_token_refused'").run();
+      await notifyMe(env, "✅ CardTrader accepts the timer's token again: the fast lane and Check CardTrader work.");
+    }
+  } catch {
+    // D1 or Telegram down: the next answer tries again
+  }
+}
+
+async function notifyMe(env: TelegramEnv, text: string): Promise<void> {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }),
+  }).catch(() => undefined);
 }
 
 /** "Set €13.50" under a weekly target suggestion (D55): the wish's target changes through the edit

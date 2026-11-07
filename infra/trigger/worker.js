@@ -2,7 +2,7 @@
 // at all; a workflow_dispatch call starts a run within seconds. The workflows keep their own
 // schedules as a fallback.
 
-import { telegramUpdate } from "./telegram.ts";
+import { ctTokenAnswer, telegramUpdate } from "./telegram.ts";
 import { fastLane } from "./fastlane.ts";
 
 const SCHEDULE = {
@@ -153,6 +153,7 @@ export default {
       const r = await fetch(`https://api.cardtrader.com/api/v2/marketplace/products?blueprint_id=${bp}`, {
         headers: { Authorization: `Bearer ${env.CARDTRADER_TOKEN}` },
       }).catch((e) => { console.log(`ct ${bp}: ${e}`); return null; });
+      if (r) await ctTokenAnswer(env, r.status);
       if (!r?.ok) {
         console.log(`ct ${bp}: CardTrader answered ${r?.status ?? "nothing"} ${r ? (await r.text()).slice(0, 200) : ""}`);
         return new Response(JSON.stringify({ error: `CardTrader answered ${r?.status ?? "nothing"}` }), { status: 502, headers: { "Content-Type": "application/json" } });
