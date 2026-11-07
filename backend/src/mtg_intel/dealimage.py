@@ -46,23 +46,11 @@ def panel(deal: deals.Deal) -> Panel:
     w, x = deal.wish, deal.listing
     if deal.tier:
         pill = f"{deal.tier[1].split(' ', 1)[1]} · {deal.below_pct:.0f}% under".upper()
-        saving = f"€{deal.reference - x.price:.2f} less than usual" if deal.reference else ""
+        saving = f"Usual €{deal.reference:.2f} · save €{deal.reference - x.price:.2f}" if deal.reference else ""
     else:
         pill = "TARGET PRICE"
         saving = f"at or under your €{w['max_price_eur']:.2f} target" if w.get("max_price_eur") is not None else ""
-    markets = []
-    if deal.cardtrader:
-        usual = "usually" if deal.cardtrader_kind == "usual price" else "next copy"
-        markets.append(("CardTrader", f"{usual} €{deal.cardtrader:.2f}", deals._less(x.price, deal.cardtrader)))
-    if deal.cardmarket:
-        foil = x.foil or (bool(w.get("finishes")) and "nonfoil" not in w["finishes"])
-        low = w.get("low_foil" if foil else "low")
-        if not deal.cardmarket_trusted:
-            markets.append(("Cardmarket", f"trend €{deal.cardmarket:.2f} looks wrong", ""))
-        elif low:
-            markets.append(("Cardmarket", f"from €{low:.2f} · trend €{deal.cardmarket:.2f}", deals._less(low, deal.cardmarket)))
-        else:
-            markets.append(("Cardmarket", f"trend €{deal.cardmarket:.2f}", deals._less(x.price, deal.cardmarket)))
+    markets = deals.market_lines(deal)  # as the site's rows show them (D76)
     footer = " · ".join(p for p in [f"Seller in {deals.COUNTRIES.get(x.country, x.country)}" if x.country else "",
                                     f"{w['list']} list" if w.get("list") else ""] if p)
     return Panel(pill, deal.tier[0] if deal.tier else None, deals.front_name(w["name"]), f"€{x.price:.2f}", saving,

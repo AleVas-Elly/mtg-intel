@@ -184,17 +184,18 @@ def test_telegram_message_shows_both_markets_against_their_usual_and_details_beh
     html, buttons, preview = rich.html, rich.buttons, rich.preview
     top, more = html.split("<blockquote expandable>")
     assert top.strip().splitlines() == ["✅ Good deal · 38% under", "<b>Loki, God of Mischief</b>",
-                                "<b>CardTrader</b>  €2.88 · next copy €4.50 (−36%)",
-                                "<b>Cardmarket</b>  from €3.00 · trend €4.67 (−36%)"]
+                                "<b>CardTrader</b>  €2.88 (−38%)",
+                                "<b>Cardmarket</b>  €4.70 (€3.00 + €1.70 shipping) (+1%)",
+                                "Usual €4.67"]  # as the site's rows show them (D76)
     assert preview == "https://site.example/p/x"
     assert more == "<b>📈 T</b>\n▁▂</blockquote>"  # only the trends: no "why", seller or list (user)
     assert buttons[0] == [{"text": "🛒 Bought it", "callback_data": "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|en|no|288|NM|0|en"}]
     assert [b["text"] for b in buttons[1]] == ["CardTrader", "Cardmarket", "Site"]
     assert buttons[1][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
     assert deals.version_line(deal) == ("MSH #343 · Borderless", "NM · EN · Non-foil · Zero")
-    # Without a picture the printing and copy go in the text; a usual CardTrader price says "usually".
+    # Without a picture the printing and copy go in the text.
     html = deals.telegram(deals.best_deal(wish(), [listing(cents=288)], usual=4.10)).html
-    assert "MSH #343 · Borderless · NM · EN · Non-foil · Zero" in html and "usually €4.10 (−30%)" in html
+    assert "MSH #343 · Borderless · NM · EN · Non-foil · Zero" in html and "Usual €4.67" in html
 
 
 def test_preview_link_is_signed_and_only_for_scryfall_pictures():
@@ -329,8 +330,8 @@ def test_deal_image_says_what_makes_it_a_deal_and_draws():
     deal = deals.best_deal(wish(set_name="Marvel Super Heroes", foil="no"), [listing(cents=288), listing(id=2, cents=450)],
                            usual=4.10)
     p = dealimage.panel(deal)
-    assert (p.pill, p.name, p.price, p.saving) == ("GOOD DEAL · 38% UNDER", "Loki, God of Mischief", "€2.88", "€1.79 less than usual")
-    assert p.markets == [("CardTrader", "usually €4.10", "−30%"), ("Cardmarket", "from €3.00 · trend €4.67", "−36%")]
+    assert (p.pill, p.name, p.price, p.saving) == ("GOOD DEAL · 38% UNDER", "Loki, God of Mischief", "€2.88", "Usual €4.67 · save €1.79")
+    assert p.markets == [("CardTrader", "€2.88", "−38%"), ("Cardmarket", "€4.70 (€3.00 + €1.70 shipping)", "+1%")]
     assert p.footer == "Seller in Italy · Marvel list"
     png = dealimage.render(p, Image.new("RGB", (488, 680), "#335533"))
     image = Image.open(io.BytesIO(png))
@@ -421,3 +422,7 @@ def test_buy_tip_says_buy_now_at_the_low_and_could_drop_on_a_falling_trend():
     flat = [((start + timedelta(days=i)).isoformat(), 10.0) for i in range(90)]
     assert deals.buy_tip(10.5, flat, []) == ""
     assert deals.buy_tip(5.0, [], [("2026-10-20", 6.0), ("2026-11-05", 5.5)]) == "💡 Buy now · the lowest price since 20 Oct"
+
+
+def test_cardmarket_shipping_follows_the_dutch_table():
+    assert [deals.cm_shipping(p) for p in (4.0, 25.0, 25.01, 150.0, 300.0, 900.0, 9000.0)] == [1.7, 1.7, 6.2, 6.2, 13.55, 18.15, 18.15]

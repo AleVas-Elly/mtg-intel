@@ -424,6 +424,29 @@ def _less(price: float, usual: float) -> str:
     return f"−{pct:.0f}%" if pct >= 0.5 else f"+{-pct:.0f}%" if pct <= -0.5 else "same"
 
 
+# Cardmarket's shipping for one card from a Dutch seller to the Netherlands (D74, research 1.12), packaging
+# included; the site uses the same table (frontend/src/format.ts, cmShipping).
+CM_SHIPPING_NL = [(25.0, 1.70), (200.0, 6.20), (500.0, 13.55), (5500.0, 18.15)]
+
+
+def cm_shipping(price: float) -> float:
+    return next((cost for top, cost in CM_SHIPPING_NL if price <= top), CM_SHIPPING_NL[-1][1])
+
+
+def market_lines(deal: Deal) -> list[tuple[str, str, str]]:
+    """Both markets as the site's rows show them (D70, D76): CardTrader's copy and Cardmarket's lowest
+    listing plus shipping, each against the usual price the deal was judged on."""
+    w, x, ref = deal.wish, deal.listing, deal.reference
+    out = [("CardTrader", f"€{x.price:.2f}", _less(x.price, ref) if ref else "")]
+    foil = x.foil or (bool(w.get("finishes")) and "nonfoil" not in w["finishes"])
+    low = w.get("low_foil" if foil else "low")
+    if low:
+        ship = cm_shipping(low)
+        total = round(low + ship, 2)
+        out.append(("Cardmarket", f"€{total:.2f} (€{low:.2f} + €{ship:.2f} shipping)", _less(total, ref) if ref else ""))
+    return out
+
+
 SPARK = "▁▂▃▄▅▆▇█"
 TREND_DAYS = 90
 FLAT_PCT = 5.0  # a month's change smaller than this is "steady"
@@ -541,27 +564,18 @@ def buy_tip(price: float, cardmarket: list[tuple[str, float]], cardtrader: list[
 
 def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None,
              photo: bytes | None = None, history: list[list[str]] | None = None) -> Rich:
-    """The deal as a Telegram message (user, 2026-11-06): the strength, the card, then each market
-    against its own usual price (CardTrader: this copy against its usual; Cardmarket: its lowest
-    against its trend); the rest in a quote that opens on a tap; buttons for "Bought it" and the
+    """The deal as a Telegram message (user, 2026-11-06): the strength, the card, then both markets
+    as the site's rows show them, against the usual price (D76); the rest in a quote that opens on a tap; buttons for "Bought it" and the
     marketplaces. `preview` is the site's preview page for this card: Telegram shows the card's
     picture small, beside its printing and the copy's condition, language and finish. With `photo`
     (the deal's image, dealimage.py) the alert is that image, captioned with one line for the lock
     screen and the same details behind a tap; the text version stays as the fallback."""
     w, x = deal.wish, deal.listing
     head = f"{deal.tier[1]} · {deal.below_pct:.0f}% under" if deal.tier else "🎯 Target price"
-    if deal.cardtrader:
-        usual = "usually" if deal.cardtrader_kind == "usual price" else "next copy"
-        ct = f"€{x.price:.2f} · {usual} €{deal.cardtrader:.2f} ({_less(x.price, deal.cardtrader)})"
-    else:
-        ct = f"€{x.price:.2f}"
-    lines = [_h(head), f"<b>{_h(front_name(w['name']))}</b>", f"<b>CardTrader</b>  {_h(ct)}"]
-    foil = x.foil or (bool(w.get("finishes")) and "nonfoil" not in w["finishes"])
-    low = w.get("low_foil" if foil else "low")
-    if deal.cardmarket:
-        trend = f"trend €{deal.cardmarket:.2f}" + ("" if deal.cardmarket_trusted else " (looks wrong, not used)")
-        cm = f"from €{low:.2f} · {trend} ({_less(low, deal.cardmarket)})" if low and deal.cardmarket_trusted else trend
-        lines.append(f"<b>Cardmarket</b>  {_h(cm)}")
+    lines = [_h(head), f"<b>{_h(front_name(w['name']))}</b>"]
+    lines += [f"<b>{market}</b>  {_h(text)}" + (f" ({pct})" if pct else "") for market, text, pct in market_lines(deal)]
+    if deal.reference:
+        lines.append(f"Usual €{deal.reference:.2f}")
     printing, copy = version_line(deal)
     if not preview:
         lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
