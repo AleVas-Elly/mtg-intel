@@ -1,5 +1,6 @@
 // Any card from Search that isn't on my want-list (3c): a summary first, then the add form in the
 // same pane. Its key in the URL is "sf:<Scryfall ID>".
+import { can } from "../access";
 import { useEffect, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
@@ -53,7 +54,7 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
           {adding
             ? <button class="icon-btn" onClick={() => setAdding(false)} aria-label="Back to the card"><IconBack /></button>
             : <button class="icon-btn" onClick={closeCard} aria-label="Close"><IconClose /></button>}
-          {adding && <span class="d-top-title">Add to want-list</span>}
+          {adding && <span class="d-top-title">{can("edit") ? "Add to want-list" : "Suggest a card"}</span>}
           {card && <a class="icon-btn" href={card.scryfall_uri} target="_blank" rel="noopener" aria-label="Open on Scryfall"><IconOut /></a>}
         </div>
         {error && <div class="empty"><h2>Card not found</h2><p>{error}</p></div>}
@@ -78,9 +79,11 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
                 <span>This printing is on your want-list.</span>
                 <button class="btn sm" type="button" onClick={() => openCard(mine.key)}>Open</button>
               </div>
-            ) : (
+            ) : can("edit") ? (
               <button class="btn primary wide" type="button" onClick={() => setAdding(true)}><IconPlus />Add to want-list</button>
-            )}
+            ) : can("suggest") ? (
+              <button class="btn primary wide" type="button" onClick={() => setAdding(true)}><IconPlus />Suggest for the want-list</button>
+            ) : null}
 
             <div class="group-title">Prices</div>
             <div class="group markets">

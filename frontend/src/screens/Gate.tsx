@@ -7,24 +7,29 @@ import { useEffect, useState } from "preact/hooks";
 import { post } from "../api";
 import { go } from "../router";
 import { IconKey } from "../ui/icons";
+import { type Me, setMe } from "../access";
 
-export interface Auth { state: "checking" | "in" | "out"; passkeys: number; recheck: () => void }
+export interface Auth { state: "checking" | "in" | "out"; passkeys: number; ended: string | null; recheck: () => void }
 
 export function useAuth(): Auth {
   const [state, setState] = useState<Auth["state"]>(() => (localStorage.getItem("signed-in") === "1" ? "in" : "checking"));
   const [passkeys, setPasskeys] = useState(1);
+  const [ended, setEnded] = useState<string | null>(null);
   const check = () =>
     fetch("/api/auth/status", { credentials: "same-origin" })
       // A server error is not "no passkeys": it used to show "Not set up yet" (2026-11-06).
       .then((r) => { if (!r.ok) throw new Error(`status ${r.status}`); return r.json(); })
-      .then((s: { signedIn: boolean; passkeys: number }) => {
+      .then((s: { signedIn: boolean; passkeys: number; me?: Me | null; ended?: string }) => {
         setPasskeys(s.passkeys);
+        setEnded(s.ended ?? null);
+        if (s.signedIn && s.me) setMe(s.me);
+        if (!s.signedIn) setMe(null);
         setState(s.signedIn ? "in" : "out");
         try { localStorage.setItem("signed-in", s.signedIn ? "1" : "0"); } catch { /* fine */ }
       })
       .catch(() => setState((s) => (s === "checking" ? "out" : s)));  // offline: keep a known sign-in
   useEffect(() => { check(); }, []);
-  return { state, passkeys, recheck: check };
+  return { state, passkeys, ended, recheck: check };
 }
 
 function friendly(e: unknown): string {
@@ -36,6 +41,7 @@ function friendly(e: unknown): string {
 
 export function Gate({ auth, onIn }: { auth: Auth; onIn: () => void }) {
   const invite = location.pathname === "/setup" ? location.hash.slice(1) : "";
+  const guest = invitedName(invite);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const done = () => {
@@ -72,18 +78,33 @@ export function Gate({ auth, onIn }: { auth: Auth; onIn: () => void }) {
     } catch (e) { setError(friendly(e)); } finally { setBusy(false); }
   };
   if (auth.state === "checking" && !invite) return <div class="landing" />;
-  if (!invite) return <Landing busy={busy} error={error} onSignIn={signIn} local={LOCAL} setupMissing={!auth.passkeys} />;
+  if (!invite) {
+    const ended = auth.ended && !error ? `Your access to mtg-intel ended on ${auth.ended.slice(0, 10)}. Ask for a new end date to come back.` : error;
+    return <Landing busy={busy} error={ended} onSignIn={signIn} local={LOCAL} setupMissing={!auth.passkeys} />;
+  }
   return (
     <div class="landing">
       <header class="l-bar"><a class="l-mark" href="/"><img src="/icon-64.png" alt="" />mtg-intel</a></header>
       <section class="l-hero setup">
         <div class="l-hero-copy">
-          <h1>Set up this device</h1>
-          <p class="l-lead">Create a passkey for mtg-intel. Your phone or Mac keeps it, and Face ID or Touch ID unlocks it. Nothing to remember.</p>
+          <h1>{guest ? `Welcome, ${guest}` : "Set up this device"}</h1>
+          <p class="l-lead">{guest ? "You've been invited to mtg-intel. " : ""}Create a passkey for mtg-intel. Your phone or computer keeps it, and Face ID, Touch ID or your PIN unlocks it. Nothing to remember.</p>
           <div class="l-acts"><button class="btn primary lg" type="button" onClick={register} disabled={busy}><IconKey />{busy ? "Waiting…" : "Create passkey"}</button></div>
           {error && <p class="err" role="alert">{error}</p>}
         </div>
       </section>
     </div>
   );
+}
+
+/** The invited person's name, carried in the setup link (signed by the Worker, readable here). */
+function invitedName(token: string): string {
+  try {
+    const body = token.split(".")[0];
+    const json = atob(body.replace(/-/g, "+").replace(/_/g, "/"));
+    const name = (JSON.parse(new TextDecoder().decode(Uint8Array.from(json, (c) => c.charCodeAt(0)))) as { name?: string }).name;
+    return typeof name === "string" ? name : "";
+  } catch {
+    return "";
+  }
 }

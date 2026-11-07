@@ -2,9 +2,10 @@
 // Today it is built from my purchases (recorded here and from CardTrader); a ManaBox import joins
 // it later through the same shape. Prices over time come from the `history` document, which
 // covers owned printings as well as wished ones.
+import { can } from "./access";
 import type { AppData } from "./data";
 import { cmTrend } from "./format";
-import { shownPrice } from "./markets";
+import { shownPrice, type PriceFrom } from "./markets";
 import type { HistoryDoc, Purchase, Wish } from "./types";
 
 export interface Owned {
@@ -17,7 +18,8 @@ export interface Owned {
 }
 
 export const valueOf = (o: Owned) => (o.now != null ? o.now * o.qty : null);
-export const gainOf = (o: Owned) => (o.now != null ? o.now * o.qty - o.paid : null);
+/** Worth now minus what I paid; unknown for someone who may not see money (D76). */
+export const gainOf = (o: Owned) => (o.now != null && can("money") ? o.now * o.qty - o.paid : null);
 
 export function ownedCards(purchases: Purchase[]): Owned[] {
   const at = new Map<string, Owned>();
@@ -104,14 +106,14 @@ export function totalOverTime<T>(items: T[], pointsOf: (x: T) => [number, number
 
 /** The best price a wish could be bought for now: the cheaper of the two prices its row shows (D75), CardTrader's
  *  cheapest fitting copy or Cardmarket's lowest listing plus shipping. */
-export const bestNow = (data: AppData, w: Wish): number | null => shownPrice(w, data);
+export const bestNow = (data: AppData, w: Wish, from: PriceFrom = "best"): number | null => shownPrice(w, data, from);
 
 /** Wishes as things to buy: alternatives (`one_of`) count once, at their cheapest version. */
-export function toBuy(data: AppData): { w: Wish; best: number | null; trend: number | null; qty: number }[] {
+export function toBuy(data: AppData, from: PriceFrom = "best"): { w: Wish; best: number | null; trend: number | null; qty: number }[] {
   const groups = new Map<string, Wish[]>();
   for (const w of data.wants?.wishes ?? []) groups.set(w.one_of || w.key, [...(groups.get(w.one_of || w.key) ?? []), w]);
   return [...groups.values()].map((ws) => {
-    const priced = ws.map((w) => ({ w, best: bestNow(data, w), trend: cmTrend(w, data.liveOf(w.key)?.foil) }))
+    const priced = ws.map((w) => ({ w, best: bestNow(data, w, from), trend: cmTrend(w, data.liveOf(w.key)?.foil) }))
       .sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity));
     return { ...priced[0], qty: Math.max(1, priced[0].w.quantity || 1) };
   });
@@ -122,7 +124,7 @@ export function toBuy(data: AppData): { w: Wish; best: number | null; trend: num
 export interface Completion { id: string; label: string; set: string | null; owned: number; wanted: number; left: number; priced: number }
 
 /** Per set: the printings I own against the ones still on the want-list, and what the rest costs now. */
-export function completionBySet(data: AppData, owned: Owned[]): Completion[] {
+export function completionBySet(data: AppData, owned: Owned[], from: PriceFrom = "best"): Completion[] {
   const at = new Map<string, Completion>();
   const get = (set: string | null, name: string | null) => {
     const id = set ?? "?";
@@ -137,7 +139,7 @@ export function completionBySet(data: AppData, owned: Owned[]): Completion[] {
     mine.add(k);
     get(o.set, o.set_name).owned += 1;
   }
-  for (const { w, best } of toBuy(data)) {
+  for (const { w, best } of toBuy(data, from)) {
     if (w.scryfall_id && mine.has(w.scryfall_id)) continue;
     const c = get(w.set, w.set_name);
     c.wanted += 1;

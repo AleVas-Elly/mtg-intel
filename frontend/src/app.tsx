@@ -1,5 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { whenSignedOut } from "./api";
+import { type Perm, useMe } from "./access";
 import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
 import { IconChart, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconStack, IconWants } from "./ui/icons";
@@ -20,16 +21,16 @@ import { dismissToast, useToast } from "./toast";
 import { LOCAL } from "./env";
 import { setLabOpen, useLabOpen } from "./labstate";
 
-const TABS = [
+const TABS: { path: string; label: string; Icon: typeof IconHome; needs?: Perm }[] = [
   { path: "/", label: "Home", Icon: IconHome },
-  { path: "/deals", label: "Deals", Icon: IconDeals },
-  { path: "/wants", label: "Want-list", Icon: IconWants },
-  { path: "/collection", label: "Collection", Icon: IconStack },
+  { path: "/deals", label: "Deals", Icon: IconDeals, needs: "deals" },
+  { path: "/wants", label: "Want-list", Icon: IconWants, needs: "wants" },
+  { path: "/collection", label: "Collection", Icon: IconStack, needs: "collection" },
   { path: "/search", label: "Search", Icon: IconSearch },
-  { path: "/check", label: "Check", Icon: IconCheck },
+  { path: "/check", label: "Check", Icon: IconCheck, needs: "wants" },
 ];
-/** The phone's tab bar has room for five; Check is on Home and in the menu. */
-const PHONE_TABS = TABS.filter((t) => t.path !== "/check");
+/** Screens someone without that switch can't open (D76): they land on Home. */
+const NEEDS: Record<string, Perm> = { "/deals": "deals", "/wants": "wants", "/collection": "collection", "/bought": "collection", "/check": "wants" };
 
 export function App() {
   const auth = useAuth();
@@ -48,8 +49,14 @@ export function App() {
 const SEC: Record<string, string> = { "/wants": "wants", "/collection": "collection", "/bought": "collection", "/deals": "deals", "/check": "check" };
 const sectionOf = (path: string) => SEC[path] ?? "";
 
-function Signed({ path, card }: { path: string; card: string | null }) {
+function Signed({ path: asked, card }: { path: string; card: string | null }) {
   const data = useAppData();
+  const me = useMe();
+  const may = (p?: Perm) => !p || me.owner || me.perms[p];
+  const path = may(NEEDS[asked]) && (asked !== "/dashboards" || may("wants") || may("collection")) ? asked : "/";
+  const tabs = TABS.filter((t) => may(t.needs));
+  /** The phone's tab bar has room for five; Check is on Home and in the menu. */
+  const phoneTabs = tabs.filter((t) => t.path !== "/check");
   // Dashboards sets its own section, by the tab that is open
   useEffect(() => { if (path !== "/dashboards") document.documentElement.dataset.section = sectionOf(path); }, [path]);
   const dealCount = data.live?.deals.filter((d) => data.byKey.has(d.key)).length ?? 0;  // a removed wish's deal drops out
@@ -68,13 +75,13 @@ function Signed({ path, card }: { path: string; card: string | null }) {
     <div class={`shell${card ? " has-detail" : ""}`}>
       <nav class="rail" aria-label="Main">
         <a class="brand" href="/" onClick={link("/")}><img src="/icon-64.png" alt="" />mtg-intel</a>
-        {TABS.map(({ path: p, label, Icon }) => (
+        {tabs.map(({ path: p, label, Icon }) => (
           <a href={p} onClick={link(p)} class={SEC[p] ? `sec-${SEC[p]}` : undefined} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}>
             <Icon />{label}{counts[p] != null && <span class="count">{counts[p]}</span>}
           </a>
         ))}
         <div class="grow" />
-        <a href="/dashboards" onClick={link("/dashboards")} aria-current={path === "/dashboards" ? "page" : undefined}><IconChart />Dashboards</a>
+        {(may("wants") || may("collection")) && <a href="/dashboards" onClick={link("/dashboards")} aria-current={path === "/dashboards" ? "page" : undefined}><IconChart />Dashboards</a>}
         <a href="/settings" onClick={link("/settings")} aria-current={path === "/settings" ? "page" : undefined}><IconSettings />Settings</a>
       </nav>
       <main class="main">
@@ -85,7 +92,7 @@ function Signed({ path, card }: { path: string; card: string | null }) {
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <ToastView />
       <nav class="tabbar" aria-label="Main">
-        {PHONE_TABS.map(({ path: p, label, Icon }) => (
+        {phoneTabs.map(({ path: p, label, Icon }) => (
           <a class={`tab${SEC[p] ? ` sec-${SEC[p]}` : ""}`} href={p} onClick={link(p)} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
         ))}
       </nav>

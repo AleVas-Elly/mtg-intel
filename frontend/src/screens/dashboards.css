@@ -93,3 +93,4 @@ button.bt-stat:hover .db-go { transform: translateX(3px); color: var(--ink); }
 .seg button.tab-wants::before, .seg button.tab-coll::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--wants); }
 .seg button.tab-coll::before { background: var(--coll); }
 .seg button.tab-wants[aria-pressed="true"]::before, .seg button.tab-coll[aria-pressed="true"]::before { background: currentColor; }
+.toolbar .db-from { margin-left: auto; }

@@ -1,6 +1,8 @@
 // The settings of one wish, for a card being added (from Search) or an existing wish (card page).
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { changed, NEW_WISH, saveEdit, settingsOf } from "../edits";
+import { can } from "../access";
+import { suggest } from "../suggestions";
 import type { AppData } from "../data";
 import { condName, langName, versionText } from "../format";
 import { preview, printings, type ScryCard } from "../scry";
@@ -91,6 +93,8 @@ export function WishForm({ wish: given, adding, lists, data, onClose, onPick, on
     set("list")((chosen.includes(name) ? chosen.filter((l) => l !== name) : [...chosen, name]).join("; "));
   const finishes = wish.finishes.length ? wish.finishes : ["nonfoil", "foil"];
   const qty = Number(s.quantity) || 1;
+  // someone who may suggest but not edit sends the card to the owner's inbox instead (D76)
+  const suggesting = adding && !can("edit");
 
   const save = async (e: Event) => {
     e.preventDefault();
@@ -104,7 +108,11 @@ export function WishForm({ wish: given, adding, lists, data, onClose, onPick, on
     setBusy(true);
     setError(null);
     try {
-      if (adding) {
+      if (suggesting) {
+        const card: Partial<Wish> = { ...wish, key: undefined, pending: undefined, prints: undefined };
+        await suggest({ scryfall_id: wish.scryfall_id!, settings: out, card });
+        toast(`Suggested ${wish.name}. It waits for a yes on the want-list.`);
+      } else if (adding) {
         const card: Partial<Wish> = { ...wish, key: undefined, pending: undefined, prints: undefined };
         await saveEdit({ op: "add", scryfall_id: wish.scryfall_id!, settings: out, card });
         toast(`Added ${wish.name}. CardTrader prices follow within about 10 minutes.`);
@@ -125,11 +133,11 @@ export function WishForm({ wish: given, adding, lists, data, onClose, onPick, on
 
   return (
       <form class={inPane ? "pane-form" : "sheet"} role={inPane ? undefined : "dialog"} aria-modal={inPane ? undefined : "true"}
-        aria-label={adding ? "Add to want-list" : "Edit wish"} onSubmit={save}>
+        aria-label={suggesting ? "Suggest a card" : adding ? "Add to want-list" : "Edit wish"} onSubmit={save}>
         {!inPane && <header class="sheet-head">
           <CardImage src={wish.thumb} alt="" foil={false} />
           <div>
-            <h2>{adding ? "Add to want-list" : "Edit wish"}</h2>
+            <h2>{suggesting ? "Suggest a card" : adding ? "Add to want-list" : "Edit wish"}</h2>
             <p>{wish.name}{wish.set ? ` · ${wish.set.toUpperCase()} ${wish.number}` : ""}</p>
           </div>
           <button class="icon-btn" type="button" onClick={onClose} aria-label="Close"><IconClose /></button>
@@ -196,14 +204,14 @@ export function WishForm({ wish: given, adding, lists, data, onClose, onPick, on
               </span>
             </div>
             <label class="f-row stack"><span>Note</span>
-              <textarea rows={2} value={s.note} placeholder="Anything to remember" onInput={(e) => set("note")((e.target as HTMLTextAreaElement).value.replace(/\n/g, " "))} />
+              <textarea rows={2} value={s.note} placeholder={suggesting ? "Why this one?" : "Anything to remember"} onInput={(e) => set("note")((e.target as HTMLTextAreaElement).value.replace(/\n/g, " "))} />
             </label>
           </div>
           {error && <div class="notice"><IconWarn />{error}</div>}
         </div>
         <footer class="sheet-foot">
           <button class="btn" type="button" onClick={onClose}>Cancel</button>
-          <button class="btn primary" type="submit" disabled={busy}>{busy ? "Saving…" : adding ? "Add to want-list" : "Save changes"}</button>
+          <button class="btn primary" type="submit" disabled={busy}>{busy ? "Saving…" : suggesting ? "Send suggestion" : adding ? "Add to want-list" : "Save changes"}</button>
         </footer>
       </form>
   );

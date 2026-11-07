@@ -1,10 +1,12 @@
 // Dashboards (D60): two of them. Want-list: what finishing it costs, whether it's getting cheaper,
 // what to buy now, and the buying record (from the old Bought page). Collection: what it's worth,
 // how it moved, what to consider selling. Both: set completion.
+import { can } from "../access";
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { bestNow, completionBySet, gainOf, moves, ownedCards, series, toBuy, totalOverTime, valueOf, type Owned } from "../collection";
+import type { PriceFrom } from "../markets";
 import type { AppData } from "../data";
 import { dealGap, wishCount } from "../data";
 import { pendingPurchases } from "../edits";
@@ -136,9 +138,9 @@ function CardRows({ rows, empty }: { rows: { key: string; thumb: string | null; 
   );
 }
 
-function Completion({ data, owned, target }: { data: AppData; owned: Owned[]; target: "/wants" | "/collection" }) {
+function Completion({ data, owned, target, from = "best" }: { data: AppData; owned: Owned[]; target: "/wants" | "/collection"; from?: PriceFrom }) {
   const [all, setAll] = useState(false);
-  const sets = useMemo(() => completionBySet(data, owned), [data, owned]);
+  const sets = useMemo(() => completionBySet(data, owned, from), [data, owned, from]);
   const shown = all ? sets : sets.slice(0, 8);
   if (!sets.length) return null;
   return (
@@ -171,8 +173,9 @@ function Completion({ data, owned, target }: { data: AppData; owned: Owned[]; ta
 
 // ---------- the want-list dashboard ----------
 
-function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned: Owned[]; history: HistoryDoc | null | undefined; purchases: PurchasesDoc | null | undefined }) {
-  const items = useMemo(() => toBuy(data), [data]);
+function WantsBoard({ data, owned, history, purchases, from }: { data: AppData; owned: Owned[]; history: HistoryDoc | null | undefined; purchases: PurchasesDoc | null | undefined; from: PriceFrom }) {
+  const items = useMemo(() => toBuy(data, from), [data, from]);
+  const at = from === "best" ? "at today's best prices" : from === "ct" ? "on CardTrader" : "on Cardmarket";
   const best = items.reduce((t, x) => t + (x.best ?? 0) * x.qty, 0);
   const trend = items.reduce((t, x) => t + (x.trend ?? x.best ?? 0) * x.qty, 0);
   const priced = items.filter((x) => x.best != null).length;
@@ -199,8 +202,8 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
   return (
     <>
       <div class="bt-stats">
-        <Stat lead label="To finish the want-list" value={eur(best)} note={`at today's best prices with shipping, ${priced} of ${items.length} priced`} />
-        <Stat label="At Cardmarket's trend" value={eur(trend)} note={trend > best ? <><span class="good">{eur(trend - best)}</span> more than the best prices</> : "the same as the best prices"} />
+        <Stat lead label="To finish the want-list" value={eur(best)} note={`${at} with shipping, ${priced} of ${items.length} priced`} />
+        <Stat label="At Cardmarket's trend" value={eur(trend)} note={trend > best ? <><span class="good">{eur(trend - best)}</span> more</> : trend < best ? <><span class="bad">{eur(best - trend)}</span> less</> : "the same"} />
         <Stat label="At their lowest in 90 days" value={String(lows.length)} note={lows.length ? "a good time to buy those" : "none right now"} to={() => openFiltered("/wants", "timing", "low90")} />
         <Stat label="Close to a deal" value={String(close.filter((x) => x.gap <= 10).length)} note="under 10 points from a deal" to={() => openFiltered("/wants", "deal", "close")} />
       </div>
@@ -215,11 +218,11 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
         </Card>
         <Card title="At their lowest in 90 days" aside={lows.length ? `${lows.length} wishes` : undefined}>
           <CardRows empty="None of your wishes is at its 90-day low right now." rows={lows.slice(0, 6).map((w) => {
-            const b = bestNow(data, w);
+            const b = bestNow(data, w, from);
             return wishRow(w, b != null ? eur(b) : "–", "Cardmarket's lowest in 90 days");
           })} />
         </Card>
-        <Card title="What each list costs" aside="at today's best prices">
+        <Card title="What each list costs" aside={at}>
           <ul class="bt-groups">
             {byList.map((g, i) => (
               <li style={{ "--i": i }}>
@@ -237,10 +240,10 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
             .map((x) => wishRow(x.w, eur(x.best! * x.qty), x.qty > 1 ? `${x.qty} copies` : x.w.lists.join(", ") || "on no list",
               best > 0 ? `${pct((x.best! * x.qty) / best)} of the total` : undefined))} />
         </Card>
-        <Completion data={data} owned={owned} target="/wants" />
+        <Completion data={data} owned={owned} target="/wants" from={from} />
       </div>
-      <h2 class="db-section">Buying record</h2>
-      {rows.length ? (
+      {can("money") && <h2 class="db-section">Buying record</h2>}
+      {!can("money") ? null : rows.length ? (
         <>
           <div class="bt-stats">
             <Stat lead label="Saved against Cardmarket" value={eur(Math.abs(bought.saved))} cls={bought.saved >= 0 ? "good" : "bad"}
@@ -286,7 +289,7 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
     <>
       <div class="bt-stats">
         <Stat lead to={() => { try { sessionStorage.setItem("collection-sort", "value"); } catch { /* fine */ } go("/collection"); }} label="Worth now" value={eur(worth)} note={`Cardmarket's trend${purchases?.price_date ? ` on ${day(purchases.price_date)}` : ""}${valued.length < owned.length ? `, ${valued.length} of ${owned.length} priced` : ""}`} />
-        <Stat to={() => openFiltered("/collection", "move", gain >= 0 ? "gain" : "loss")} label="Since bought" value={signed(gain)} cls={tone(gain)} note={paid > 0 ? `${pct(gain / paid)} ${gain >= 0 ? "up" : "down"} on ${eur(paid)} paid` : "nothing priced yet"} />
+        {can("money") && <Stat to={() => openFiltered("/collection", "move", gain >= 0 ? "gain" : "loss")} label="Since bought" value={signed(gain)} cls={tone(gain)} note={paid > 0 ? `${pct(gain / paid)} ${gain >= 0 ? "up" : "down"} on ${eur(paid)} paid` : "nothing priced yet"} />}
         <Stat label="Cards" value={String(copies)} note={`${owned.length} different printings`} />
         <Stat label="Sets" value={String(sets)} note="with at least one card" />
       </div>
@@ -296,7 +299,7 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
         <Card title="Sell watch" aside="spiked, or near their 90-day high">
           <CardRows empty="Nothing has spiked. Cards up 15% in a month, or near their 90-day high and worth more than you paid, show here." rows={sell.slice(0, 6).map(({ o, m }) => ownedRow(o, eur(o.now!),
             (m.change30 ?? 0) >= 0.15 ? `+${pct(m.change30!)} in 30 days` : `near its 90-day high of ${eur(m.high90!)}`,
-            <>paid {eur(o.paid / o.qty)}</>))} />
+            can("money") ? <>paid {eur(o.paid / o.qty)}</> : undefined))} />
         </Card>
         <Card title="Top movers" aside={
           <span class="seg" role="group" aria-label="Direction">
@@ -310,9 +313,9 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
             gainOf(o) != null ? <span class={tone(gainOf(o)!)}>{signed(gainOf(o)!)}</span> : undefined))} />
         </Card>
         <Card title="Recently added" aside={<a class="link" href="/collection" onClick={link("/collection")}>Collection</a>}>
-          <CardRows empty="Nothing yet." rows={[...owned].sort((a, b) => b.last.localeCompare(a.last)).slice(0, 6).map((o) => ownedRow(o, eur(o.paid / o.qty),
+          <CardRows empty="Nothing yet." rows={[...owned].sort((a, b) => b.last.localeCompare(a.last)).slice(0, 6).map((o) => ownedRow(o, can("money") ? eur(o.paid / o.qty) : o.now != null ? eur(o.now) : "–",
             `${day(o.last)}, ${o.markets.includes("cardtrader") ? "CardTrader" : o.markets.includes("cardmarket") ? "Cardmarket" : "elsewhere"}`,
-            o.now != null ? <>now {eur(o.now)}</> : undefined))} />
+            o.now != null && can("money") ? <>now {eur(o.now)}</> : undefined))} />
         </Card>
         <Completion data={data} owned={owned} target="/collection" />
       </div>
@@ -321,26 +324,33 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
 }
 
 export function Dashboards({ data }: { data: AppData }) {
-  const [tab, setTab] = useState<Tab>(() => (sessionStorage.getItem("dash-tab") as Tab) || "wants");
+  const [chosen, setTab] = useState<Tab>(() => (sessionStorage.getItem("dash-tab") as Tab) || "wants");
+  const tab: Tab = !can("wants") ? "collection" : !can("collection") ? "wants" : chosen;
   const purchases = useDoc<PurchasesDoc>("purchases").doc;
   const history = useDoc<HistoryDoc>("history").doc;
   const owned = useMemo(() => ownedCards([...pendingPurchases(data.edits.ops), ...(purchases?.purchases ?? [])]), [purchases, data.edits.ops]);
   const pick = (t: Tab) => { setTab(t); try { sessionStorage.setItem("dash-tab", t); } catch { /* fine */ } };
+  const [from, setFrom] = useState<PriceFrom>(() => { try { return (sessionStorage.getItem("dash-prices") as PriceFrom) || "best"; } catch { return "best"; } });
+  const pickFrom = (f: PriceFrom) => { setFrom(f); try { sessionStorage.setItem("dash-prices", f); } catch { /* fine */ } };
   useEffect(() => { document.documentElement.dataset.section = tab === "wants" ? "wants" : "collection"; }, [tab]);
   return (
     <div class="page dash">
       <header class="head sec-band">
         <div><h1 class="title">{tab === "wants" ? "Want-list dashboard" : "Collection dashboard"}</h1><p class="sub">{tab === "wants" ? "What's left to buy, what it costs, and when to buy it" : "What you own, what it's worth, and what's moving"}</p></div>
       </header>
-      <div class="toolbar">
-        <div class="seg" role="tablist" aria-label="Dashboard">
+      {((can("wants") && can("collection")) || tab === "wants") && <div class="toolbar">
+        {can("wants") && can("collection") && <div class="seg" role="tablist" aria-label="Dashboard">
           <button type="button" role="tab" class="tab-wants" aria-pressed={tab === "wants"} aria-selected={tab === "wants"} onClick={() => pick("wants")}>Want-list</button>
           <button type="button" role="tab" class="tab-coll" aria-pressed={tab === "collection"} aria-selected={tab === "collection"} onClick={() => pick("collection")}>Collection</button>
-        </div>
-      </div>
-      {data.wants === undefined ? <div class="bt-stats"><div class="bt-stat skeleton" style={{ height: "110px" }} /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /></div>
+        </div>}
+        {tab === "wants" && <div class="seg db-from" role="group" aria-label="Prices from">
+          {([["best", "Best price"], ["ct", "CardTrader"], ["cm", "Cardmarket"]] as const).map(([f, label]) =>
+            <button type="button" aria-pressed={from === f} onClick={() => pickFrom(f)}>{label}</button>)}
+        </div>}
+      </div>}
+      {data.wants === undefined && tab === "wants" ? <div class="bt-stats"><div class="bt-stat skeleton" style={{ height: "110px" }} /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /></div>
         : tab === "wants"
-          ? <WantsBoard key="w" data={data} owned={owned} history={history} purchases={purchases} />
+          ? <WantsBoard key="w" data={data} owned={owned} history={history} purchases={purchases} from={from} />
           : <CollectionBoard key="c" data={data} owned={owned} history={history} purchases={purchases} />}
     </div>
   );

@@ -2,22 +2,14 @@ import { renderSVG } from "uqr";
 import { useEffect, useState } from "preact/hooks";
 import { post, send } from "../api";
 import type { AppData } from "../data";
-import { ago, countryName, day } from "../format";
+import { ago, day } from "../format";
 import { go } from "../router";
 import { setLabOpen } from "../labstate";
 import { Confirm } from "../ui/Confirm";
 import { IconBack } from "../ui/icons";
 import { toast } from "../toast";
-
-interface Place { city?: string; country?: string }
-interface Device {
-  id: string; device: string; created: string; current: boolean;
-  browser: string | null; app: string | null; place: Place | null;
-  seen: { at: string; browser: string; place: Place } | null;
-}
-
-const where = (p: Place | null | undefined) => [p?.city, p?.country && countryName(p.country)].filter(Boolean).join(", ");
-const join = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(" · ");
+import { useMe } from "../access";
+import { type Device, join, MyAccess, PeopleSection, where } from "./People";
 
 type Theme = "auto" | "light" | "dark";
 
@@ -34,7 +26,11 @@ export function Settings({ data }: { data: AppData }) {
   const [removing, setRemoving] = useState<Device | null>(null);
   const [invite, setInvite] = useState<{ url: string; expires: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [peopleKey, setPeopleKey] = useState(0);
+  const me = useMe();
   useEffect(() => { fetch("/api/auth/devices", { credentials: "same-origin" }).then((r) => r.ok ? r.json() : []).then(setDevices).catch(() => {}); }, []);
+  // my own devices here; other people's are under People
+  const mine = devices.filter((d) => (d.account ?? me.id) === me.id);
   const pick = (t: Theme) => {
     const doc = document as unknown as { startViewTransition?: (f: () => void) => void };
     doc.startViewTransition ? doc.startViewTransition(() => applyTheme(t)) : applyTheme(t);
@@ -60,6 +56,7 @@ export function Settings({ data }: { data: AppData }) {
       if (r.signedOut) return leave();
       setDevices(r.devices);
       setOpen(null);
+      setPeopleKey((n) => n + 1);
       toast(`Removed ${d.device}. It can't sign in any more.`);
     } catch (e) { setError((e as Error).message); }
   };
@@ -81,9 +78,11 @@ export function Settings({ data }: { data: AppData }) {
         <button class="btn sm" type="button" onClick={() => setLabOpen(true)}>Open</button>
       </div>
 
-      <div class="group-title">Devices with a passkey</div>
+      {me.owner ? <PeopleSection refreshKey={peopleKey} onRemoveDevice={setRemoving} /> : <MyAccess name={me.name} expires={me.expires} perms={me.perms} />}
+
+      <div class="group-title">{me.owner ? "Your devices" : "Your devices with a passkey"}</div>
       <div class="group">
-        {devices.map((d) => {
+        {mine.map((d) => {
           const shown = open === d.id;
           const last = d.current ? "This device" : d.seen ? `used ${ago(d.seen.at)}` : `added ${day(d.created)}`;
           return (
@@ -100,7 +99,7 @@ export function Settings({ data }: { data: AppData }) {
                     <div class="kv"><dt>Added</dt><dd>{join(day(d.created), where(d.place))}</dd></div>
                     <div class="kv"><dt>Last here</dt><dd>{d.seen ? join(ago(d.seen.at), where(d.seen.place)) : "Not recorded yet"}</dd></div>
                   </dl>
-                  {devices.length > 1
+                  {mine.length > 1 || !me.owner
                     ? <button class="dev-remove" type="button" onClick={() => setRemoving(d)}>{d.current ? "Remove this device" : `Remove ${d.device}`}</button>
                     : <p class="hint">Your only device with a passkey can't be removed. Add another one first.</p>}
                 </div>

@@ -12,6 +12,9 @@ import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
 import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
 import { BoughtSheet } from "../ui/BoughtSheet";
+import { can, currentMe } from "../access";
+
+const currentIsOwner = () => currentMe().owner;
 import { Confirm } from "../ui/Confirm";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import type { CtHistoryDoc, HistoryDoc, RecentDoc, Wish, TargetsDoc } from "../types";
@@ -157,8 +160,8 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         </div>
         {usual != null && <p class="usual-line">Both prices against the usual {eur(usual)}: the higher of Cardmarket's trend and CardTrader's usual price{mv.ctUsual != null ? ` (${eur(mv.ctUsual)})` : ""}.</p>}
 
-        <button class="btn wide soft" type="button" onClick={() => setBuying(true)} disabled={w.pending === "add"}
-          title={w.pending === "add" ? "Wait until it's saved to the want-list" : undefined}><IconBag />Bought it</button>
+        {can("bought") && <button class="btn wide soft" type="button" onClick={() => setBuying(true)} disabled={w.pending === "add"}
+          title={w.pending === "add" ? "Wait until it's saved to the want-list" : undefined}><IconBag />Bought it</button>}
 
         {deal && (
           <div class="group" style={{ padding: "14px", display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
@@ -172,11 +175,11 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         <div class="group-title">History</div>
         <div class="group"><PriceChart ct={ct} cm={cm} finishLabel={foil ? "foil" : "non-foil"} /></div>
 
-        <div class="group-title row-title">My wish
-          <span style={{ display: "flex", gap: "6px" }}>
+        <div class="group-title row-title">{can("edit") || currentIsOwner() ? "My wish" : "The wish"}
+          {can("edit") && <span style={{ display: "flex", gap: "6px" }}>
             <button class="btn sm" type="button" onClick={() => setEditing(true)}><IconEdit />Edit</button>
             <button class="btn sm" type="button" onClick={() => setConfirming(true)} aria-label="Remove from want-list"><IconTrash /></button>
-          </span>
+          </span>}
         </div>
         <dl class="group">
           <div class="kv"><dt>List</dt><dd>{w.lists.join(", ") || "–"}</dd></div>
@@ -193,7 +196,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
 
         {(() => {
           const s = suggestions?.targets[w.key];
-          if (!s || (w.max_price != null && Math.abs(w.max_price - s.target) <= s.target * 0.05)) return null;
+          if (!s || !can("edit") || (w.max_price != null && Math.abs(w.max_price - s.target) <= s.target * 0.05)) return null;
           return (
             <>
               <div class="group-title">Suggested target</div>

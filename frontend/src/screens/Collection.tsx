@@ -1,5 +1,6 @@
 // Collection (D60): every card I own, with the Want-list's filters, sorts and the card pane.
 // Replaces the Bought page; what I paid and saved now lives on the Want-list dashboard.
+import { can } from "../access";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { gainOf, moves, ownedCards, series, valueOf, type Owned } from "../collection";
@@ -51,8 +52,10 @@ function groupsFor(owned: Owned[], history: HistoryDoc | null | undefined): Grou
     { id: "price", label: "Worth (a copy)", open: true, options: PRICE.map((p) => ({ id: p.id, label: p.label, test: (o) => o.now != null && o.now >= p.lo && o.now < p.hi })) },
     {
       id: "move", label: "Price movement", open: true, options: [
-        { id: "gain", label: "Worth more than I paid", test: (o) => (gainOf(o) ?? 0) > 0.005 },
-        { id: "loss", label: "Worth less than I paid", test: (o) => (gainOf(o) ?? 0) < -0.005 },
+        ...(can("money") ? [
+          { id: "gain", label: "Worth more than I paid", test: (o: Owned) => (gainOf(o) ?? 0) > 0.005 },
+          { id: "loss", label: "Worth less than I paid", test: (o: Owned) => (gainOf(o) ?? 0) < -0.005 },
+        ] : []),
         { id: "up", label: "Up 10% or more in 30 days", test: (o) => (move(o).change30 ?? 0) >= 0.1 },
         { id: "down", label: "Down 10% or more in 30 days", test: (o) => (move(o).change30 ?? 0) <= -0.1 },
       ],
@@ -108,7 +111,7 @@ function OwnedRow({ o, data, n, current, extra }: { o: Owned; data: AppData; n: 
       <div class="r-price">
         {value != null ? <span class="p-worth">{eur(value)}</span> : <span class="p-none">no price yet</span>}
         {gain != null ? <span class={`chg ${gain > 0.005 ? "down" : gain < -0.005 ? "up" : "flat"}`}>{gain >= 0 ? "+" : "−"}{eur(Math.abs(gain))}<span class="wide-only"> since bought</span></span>
-          : <span class="p-none">paid {eur(o.paid)}</span>}
+          : can("money") ? <span class="p-none">paid {eur(o.paid)}</span> : null}
       </div>
     </a>
   );
@@ -183,7 +186,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
                   <IconFilter />Filters{on > 0 && <span class="f-on">{on}</span>}
                 </button>
                 <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
-                  {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}
+                  {SORTS.filter((s) => can("money") || (s.id !== "gain" && s.id !== "loss")).map((s) => <option value={s.id}>{s.label}</option>)}
                 </select>
               </div>
               {(on > 0 || needle) && (
@@ -197,7 +200,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
                   {shown.map((o, i) => <OwnedRow o={o} data={data} n={i} current={!!current && current === o.scryfall_id} />)}
                 </div>
               ) : <div class="empty"><h2>No cards match</h2><p>Loosen a filter, or <button type="button" class="link" onClick={clear}>clear them all</button>.</p></div>}
-              <p class="hint">Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own. Since bought compares it with what you paid.</p>
+              <p class="hint">Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own.{can("money") ? " Since bought compares it with what you paid." : ""}</p>
             </div>
           </div>
         </div>

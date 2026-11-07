@@ -1,5 +1,6 @@
 // Home (D57): the first screen after sign-in. Today's best deal as a big drop in its own colour,
 // the other deals beside it, the countdown to the next check, the counts, and what went today.
+import { can, currentMe } from "../access";
 import type { AppData } from "../data";
 import { dealGap, dealRatio, wishCount } from "../data";
 import { fieldStyle } from "../drop";
@@ -74,7 +75,9 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
   const gone = (data.live?.gone ?? []).filter((d) => data.byKey.has(d.key));
   const wishes = data.wants?.wishes ?? [];
   const flagged = wishes.filter((w) => data.flagsOf(w).length).length;
-  const loading = data.live === undefined || data.wants === undefined;
+  const me = currentMe();
+  const seesDeals = can("deals");
+  const loading = (seesDeals && data.live === undefined) || (can("wants") && data.wants === undefined);
   const best = deals[0];
   const closest = !best && data.live
     ? wishes.map((w) => ({ w, gap: dealGap(w, data.liveOf(w.key)) })).filter((x): x is { w: Wish; gap: number } => x.gap != null).sort((a, b) => a.gap - b.gap)[0]?.w
@@ -85,7 +88,7 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
       <div class="home">
         <header class="home-head">
           <h1 class="title">{today()}</h1>
-          <Pulse data={data} />
+          {seesDeals && <Pulse data={data} />}
           <span class="phone-only head-btns">
             <a class="icon-btn" href="/dashboards" onClick={link("/dashboards")} aria-label="Dashboards"><IconChart /></a>
             <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
@@ -97,13 +100,14 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
         ) : (
           <>
             <div class="home-grid">
-              {best ? <HeroDeal d={best} w={data.byKey.get(best.key)!} data={data} />
+              {!seesDeals ? <Welcome name={me.name} />
+                : best ? <HeroDeal d={best} w={data.byKey.get(best.key)!} data={data} />
                 : closest ? <HeroClosest w={closest} data={data} />
                 : <section class="hero" style={{ minHeight: "260px" }}><div class="body"><h2>No deals yet</h2><p class="hero-note d-ink">The first CardTrader check fills this in.</p></div></section>}
               <div class="counts">
-                <a class="stat" href="/deals" onClick={link("/deals")} style={{ "--n": 1 }}><span>Deals right now</span><b class="fig">{deals.length}</b></a>
-                <a class="stat" href="/wants" onClick={link("/wants")} style={{ "--n": 2 }}><span>Wishes on your lists</span><b class="fig">{wishCount(wishes)}</b></a>
-                <a class={`stat${flagged ? " warn" : ""}`} href="/check" onClick={link("/check")} style={{ "--n": 3 }}><span>Cards to check</span><b class="fig">{flagged}</b></a>
+                {seesDeals && <a class="stat" href="/deals" onClick={link("/deals")} style={{ "--n": 1 }}><span>Deals right now</span><b class="fig">{deals.length}</b></a>}
+                {can("wants") && <a class="stat" href="/wants" onClick={link("/wants")} style={{ "--n": 2 }}><span>{me.owner ? "Wishes on your lists" : "Wishes on the lists"}</span><b class="fig">{wishCount(wishes)}</b></a>}
+                {can("wants") && <a class={`stat${flagged ? " warn" : ""}`} href="/check" onClick={link("/check")} style={{ "--n": 3 }}><span>Cards to check</span><b class="fig">{flagged}</b></a>}
               </div>
             </div>
             {rest.length > 0 && (
@@ -129,3 +133,22 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
   );
 }
 
+
+/** Home for someone who doesn't see live deals (D76): what they can open here. */
+function Welcome({ name }: { name: string }) {
+  const places = [
+    can("wants") && ["/wants", "the want-list"],
+    can("collection") && ["/collection", "the collection"],
+    ["/search", "every card, with prices"],
+  ].filter(Boolean) as [string, string][];
+  return (
+    <section class="hero" style={{ minHeight: "260px" }}>
+      <div class="body">
+        <h2>Hi {name}</h2>
+        <p class="hero-note" style={{ color: "var(--ink-2)", fontSize: "16px", lineHeight: 1.5 }}>You can look at{" "}
+          {places.map(([to, label], i) => <>{i ? (i === places.length - 1 ? " and " : ", ") : ""}<a class="link" href={to} onClick={link(to)}>{label}</a></>)}.
+          {can("suggest") ? " Found something good? Open a card in Search and suggest it." : ""}</p>
+      </div>
+    </section>
+  );
+}

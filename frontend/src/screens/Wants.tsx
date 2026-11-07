@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import type { AppData } from "../data";
 import { dealGap, wishCount } from "../data";
-import { day } from "../format";
 import { dismissFailed } from "../edits";
+import { can, useMe } from "../access";
+import { addSuggestion, dropSuggestion, useSuggestions } from "../suggestions";
+import { CardImage } from "../ui/CardImage";
+import { toast } from "../toast";
+import { ago, day, langName } from "../format";
 import { LOCAL } from "../env";
 import { IconArrowDown, IconArrowUp, IconFilter, IconSearch, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton } from "../ui/Row";
@@ -100,6 +104,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
         </div>
       </header>
       <EditsStatus data={data} />
+      <Inbox />
       <div class="with-side">
         <div class="side-grid">
           <aside class="side" aria-label="Filters">
@@ -169,9 +174,51 @@ function EditsStatus({ data }: { data: AppData }) {
           <IconWarn />
           <span>{failed.length === 1 ? "1 change couldn't be saved" : `${failed.length} changes couldn't be saved`}:{" "}
             {failed.map((f) => `${(f.card?.name as string | undefined) ?? f.key?.split("|")[0] ?? "a card"} (${f.message})`).join("; ")}.</span>
-          <button class="btn sm" type="button" onClick={() => dismissFailed()}>Dismiss</button>
+          {(can("edit") || can("bought")) && <button class="btn sm" type="button" onClick={() => dismissFailed()}>Dismiss</button>}
         </div>
       )}
     </>
+  );
+}
+
+
+/** Cards suggested for the want-list (D76): for me to add or dismiss, or someone's own, waiting. */
+function Inbox() {
+  const me = useMe();
+  const list = useSuggestions(me.owner || can("suggest"));
+  const [busy, setBusy] = useState<string | null>(null);
+  if (!list.length) return null;
+  const act = async (id: string, run: (id: string) => Promise<void>, done: string) => {
+    setBusy(id);
+    try { await run(id); toast(done); } catch (e) { toast((e as Error).message); } finally { setBusy(null); }
+  };
+  return (
+    <section class="inbox" aria-label="Suggestions">
+      <div class="group-title">{me.owner ? `Suggested for you · ${list.length}` : "Your suggestions, waiting for a yes"}</div>
+      <div class="group">
+        {list.map((s) => {
+          const c = s.card;
+          const how = [c.set ? `${c.set.toUpperCase()} ${c.number ?? ""}`.trim() : null,
+            s.settings.language && s.settings.language !== "en" ? langName(s.settings.language) : null,
+            s.settings.foil === "yes" ? "foil" : s.settings.foil === "no" ? "non-foil" : null].filter(Boolean).join(" · ");
+          return (
+            <div class="inbox-row">
+              <CardImage src={c.thumb ?? null} alt="" foil={s.settings.foil === "yes"} />
+              <div class="r-main">
+                <div class="r-name"><span>{c.name ?? "A card"}</span></div>
+                <div class="r-line"><span>{how}</span></div>
+                <div class="r-wish">{me.owner ? `${s.name}, ${ago(s.at)}` : `sent ${ago(s.at)}`}{s.settings.note ? ` · “${s.settings.note}”` : ""}</div>
+              </div>
+              <div class="inbox-acts">
+                {me.owner && <button class="btn sm primary" type="button" disabled={busy === s.id}
+                  onClick={() => act(s.id, addSuggestion, `Added ${c.name ?? "it"} to the want-list.`)}>Add</button>}
+                <button class="btn sm" type="button" disabled={busy === s.id}
+                  onClick={() => act(s.id, dropSuggestion, me.owner ? "Dismissed." : "Taken back.")}>{me.owner ? "Dismiss" : "Take back"}</button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }

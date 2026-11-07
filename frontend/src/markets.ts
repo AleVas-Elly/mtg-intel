@@ -32,10 +32,14 @@ export function marketView(w: Wish, data: AppData, foil?: boolean, ctPrice?: num
   return { ct, cm, low, ship, trend, usual, ctUsual: live?.usual ?? null, sCt, sCm, lead };
 }
 
-/** The cheaper of the two prices a row shows (D72): what the Price sort and the price filter use, so their
- *  order matches what is on screen. */
-export function shownPrice(w: Wish, data: AppData): number | null {
+/** Which of a row's prices to count: the cheaper of the two, or one market only (the Dashboards' switch, D77). */
+export type PriceFrom = "best" | "ct" | "cm";
+
+/** A price the row shows: CardTrader's copy, Cardmarket's lowest listing plus shipping, or the cheaper of the two
+ *  (D72), which is what the Price sort and the price filter use, so their order matches what is on screen. */
+export function shownPrice(w: Wish, data: AppData, from: PriceFrom = "best"): number | null {
   const { ct, cm } = marketView(w, data, data.liveOf(w.key)?.foil);
+  if (from !== "best") return from === "ct" ? ct : cm;
   const prices = [ct, cm].filter((v): v is number => v != null);
   return prices.length ? Math.min(...prices) : null;
 }
