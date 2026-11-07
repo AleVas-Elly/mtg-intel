@@ -2,8 +2,8 @@
 // alternatives (Rare or Mythic); groups narrow each other (Rare and Blue).
 import type { AppData } from "./data";
 import { dealGap } from "./data";
-import { cmTrend, langName, tagName } from "./format";
-import { shownPrice } from "./markets";
+import { langName, tagName } from "./format";
+import { marketView, shownPrice } from "./markets";
 import type { HistoryDoc, Wish } from "./types";
 
 export type Icon = { mana: string } | { set: string; rarity?: string | null } | { rarity: string };
@@ -93,7 +93,7 @@ export function buildGroups(wishes: Wish[], data: AppData, history: HistoryDoc |
         { id: "now", label: "Deal right now", test: (w) => !!data.dealOf(w.key) },
         { id: "close", label: "Close to a deal", test: (w) => { const g = dealGap(w, live(w)); return !data.dealOf(w.key) && g != null && g > 0 && g <= 10; } },
         { id: "target", label: "Under my target price", test: (w) => { const l = live(w); return w.max_price != null && !!l && l.price <= w.max_price; } },
-        { id: "ct", label: "Cheaper on CardTrader", test: (w) => { const l = live(w), cm = cmTrend(w, l?.foil); return !!l && cm != null && l.price < cm; } },
+        { id: "ct", label: "Cheaper on CardTrader", test: (w) => { const { ct, cm } = marketView(w, data, live(w)?.foil); return ct != null && cm != null && ct <= cm; } },
         { id: "none", label: "No copy on CardTrader", test: (w) => !!data.live && !live(w) },
       ],
     },
