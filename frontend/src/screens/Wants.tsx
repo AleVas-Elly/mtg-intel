@@ -120,7 +120,8 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
               <button type="button" class="icon-btn sort-dir" onClick={flipSort}
                 aria-label={dir === "asc" ? "Ascending: tap for descending" : "Descending: tap for ascending"}
                 title={dir === "asc" ? "Ascending" : "Descending"}>
-                {dir === "asc" ? <IconArrowUp /> : <IconArrowDown />}
+                {/* the arrow points the way the list runs from its top: a big-first or newest-first list points up (D67) */}
+                {dir === "asc" ? <IconArrowDown /> : <IconArrowUp />}
               </button>
             </div>
             {data.wants && (on > 0 || q.trim()) && (
