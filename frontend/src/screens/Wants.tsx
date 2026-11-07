@@ -17,11 +17,11 @@ export { change30 };
 // wish's place in the want-list file, where new wishes are appended, so newest first is the larger line.
 type Dir = "asc" | "desc";
 const SORTS: { id: string; label: string; dir: Dir }[] = [
-  { id: "deal", label: "Closest to a deal", dir: "asc" },
   { id: "price", label: "Price", dir: "desc" },
   { id: "added", label: "Date added", dir: "desc" },
   { id: "drop", label: "Biggest 30-day drop", dir: "asc" },
   { id: "rise", label: "Biggest 30-day rise", dir: "desc" },
+  { id: "deal", label: "Closest to a deal", dir: "asc" },
   { id: "name", label: "Name", dir: "asc" },
   { id: "set", label: "Set", dir: "asc" },
 ];
