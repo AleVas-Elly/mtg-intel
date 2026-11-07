@@ -8,12 +8,15 @@ import { ManaCost, SetSymbol } from "./symbols";
 import { useLook } from "../lab";
 
 export const CM_ICON = "https://static.cardmarket.com/img/favicon.ico";
-/** CardTrader's mark: its own favicon is a 16 px bitmap that blurs, so this is drawn here, a dot in the CardTrader green
- *  (the dot of "the dot and the square", D52) with a C cut out. Cardmarket's own icon stays. */
+/** CardTrader's own mark, the pair of triangles from the SVG on its site (cardtrader.com/assets/logo/favicon_dark.svg),
+ *  on a dark tile so its white triangle shows in both themes. Its favicon.ico is a blurry 16 px bitmap; Cardmarket's icon stays. */
 const CtMark = () => (
   <svg class="mk-ct" viewBox="0 0 16 16" width="14" height="14" role="img" aria-label="CardTrader">
-    <circle cx="8" cy="8" r="8" fill="var(--ct)" />
-    <path d="M10.9 5.7A3.7 3.7 0 1 0 10.9 10.3" fill="none" stroke="var(--bg)" stroke-width="1.8" stroke-linecap="round" />
+    <rect width="16" height="16" rx="3.5" fill="#14181d" />
+    <g transform="translate(3.2 2.5) scale(.2439)">
+      <path d="m12 17.7-1.1 2-1.1 2c-.1.2-.4.4-.6.3h-1.8c-2.2 0-4.4 0-6.6 0-.4.1-.7-.2-.8-.6 0-.2 0-.4.1-.5 1.2-2.1 2.4-4.3 3.6-6.4s2.3-4 3.5-6l3.3-5.9 1.2-2.2s.1-.1.1-.1c.2-.3.3-.3.4 0l.8 1.4 3 5.3 3 5.3 2.9 5.2c.7 1.2 1.4 2.5 2.1 3.7.2.3.1.7-.2.9-.1.1-.3.1-.4.1-2.8 0-5.5 0-8.3 0-.4 0-.8-.2-.9-.5-.7-1.2-1.4-2.5-2.1-3.7z" fill="#2aa8f8" />
+      <path d="m27.4 27.4c.2-.4.4-.7.6-1 .6-1 1.1-2 1.7-3 .1-.3.4-.4.7-.4h8.3c.7 0 1 .5.6 1.1-1.1 1.9-2.1 3.8-3.2 5.7-1.3 2.2-2.5 4.4-3.8 6.7l-3.1 5.5-1.6 2.9c-.1.1-.1.1-.2.2-.1-.1-.1-.1-.2-.2l-3.2-5.8c-1.1-2-2.3-4-3.4-6.1s-2.3-4.1-3.4-6.1c-.5-1-1.1-2-1.6-2.9-.2-.3-.2-.7.1-.9.1-.1.3-.1.5-.1h8.3c.3 0 .6.2.8.5.7 1.2 1.4 2.5 2.1 3.7z" fill="#fff" />
+    </g>
   </svg>
 );
 const under = (usual: number | null, p: number | null) => (usual && p != null ? (usual - p) / usual : null);
