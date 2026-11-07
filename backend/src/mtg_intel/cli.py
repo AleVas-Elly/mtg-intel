@@ -94,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     deal_check.add_argument("--dry-run", action="store_true", help="print deals; send and save nothing")
     suggest = commands.add_parser("suggest-targets", help="target price suggestions from 90 days of prices (D55)")
     suggest.add_argument("--send", action="store_true", help="also send the Telegram note")
+    trend_note = commands.add_parser("trend-note", help="this week's price moves of the want-list (D71)")
+    trend_note.add_argument("--send", action="store_true", help="also send the Telegram note")
     args = parser.parse_args(argv)
 
     load_env_file(REPO_ROOT / ".env")
@@ -112,6 +114,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "suggest-targets":
         with httpx.Client(timeout=60) as client:
             return suggest_targets(client, tables_store(None), None, datetime.now(UTC), args.send)
+    if args.command == "trend-note":
+        with httpx.Client(timeout=60) as client:
+            return weekly_trends(client, tables_store(None), None, args.send)
     if args.command == "alert":
         with httpx.Client() as client:
             sent = alert(client, args.title, args.message)
@@ -669,6 +674,34 @@ def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: 
     return 0
 
 
+def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: bool) -> int:
+    """This week's price moves of the want-list (D71): printed, and sent as the Monday Telegram note."""
+    import pyarrow.parquet as pq
+
+    from mtg_intel import trends
+    from mtg_intel.archive.notify import telegram_call
+
+    if watch is None:
+        watch = pq.read_table(store.fetch("my/watch.parquet")).to_pylist()
+    ids = sorted({w["scryfall_id"] for w in watch if w.get("scryfall_id")})
+    path = store.fetch("my/price_history.parquet", fresh=False)
+    price_rows: dict[str, list[dict]] = {}
+    for r in pq.read_table(path, filters=[("scryfall_id", "in", ids)]).to_pylist() if path and ids else []:
+        price_rows.setdefault(r["scryfall_id"], []).append(r)
+    moves = trends.weekly_moves(watch, price_rows)
+    counts = {kind: sum(m.kind == kind for m in moves) for kind, _ in trends.SECTIONS}
+    print("price moves: " + ", ".join(f"{n} {kind}" for kind, n in counts.items()))
+    note = trends.weekly_note(moves, os.environ.get("SITE_URL"))
+    if note:
+        print(note)
+    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    if send and note and token and chat:
+        sent = telegram_call(client, token, "sendMessage", {
+            "chat_id": chat, "text": note, "parse_mode": "HTML", "link_preview_options": {"is_disabled": True}})
+        print(f"trend note sent: {sent is not None}")
+    return 0
+
+
 PURCHASES = "my/inputs/purchases.csv"  # cards bought, recorded on the site (3c); phase 4's collection starts here
 MAX_DEAL_MESSAGES = 10  # one message per deal up to this many, then one summary
 SKIP_AFTER = timedelta(minutes=4)  # a scheduled (fallback) run this soon after a check is redundant
@@ -852,6 +885,14 @@ def check_deals(args: argparse.Namespace) -> int:
                 suggest_targets(client, store, watch, now, send=True)
             except Exception as e:  # noqa: BLE001 - never stops the check
                 print(f"WARNING  target suggestions failed: {e}", file=sys.stderr)
+        from mtg_intel import trends
+
+        if local.weekday() == trends.WEEKDAY and local.hour >= trends.HOUR and state.get("trends_on") != local.date().isoformat():
+            state["trends_on"] = local.date().isoformat()
+            try:
+                weekly_trends(client, store, watch, send=True)
+            except Exception as e:  # noqa: BLE001 - never stops the check
+                print(f"WARNING  trend note failed: {e}", file=sys.stderr)
         if site_store:
             try:  # the website's copy (D49); a failure here never stops the alerts or the saved check
                 from mtg_intel import lifecycle
