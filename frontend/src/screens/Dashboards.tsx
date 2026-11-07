@@ -5,7 +5,7 @@ import { can } from "../access";
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useDoc } from "../api";
-import { bestNow, completionBySet, gainOf, moves, ownedCards, series, toBuy, totalOverTime, valueOf, type Owned } from "../collection";
+import { bestNow, completionBySet, gainOf, moves, myPurchases, ownedCards, series, toBuy, totalOverTime, valueOf, type Owned } from "../collection";
 import type { PriceFrom } from "../markets";
 import type { AppData } from "../data";
 import { dealGap, wishCount } from "../data";
@@ -328,7 +328,7 @@ export function Dashboards({ data }: { data: AppData }) {
   const tab: Tab = !can("wants") ? "collection" : !can("collection") ? "wants" : chosen;
   const purchases = useDoc<PurchasesDoc>("purchases").doc;
   const history = useDoc<HistoryDoc>("history").doc;
-  const owned = useMemo(() => ownedCards([...pendingPurchases(data.edits.ops), ...(purchases?.purchases ?? [])]), [purchases, data.edits.ops]);
+  const owned = useMemo(() => ownedCards(myPurchases(data.edits.ops, purchases)), [purchases, data.edits.ops]);
   const pick = (t: Tab) => { setTab(t); try { sessionStorage.setItem("dash-tab", t); } catch { /* fine */ } };
   const [from, setFrom] = useState<PriceFrom>(() => { try { return (sessionStorage.getItem("dash-prices") as PriceFrom) || "best"; } catch { return "best"; } });
   const pickFrom = (f: PriceFrom) => { setFrom(f); try { sessionStorage.setItem("dash-prices", f); } catch { /* fine */ } };

@@ -12,6 +12,7 @@ import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
 import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
 import { BoughtSheet } from "../ui/BoughtSheet";
+import { OwnedHere } from "../ui/RemoveSheet";
 import { can, currentMe } from "../access";
 
 const currentIsOwner = () => currentMe().owner;
@@ -171,6 +172,8 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
             </span>
           </div>
         )}
+
+        <OwnedHere data={data} id={w.scryfall_id} />
 
         <div class="group-title">History</div>
         <div class="group"><PriceChart ct={ct} cm={cm} finishLabel={foil ? "foil" : "non-foil"} /></div>

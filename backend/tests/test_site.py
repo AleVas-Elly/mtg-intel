@@ -138,6 +138,21 @@ def test_purchases_doc_shows_newest_first_with_the_saving():
     assert doc["purchases"][1]["lists"] == ["Showcase"]
 
 
+def test_purchases_doc_says_which_copies_left_the_collection():
+    from mtg_intel.tables import mycards
+
+    text = mycards.append_purchases("", [
+        {"date": "2026-10-20", "name": "Sold", "foil": "no", "condition": "NM", "price_eur": "3", "market": "other",
+         "gone": "sold", "gone_date": "2026-11-07", "sold_eur": "6.50"},
+        {"date": "2026-10-21", "name": "Kept", "foil": "no", "condition": "NM", "price_eur": "3", "market": "other"},
+    ])
+
+    doc = site.purchases_doc(text, pa.table({"scryfall_id": pa.array([], pa.string())}), NOW)
+
+    assert [(p["name"], p["gone"], p["gone_date"], p["sold"]) for p in doc["purchases"]] == [
+        ("Kept", None, None, None), ("Sold", "sold", "2026-11-07", 6.5)]
+
+
 def test_purchases_doc_says_what_each_finish_is_worth_now():
     from mtg_intel.tables import mycards
 

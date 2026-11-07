@@ -46,7 +46,7 @@ export const PERM_INFO: { id: Perm; label: string; hint: string; needs?: Perm }[
   { id: "details", label: "Deal details", hint: "Seller country and why it's a deal", needs: "deals" },
   { id: "suggest", label: "Suggest cards", hint: "Their picks wait in your inbox for Add or Dismiss" },
   { id: "edit", label: "Edit want-list", hint: "Add, change and remove wishes and targets", needs: "wants" },
-  { id: "bought", label: "Mark bought", hint: "Record purchases", needs: "wants" },
+  { id: "bought", label: "Mark bought", hint: "Record purchases and take cards out of the collection", needs: "wants" },
 ];
 
 export const PRESETS: { id: string; label: string; hint: string; perms: Perm[] }[] = [

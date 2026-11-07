@@ -178,8 +178,11 @@ EDITABLE = ["language", "foil", "min_condition", "via_zero", "max_price_eur", "d
 # Cards I bought, recorded on the site ("Bought it", 3c): what I paid against Cardmarket's trend
 # that day is the saving (spec principle 5). Phase 4 builds the collection from it.
 PURCHASE_COLUMNS = ["date", "name", "set_code", "collector_number", "scryfall_id", "cardtrader_blueprint_id", "language",
-                    "foil", "condition", "price_eur", "market", "cardmarket_trend_eur", "list", "note"]
+                    "foil", "condition", "price_eur", "market", "cardmarket_trend_eur", "list", "note",
+                    # a copy that left the collection (D79): why (GONE), when, and what it sold for
+                    "gone", "gone_date", "sold_eur"]
 MARKETS = ("cardtrader", "cardmarket", "other")
+GONE = ("sold", "traded", "lost")  # traded covers gifted; "mistake" deletes the purchase row instead
 
 ADD_DEFAULTS = {"language": "en", "foil": "any", "min_condition": "NM", "via_zero": "no", "quantity": "1"}  # user, 2026-10-22
 
@@ -288,6 +291,51 @@ def _recorded(purchases: list[dict[str, str]], row: dict[str, str]) -> str | Non
     return None
 
 
+def _remove_owned(purchases: list[dict[str, str]], op: dict) -> tuple[str, bool]:
+    """A "removed" edit (D79) on the purchases rows, changed in place: "owned" names the copies
+    (scryfall_id or name, foil, language, condition) and "remove" says how many left and why. Sold,
+    traded (or gifted) and lost copies stay as rows marked gone, oldest first; a mistake deletes the
+    newest rows. Returns the message and whether it worked."""
+    owned = {k: str(v or "").strip() for k, v in (op.get("owned") or {}).items()}
+    remove = op.get("remove") or {}
+    reason = str(remove.get("reason") or "")
+    if reason not in (*GONE, "mistake"):
+        return "why it left must be sold, traded, lost or a mistake", False
+    try:
+        qty = int(remove.get("qty") or 1)
+    except (TypeError, ValueError):
+        return "how many must be a whole number", False
+    if qty < 1:
+        return "how many must be at least 1", False
+    date = str(remove.get("date") or "")
+    if reason != "mistake" and not (len(date) == 10 and date[4] == date[7] == "-" and date.replace("-", "").isdigit()):
+        return "the date must look like 2026-11-07", False
+    sold = str(remove.get("sold_eur") or "").replace(",", ".").strip()
+    if sold and reason == "sold":
+        try:
+            sold = f"{float(sold):.2f}"
+        except ValueError:
+            return "the selling price must be a number", False
+        if float(sold) < 0:
+            return "the selling price can't be negative", False
+    else:
+        sold = ""
+    same = (lambda p: p.get("scryfall_id") == owned["scryfall_id"]) if owned.get("scryfall_id") else \
+        (lambda p: not p.get("scryfall_id") and p.get("name") == owned.get("name"))
+    rows = [p for p in purchases if same(p) and not p.get("gone") and (p.get("foil") or "no") == (owned.get("foil") or "no")
+            and (p.get("language") or "") == (owned.get("language") or "") and p.get("condition") == owned.get("condition")]
+    name = owned.get("name") or (rows[0]["name"] if rows else "this card")
+    if len(rows) < qty:
+        return f"{name}: only {len(rows)} {'copy' if len(rows) == 1 else 'copies'} left in the collection", False
+    if reason == "mistake":
+        for p in sorted(rows, key=lambda p: p.get("date") or "")[-qty:]:
+            purchases.remove(p)
+        return f"{name}: {qty} removed as a mistake", True
+    for p in sorted(rows, key=lambda p: p.get("date") or "")[:qty]:
+        p |= {"gone": reason, "gone_date": date, "sold_eur": sold}
+    return f"{name}: {qty} {reason}", True
+
+
 def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[str, int],
                 bought: list[dict[str, str]] | None = None,
                 purchases: list[dict[str, str]] | None = None) -> tuple[str, list[dict]]:
@@ -297,7 +345,8 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
     off the wish, which goes at zero; the purchase row is appended to `bought`). From my CardTrader
     orders (D54) also come "collected" (a purchase matching no wish: "card_row" and "purchase") and
     "unbought" (a cancelled order: "note" names the purchase rows to drop, and the wish comes back
-    from "key" or "wish_row"); with `purchases` (the purchases rows, changed in place) an order item
+    from "key" or "wish_row"). "removed" takes owned copies out of the collection (D79, needs
+    `purchases`); with `purchases` (the purchases rows, changed in place) an order item
     is recorded once. Returns the new text and one result per op ({"id", "ok", "message"}); a
     failed op changes nothing."""
     rows = read_csv_rows(text) if text.strip() else []
@@ -389,6 +438,12 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
                                                                        if k in WANTLIST_COLUMNS})
             results.append({"id": op.get("id"), "ok": True,
                             "message": f"order cancelled: {dropped[0]['name'] if dropped else 'nothing recorded'}"})
+        elif kind == "removed":
+            if purchases is None:
+                results.append({"id": op.get("id"), "ok": False, "message": "no purchases to remove from"})
+                continue
+            message, ok = _remove_owned(purchases, op)
+            results.append({"id": op.get("id"), "ok": ok, "message": message})
         elif kind in ("update", "remove"):
             index = keys.get(str(op.get("key")))
             if index is None:

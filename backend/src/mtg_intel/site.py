@@ -142,6 +142,9 @@ def purchases_doc(text: str, cards: pa.Table, now: datetime, cardmarket_day: pa.
             "mana_cost": card.get("mana_cost"), "type_line": card.get("type_line"), "colors": card.get("colors") or [],
             "tags": card.get("special_tags") or [], "set_name": card.get("set_name"), "lists": [x for x in (r.get("list") or "").split("; ") if x],
             "now": round(value, 2) if value is not None else None,
+            # left the collection (D79): sold, traded, gifted or lost, when, and the selling price
+            "gone": r.get("gone") or None, "gone_date": r.get("gone_date") or None,
+            "sold": float(r["sold_eur"]) if r.get("sold_eur") else None,
         })
     out.reverse()
     return {"built_at": now.isoformat(), "price_date": price_date if worth else None, "purchases": out}

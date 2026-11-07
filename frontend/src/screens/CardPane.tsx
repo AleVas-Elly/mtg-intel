@@ -12,6 +12,7 @@ import { fieldStyle } from "../drop";
 import { IconBack, IconClose, IconOut, IconPlus, IconWarn } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { Versions, WishForm } from "../ui/WishSheet";
+import { OwnedHere } from "../ui/RemoveSheet";
 import type { Wish } from "../types";
 
 // The + in Search opens the pane straight on the form.
@@ -84,6 +85,8 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
             ) : can("suggest") ? (
               <button class="btn primary wide" type="button" onClick={() => setAdding(true)}><IconPlus />Suggest for the want-list</button>
             ) : null}
+
+            <OwnedHere data={data} id={w.scryfall_id} />
 
             <div class="group-title">Prices</div>
             <div class="group markets">

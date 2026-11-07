@@ -63,9 +63,16 @@ export interface PurchaseInput {
   language: string; date: string; cardmarket_trend_eur: string;
 }
 
+/** Why copies left the collection (D79); "mistake" deletes their purchase instead. */
+export type GoneReason = "sold" | "traded" | "lost" | "mistake";
+
+/** Which owned copies a "removed" edit means: the Collection's grouping of purchases. */
+export interface OwnedRef { scryfall_id: string; name: string; foil: "yes" | "no"; language: string; condition: string }
+
 export interface Edit {
-  id: string; at: string; op: "add" | "update" | "remove" | "bought"; key?: string; scryfall_id?: string;
+  id: string; at: string; op: "add" | "update" | "remove" | "bought" | "removed"; key?: string; scryfall_id?: string;
   settings?: Settings; card?: Partial<Wish>; purchase?: PurchaseInput; message?: string;
+  owned?: OwnedRef; remove?: { reason: GoneReason; qty: number; date: string; sold_eur: string };
 }
 
 export interface Purchase {
@@ -77,6 +84,8 @@ export interface Purchase {
   /** Cardmarket's trend for the same finish on `PurchasesDoc.price_date` (what it is worth now). */
   now?: number | null;
   pending?: boolean;
+  /** Left the collection (D79): why, when, and what a copy sold for. */
+  gone?: Exclude<GoneReason, "mistake"> | null; gone_date?: string | null; sold?: number | null;
 }
 
 export interface PurchasesDoc { built_at: string; price_date?: string | null; purchases: Purchase[] }

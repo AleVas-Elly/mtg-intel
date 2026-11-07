@@ -3,14 +3,14 @@
 import { can } from "../access";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
-import { gainOf, moves, ownedCards, series, valueOf, type Owned } from "../collection";
+import { gainOf, moves, myPurchases, ownedCards, series, valueOf, type Owned } from "../collection";
 import type { AppData } from "../data";
-import { pendingPurchases } from "../edits";
 import { EMPTY, activeCount, applyFilters, costColours, optionCounts, type FilterState, type Group, type Option } from "../filters";
 import { day, eur, langName, langShort, tagName } from "../format";
 import { link, openCard } from "../router";
 import { CardImage, preloadImage } from "../ui/CardImage";
 import { FilterPanel, FilterSheet } from "../ui/Filters";
+import { goneText } from "../ui/RemoveSheet";
 import { IconFilter, IconSearch } from "../ui/icons";
 import { RowSkeleton } from "../ui/Row";
 import { ManaCost, SetSymbol } from "../ui/symbols";
@@ -48,6 +48,8 @@ function groupsFor(owned: Owned[], history: HistoryDoc | null | undefined): Grou
   const sets = new Map(owned.filter((o) => o.set).map((o) => [o.set!, o]));
   const move = (o: Owned) => moves(series(o.scryfall_id, o.foil, history));
   return [
+    // Off: the cards I own. On: only the copies that left (D79), which never count in the totals.
+    ...(owned.some((o) => o.gone) ? [{ id: "status", label: "Status", open: true, options: [{ id: "gone", label: "Sold or gone", test: (o: Owned) => !!o.gone }] }] : []),
     { id: "source", label: "Where it came from", open: true, options: count((o) => o.markets).map((m) => ({ id: m, label: m === "other" ? "Bought elsewhere" : `Bought on ${MARKET[m] ?? m}`, test: (o) => o.markets.includes(m) })) },
     { id: "price", label: "Worth (a copy)", open: true, options: PRICE.map((p) => ({ id: p.id, label: p.label, test: (o) => o.now != null && o.now >= p.lo && o.now < p.hi })) },
     {
@@ -97,6 +99,7 @@ export function openOwned(data: AppData, o: Owned) {
 }
 
 function OwnedRow({ o, data, n, current, extra }: { o: Owned; data: AppData; n: number; current?: boolean; extra?: preact.ComponentChildren }) {
+  if (o.gone) return <GoneRow o={o} data={data} n={n} current={current} />;
   const value = valueOf(o), gain = gainOf(o);
   return (
     <a class="row" data-key={o.scryfall_id ? `sf:${o.scryfall_id}` : o.key} href={o.scryfall_id ? `?card=sf:${o.scryfall_id}` : undefined}
@@ -117,6 +120,26 @@ function OwnedRow({ o, data, n, current, extra }: { o: Owned; data: AppData; n: 
   );
 }
 
+/** A copy that left the collection: greyed, with why and when, and what it sold for. */
+function GoneRow({ o, data, n, current }: { o: Owned; data: AppData; n: number; current?: boolean }) {
+  return (
+    <a class="row out" data-key={o.scryfall_id ? `sf:${o.scryfall_id}` : o.key} href={o.scryfall_id ? `?card=sf:${o.scryfall_id}` : undefined}
+      aria-current={current ? "true" : undefined} style={{ "--n": n }}
+      onClick={(e) => { e.preventDefault(); openOwned(data, o); }} onPointerEnter={() => preloadImage(o.image, 0)}>
+      <CardImage src={o.thumb} alt="" foil={o.foil} />
+      <div class="r-main">
+        <div class="r-name"><span>{o.name}</span><ManaCost cost={o.mana_cost} front /></div>
+        <div class="r-line"><SetSymbol set={o.set} rarity={o.rarity} /><span>{o.tags.length ? o.tags.map(tagName).join(", ") : "regular"}{o.set ? `, ${o.set.toUpperCase()} ${o.number ?? ""}` : ""}{o.language ? ` • ${langShort(o.language)}` : ""}</span></div>
+        <div class="r-wish">{o.pending && <span class="pending">Saving</span>}{o.qty > 1 ? `${o.qty} copies, ` : ""}{goneText(o)}</div>
+      </div>
+      <div class="r-price">
+        {o.sold != null && can("money") ? <span class="p-worth">{eur(o.sold)}</span> : <span class="p-none">{o.gone === "sold" ? "sold" : o.gone}</span>}
+        {o.sold != null && can("money") && <span class="p-none">paid {eur(o.paid)}</span>}
+      </div>
+    </a>
+  );
+}
+
 export function Collection({ data, card }: { data: AppData; card: string | null }) {
   const doc = useDoc<PurchasesDoc>("purchases").doc;
   const history = useDoc<HistoryDoc>("history").doc;
@@ -126,13 +149,21 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
   const [sheet, setSheet] = useState(false);
   useEffect(() => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch { /* fine */ } }, [filters]);
 
-  const owned = useMemo(() => ownedCards([...pendingPurchases(data.edits.ops), ...(doc?.purchases ?? [])]), [doc, data.edits.ops]);
-  const groups = useMemo(() => groupsFor(owned, history), [owned, history]);
+  const all = useMemo(() => myPurchases(data.edits.ops, doc), [doc, data.edits.ops]);
+  const owned = useMemo(() => ownedCards(all), [all]);
+  const left = useMemo(() => ownedCards(all, true), [all]);
+  const showGone = !!filters.sel.status?.length && left.length > 0;
+  const base = showGone ? left : owned;
+  const groups = useMemo(() => groupsFor([...owned, ...left], history), [owned, left, history]);
   const needle = q.trim().toLowerCase();
-  const searched = useMemo(() => needle ? owned.filter((o) => o.name.toLowerCase().includes(needle) || (o.set ?? "") === needle ||
-    (o.set_name ?? "").toLowerCase().includes(needle) || o.tags.some((t) => t.includes(needle))) : owned, [owned, needle]);
+  const searched = useMemo(() => needle ? base.filter((o) => o.name.toLowerCase().includes(needle) || (o.set ?? "") === needle ||
+    (o.set_name ?? "").toLowerCase().includes(needle) || o.tags.some((t) => t.includes(needle))) : base, [base, needle]);
   const price = (o: Owned) => o.now;
-  const counts = useMemo(() => optionCounts(searched, groups, filters, price, qtyOf), [searched, groups, filters]);
+  const counts = useMemo(() => {
+    const c = optionCounts(searched, groups, filters, price, qtyOf);
+    c.set("status:gone", qtyOf(left));  // counted over the copies that left, whatever is on screen
+    return c;
+  }, [searched, groups, filters, left]);
   const shown = useMemo(() => {
     const rows = applyFilters(searched, groups, filters, price);
     const c30 = (o: Owned) => moves(series(o.scryfall_id, o.foil, history)).change30;
@@ -150,9 +181,9 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
 
   const pickSort = (s: string) => { setSort(s); try { sessionStorage.setItem("collection-sort", s); } catch { /* fine */ } };
   const on = activeCount(filters);
-  const total = qtyOf(owned), n = qtyOf(shown);
-  const worth = shown.reduce((t, o) => t + (valueOf(o) ?? 0), 0);
-  const gain = shown.reduce((t, o) => t + (gainOf(o) ?? 0), 0);
+  const total = qtyOf(base), n = qtyOf(shown);
+  const worth = showGone ? 0 : shown.reduce((t, o) => t + (valueOf(o) ?? 0), 0);
+  const gain = showGone ? 0 : shown.reduce((t, o) => t + (gainOf(o) ?? 0), 0);
   const clear = () => setFilters(EMPTY);
   const current = card?.startsWith("sf:") ? card.slice(3) : data.byKey.get(card ?? "")?.scryfall_id;
 
@@ -161,11 +192,11 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
       <header class="head sec-band">
         <div>
           <h1 class="title">Collection</h1>
-          <p class="sub">{doc === undefined ? "Loading…" : total ? <>{total} {total === 1 ? "card" : "cards"}, worth {eur(owned.reduce((t, o) => t + (valueOf(o) ?? 0), 0))} at Cardmarket's trend</> : "Your cards, with what they're worth"}</p>
+          <p class="sub">{doc === undefined ? "Loading…" : qtyOf(owned) ? <>{qtyOf(owned)} {qtyOf(owned) === 1 ? "card" : "cards"}, worth {eur(owned.reduce((t, o) => t + (valueOf(o) ?? 0), 0))} at Cardmarket's trend</> : "Your cards, with what they're worth"}</p>
         </div>
         <a class="btn sm" href="/dashboards" onClick={link("/dashboards")}>Dashboard</a>
       </header>
-      {doc === undefined && !owned.length ? <RowSkeleton /> : !owned.length ? (
+      {doc === undefined && !owned.length ? <RowSkeleton /> : !owned.length && !left.length ? (
         <div class="empty">
           <h2>Your collection starts here</h2>
           <p>Every card you buy shows up here: from Bought it on a card, and from your CardTrader orders. Send Claude your ManaBox export to bring in everything you already own.</p>
@@ -191,7 +222,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
               </div>
               {(on > 0 || needle) && (
                 <div class="list-head shown-line">
-                  <span class="num">{n} of {total} cards · worth {eur(worth)}{gain ? ` · ${gain >= 0 ? "+" : "−"}${eur(Math.abs(gain))} since bought` : ""}</span>
+                  <span class="num">{showGone ? `${n} of ${total} ${total === 1 ? "card" : "cards"} sold or gone` : <>{n} of {total} cards · worth {eur(worth)}</>}{gain ? ` · ${gain >= 0 ? "+" : "−"}${eur(Math.abs(gain))} since bought` : ""}</span>
                   {on > 0 && <button type="button" class="link" onClick={clear}>Clear all</button>}
                 </div>
               )}
@@ -200,7 +231,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
                   {shown.map((o, i) => <OwnedRow o={o} data={data} n={i} current={!!current && current === o.scryfall_id} />)}
                 </div>
               ) : <div class="empty"><h2>No cards match</h2><p>Loosen a filter, or <button type="button" class="link" onClick={clear}>clear them all</button>.</p></div>}
-              <p class="hint">Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own.{can("money") ? " Since bought compares it with what you paid." : ""}</p>
+              <p class="hint">{showGone ? "Cards you sold, traded, gave away or lost. They don't count in the collection's worth." : <>Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own.{can("money") ? " Since bought compares it with what you paid." : ""}</>}</p>
             </div>
           </div>
         </div>

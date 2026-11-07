@@ -59,10 +59,10 @@ export function docPerm(key: string): Perm | null {
   return null;
 }
 
-/** Money out of the purchases document: what I paid and saved. The value now (Cardmarket's trend,
- *  public) stays. */
+/** Money out of the purchases document: what I paid, saved and sold for. The value now (Cardmarket's
+ *  trend, public) stays. */
 export function withoutMoney(doc: { purchases?: Record<string, unknown>[] }) {
-  return { ...doc, purchases: (doc.purchases ?? []).map(({ price, saved, cardmarket, ...rest }) => ({ ...rest, price: null, saved: null, cardmarket: null })) };
+  return { ...doc, purchases: (doc.purchases ?? []).map(({ price, saved, cardmarket, sold, ...rest }) => ({ ...rest, price: null, saved: null, cardmarket: null, sold: null })) };
 }
 
 /** Deal details out of the live document: seller country and the reasons. */

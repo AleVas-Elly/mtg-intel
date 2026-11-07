@@ -523,8 +523,10 @@ async function people(request: Request, env: Env, path: string, body: Record<str
   return json({ error: "Not found" }, 404);
 }
 
-interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "bought" | "collected" | "unbought"; key?: string; scryfall_id?: string;
+interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "bought" | "collected" | "unbought" | "removed"; key?: string; scryfall_id?: string;
   settings?: Record<string, string>; card?: Record<string, unknown>; purchase?: Record<string, string>;
+  /** "removed" (D79): which owned copies, and how many left and why */
+  owned?: Record<string, string>; remove?: { reason: string; qty: number; date?: string; sold_eur?: string };
   by?: string; // the account that made it on the site (D78); none for the GitHub jobs' and Telegram's
 }
 
@@ -547,7 +549,8 @@ async function editsDoc(env: Env, viewer?: Account) {
   const doc = { ops: await waitingEdits(env), failed: (await failedEdits(env)) as Edit[] };
   if (!viewer || can(viewer, "money")) return doc;
   // without the money switch, what a waiting purchase cost stays hidden
-  const hide = (e: Edit) => (e.purchase ? { ...e, purchase: { ...e.purchase, price_eur: "", cardmarket_trend_eur: "" } } : e);
+  const hide = (e: Edit) => (e.purchase ? { ...e, purchase: { ...e.purchase, price_eur: "", cardmarket_trend_eur: "" } }
+    : e.remove ? { ...e, remove: { ...e.remove, sold_eur: "" } } : e);
   return { ops: doc.ops.map(hide), failed: doc.failed.map(hide) };
 }
 
@@ -558,11 +561,13 @@ function editText(e: Partial<Edit>): string {
   if (e.op === "add") return `Added ${card} to the want-list`;
   if (e.op === "remove") return `Removed ${card} from the want-list`;
   if (e.op === "bought") return `Marked ${card} bought`;
+  if (e.op === "removed") return `Took ${typeof e.owned?.name === "string" ? e.owned.name : "a card"} out of the collection (${e.remove?.reason ?? "removed"})`;
   return `Changed ${card} (${Object.keys(e.settings ?? {}).join(", ") || "settings"})`;
 }
 
 /** POST /api/edits (one edit), DELETE /api/edits/<id> (undo a waiting edit), DELETE /api/edits/failed.
- *  Adding, changing and removing wishes needs the edit switch; marking bought the bought switch (D78). */
+ *  Adding, changing and removing wishes needs the edit switch; marking bought and taking cards out of
+ *  the collection (D79) the bought switch (D78). */
 async function edits(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
   const w = await who(request, env);
   if (!w) return json({ error: "Sign in first." }, 401);
@@ -586,10 +591,16 @@ async function edits(request: Request, env: Env, rest: string, ctx: ExecutionCon
   }
   if (request.method !== "POST" || rest) return json({ error: "Not found" }, 404);
   const body = (await request.json().catch(() => null)) as Partial<Edit> | null;
-  const ok = body && (body.op === "add" ? typeof body.scryfall_id === "string" : (body.op === "update" || body.op === "remove" || body.op === "bought") && typeof body.key === "string");
+  const reasons = ["sold", "traded", "lost", "mistake"];
+  const ok = body && (body.op === "add" ? typeof body.scryfall_id === "string"
+    : body.op === "removed" ? !!body.owned && typeof body.owned.condition === "string" && !!body.remove
+      && reasons.includes(body.remove.reason) && Number.isInteger(body.remove.qty) && body.remove.qty >= 1
+    : (body.op === "update" || body.op === "remove" || body.op === "bought") && typeof body.key === "string");
   if (!ok || JSON.stringify(body).length > 4000) return json({ error: "That change isn't valid." }, 400);
-  if (!can(me, body.op === "bought" ? "bought" : "edit")) {
-    return json({ error: body.op === "bought" ? "You can't mark cards bought here." : "You can only look at this want-list." }, 403);
+  const purchaseOp = body.op === "bought" || body.op === "removed";
+  if (!can(me, purchaseOp ? "bought" : "edit")) {
+    return json({ error: body.op === "bought" ? "You can't mark cards bought here."
+      : body.op === "removed" ? "You can't take cards out of the collection here." : "You can only look at this want-list." }, 403);
   }
   const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM edits").first<{ n: number }>();
   if ((count?.n ?? 0) >= MAX_EDITS) {
@@ -597,7 +608,8 @@ async function edits(request: Request, env: Env, rest: string, ctx: ExecutionCon
   }
   const at = new Date().toISOString();
   const edit: Edit = { id: randomToken(12), at, op: body.op!, key: body.key, scryfall_id: body.scryfall_id,
-    settings: body.settings ?? {}, card: body.card, purchase: body.purchase, by: me.id };
+    settings: body.settings ?? {}, card: body.card, purchase: body.purchase, by: me.id,
+    ...(body.op === "removed" && { owned: body.owned, remove: body.remove }) };
   await env.DB.batch([queueEdit(env, edit), ...(isOwner(me) ? [] : [logged(env, me.id, editText(edit))])]);
   if (env.TRIGGER) ctx.waitUntil(env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined));
   return json(await editsDoc(env, me));

@@ -284,6 +284,37 @@ def test_bought_takes_one_copy_off_and_records_the_purchase(tmp_path: Path):
     assert [p["scryfall_id"] for p in mycards.read_csv_rows(again)] == ["sf-1", "sf-new"]
 
 
+def test_removed_marks_copies_gone_oldest_first_and_a_mistake_deletes_the_newest(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    row = {"name": "Elvish Archdruid", "scryfall_id": "sf-1", "language": "en", "foil": "no", "condition": "NM",
+           "price_eur": "3.00", "market": "cardtrader"}
+    purchases = [row | {"date": "2026-10-01"}, row | {"date": "2026-10-05", "price_eur": "4.00"},
+                 row | {"date": "2026-10-09", "price_eur": "5.00"}, row | {"date": "2026-10-09", "foil": "yes"},
+                 {"name": "Unmatched", "date": "2026-10-02", "condition": "SP", "price_eur": "1.00", "market": "other"}]
+    owned = {"scryfall_id": "sf-1", "name": "Elvish Archdruid", "foil": "no", "language": "en", "condition": "NM"}
+    ops = [
+        {"id": "a", "op": "removed", "owned": owned, "remove": {"reason": "sold", "qty": 1, "date": "2026-11-07", "sold_eur": "6,5"}},
+        {"id": "b", "op": "removed", "owned": owned, "remove": {"reason": "mistake", "qty": 1}},
+        {"id": "c", "op": "removed", "owned": owned, "remove": {"reason": "lost", "qty": 2, "date": "2026-11-07"}},  # 1 left
+        {"id": "d", "op": "removed", "owned": owned, "remove": {"reason": "gifted", "qty": 1, "date": "2026-11-07"}},
+        {"id": "e", "op": "removed", "owned": {"name": "Unmatched", "condition": "SP"},
+         "remove": {"reason": "traded", "qty": 1, "date": "2026-11-07", "sold_eur": "9"}},
+    ]
+
+    text, results = mycards.apply_edits("", ops, cards, {}, purchases=purchases)
+
+    assert [(r["id"], r["ok"]) for r in results] == [("a", True), ("b", True), ("c", False), ("d", False), ("e", True)]
+    assert results[2]["message"] == "Elvish Archdruid: only 1 copy left in the collection"
+    assert [(p["date"], p.get("foil"), p.get("gone"), p.get("sold_eur")) for p in purchases] == [
+        ("2026-10-01", "no", "sold", "6.50"),  # the oldest copy is the one sold
+        ("2026-10-05", "no", None, None),  # the newest plain copy was the mistake
+        ("2026-10-09", "yes", None, None),
+        ("2026-10-02", None, "traded", ""),  # only a sale keeps a price
+    ]
+    saved = mycards.read_csv_rows(mycards.append_purchases("", purchases))
+    assert (saved[0]["gone"], saved[0]["gone_date"], saved[0]["sold_eur"]) == ("sold", "2026-11-07", "6.50")
+
+
 def test_collection_reads_manabox_headers(tmp_path: Path):
     cards = two_printings(tmp_path)
     text = (

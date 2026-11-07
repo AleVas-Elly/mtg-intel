@@ -6,7 +6,8 @@ import { can } from "./access";
 import type { AppData } from "./data";
 import { cmTrend, withShipping } from "./format";
 import { shownPrice, type PriceFrom } from "./markets";
-import type { HistoryDoc, Purchase, Wish } from "./types";
+import { pendingPurchases } from "./edits";
+import type { Edit, HistoryDoc, OwnedRef, Purchase, PurchasesDoc, Wish } from "./types";
 
 export interface Owned {
   key: string; name: string; scryfall_id: string | null; set: string | null; number: string | null; set_name: string | null;
@@ -15,19 +16,60 @@ export interface Owned {
   qty: number; paid: number; first: string; last: string; markets: string[]; lists: string[];
   /** Cardmarket's trend for this finish today, per copy */
   now: number | null; pending: boolean;
+  /** Copies that left the collection (D79), grouped by why and when; null for cards I still own. */
+  gone: Purchase["gone"]; gone_date: string | null; sold: number | null;
+  /** How many of `qty` are recorded (not still on their way in), so they can be taken out */
+  settled: number;
 }
 
 export const valueOf = (o: Owned) => (o.now != null ? o.now * o.qty : null);
 /** Worth now minus what I paid; unknown for someone who may not see money (D78). */
 export const gainOf = (o: Owned) => (o.now != null && can("money") ? o.now * o.qty - o.paid : null);
 
-export function ownedCards(purchases: Purchase[]): Owned[] {
+/** The copies a group stands for, as a "removed" edit names them. */
+export const refOf = (o: Pick<Owned, "scryfall_id" | "name" | "foil" | "language" | "condition">): OwnedRef =>
+  ({ scryfall_id: o.scryfall_id ?? "", name: o.name, foil: o.foil ? "yes" : "no", language: o.language ?? "", condition: o.condition });
+
+const isRef = (p: Purchase, r: OwnedRef) => (r.scryfall_id ? p.scryfall_id === r.scryfall_id : !p.scryfall_id && p.name === r.name)
+  && p.foil === (r.foil === "yes") && (p.language ?? "") === r.language && p.condition === r.condition;
+
+/** Purchases with the waiting "removed" edits laid over them, as the GitHub job will apply them
+ *  (mycards._remove_owned): sold, traded and lost copies go oldest first and show as gone; a mistake
+ *  drops the newest. Copies still on their way in are never touched. */
+export function withRemovals(purchases: Purchase[], ops: Edit[]): Purchase[] {
+  let out = [...purchases];
+  for (const op of ops) {
+    if (op.op !== "removed" || !op.owned || !op.remove) continue;
+    const r = op.owned, { reason, qty, date, sold_eur } = op.remove;
+    const mine = out.filter((p) => !p.gone && !p.pending && isRef(p, r)).sort((a, b) => a.date.localeCompare(b.date));
+    if (mine.length < qty) continue;  // the job will refuse it too
+    if (reason === "mistake") {
+      const drop = new Set(mine.slice(-qty));
+      out = out.filter((p) => !drop.has(p));
+      continue;
+    }
+    const take = new Set(mine.slice(0, qty));
+    out = out.map((p) => (take.has(p) ? { ...p, gone: reason, gone_date: date, sold: reason === "sold" && sold_eur ? Number(sold_eur) : null, pending: true } : p));
+  }
+  return out;
+}
+
+/** Every purchase as the site should show it now: recorded ones, purchases and removals still waiting. */
+export const myPurchases = (ops: Edit[], doc: PurchasesDoc | null | undefined): Purchase[] =>
+  withRemovals([...pendingPurchases(ops), ...(doc?.purchases ?? [])], ops);
+
+/** Cards I own now, or (gone = true) the copies that left, grouped per printing, finish, language and
+ *  condition (and, when gone, per reason and day). */
+export function ownedCards(purchases: Purchase[], gone = false): Owned[] {
   const at = new Map<string, Owned>();
   for (const p of purchases) {
-    const key = [p.scryfall_id ?? p.name, p.foil ? "f" : "n", p.language ?? "", p.condition].join("|");
+    if (!!p.gone !== gone) continue;
+    const key = [p.scryfall_id ?? p.name, p.foil ? "f" : "n", p.language ?? "", p.condition, ...(gone ? [p.gone, p.gone_date] : [])].join("|");
     const o = at.get(key);
     if (o) {
       o.qty += 1; o.paid += p.price;
+      if (!p.pending) o.settled += 1;
+      if (p.sold != null) o.sold = (o.sold ?? 0) + p.sold;
       if (p.date < o.first) o.first = p.date;
       if (p.date > o.last) o.last = p.date;
       if (!o.markets.includes(p.market)) o.markets.push(p.market);
@@ -42,6 +84,7 @@ export function ownedCards(purchases: Purchase[]): Owned[] {
       thumb: p.thumb, image: p.image ?? (p.thumb ? p.thumb.replace("/small/", "/normal/") : null), foil: p.foil,
       language: p.language, condition: p.condition, qty: 1, paid: p.price, first: p.date, last: p.date,
       markets: [p.market], lists: [...p.lists], now: p.now ?? null, pending: !!p.pending,
+      gone: p.gone ?? null, gone_date: p.gone_date ?? null, sold: p.sold ?? null, settled: p.pending ? 0 : 1,
     });
   }
   return [...at.values()];
