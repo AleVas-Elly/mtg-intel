@@ -183,7 +183,7 @@ function EditsStatus({ data }: { data: AppData }) {
 
 
 /** Cards suggested for the want-list (D78): for me to add or dismiss, or someone's own, waiting. */
-function Inbox() {
+export function Inbox({ home }: { home?: boolean } = {}) {
   const me = useMe();
   const list = useSuggestions(me.owner || can("suggest"));
   const [busy, setBusy] = useState<string | null>(null);
@@ -193,8 +193,10 @@ function Inbox() {
     try { await run(id); toast(done); } catch (e) { toast((e as Error).message); } finally { setBusy(null); }
   };
   return (
-    <section class="inbox" aria-label="Suggestions">
-      <div class="group-title">{me.owner ? `Suggested for you · ${list.length}` : "Your suggestions, waiting for a yes"}</div>
+    <section class={`inbox${home ? " on-home" : ""}`} aria-label="Suggestions">
+      {home
+        ? <div class="section-head"><h2>Suggested for you</h2><span>{list.length === 1 ? "1 card waiting" : `${list.length} cards waiting`}</span></div>
+        : <div class="group-title">{me.owner ? `Suggested for you · ${list.length}` : "Your suggestions, waiting for a yes"}</div>}
       <div class="group">
         {list.map((s) => {
           const c = s.card;

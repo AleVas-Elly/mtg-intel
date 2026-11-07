@@ -1,6 +1,7 @@
 // Home (D57): the first screen after sign-in. Today's best deal as a big drop in its own colour,
 // the other deals beside it, the countdown to the next check, the counts, and what went today.
 import { can, currentMe } from "../access";
+import { Inbox } from "./Wants";
 import type { AppData } from "../data";
 import { dealGap, dealRatio, wishCount } from "../data";
 import { fieldStyle } from "../drop";
@@ -110,6 +111,7 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
                 {can("wants") && <a class={`stat${flagged ? " warn" : ""}`} href="/check" onClick={link("/check")} style={{ "--n": 3 }}><span>Cards to check</span><b class="fig">{flagged}</b></a>}
               </div>
             </div>
+            {me.owner && <Inbox home />}
             {rest.length > 0 && (
               <>
                 <div class="section-head"><h2>More deals</h2>{deals.length > 5 ? <a class="link" href="/deals" onClick={link("/deals")}>All {deals.length} deals</a> : <span>sorted by how far under</span>}</div>
