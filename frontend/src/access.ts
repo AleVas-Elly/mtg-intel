@@ -55,3 +55,14 @@ export const PRESETS: { id: string; label: string; hint: string; perms: Perm[] }
   { id: "helper", label: "Helper", hint: "Friend, and can edit the want-list and mark bought", perms: ["wants", "collection", "suggest", "edit", "bought"] },
   { id: "coowner", label: "Co-owner", hint: "Everything except managing people", perms: ["wants", "collection", "money", "deals", "details", "suggest", "edit", "bought"] },
 ];
+
+// Access can change while the app is open (I edit someone's switches): the sign-in check runs again
+// when the tab comes back, every few minutes, and right after the server refuses something.
+let recheck: () => void = () => {};
+let last = 0;
+export function onRecheck(f: () => void) { recheck = f; }
+export function recheckAccess() {
+  if (Date.now() - last < 3000) return;
+  last = Date.now();
+  recheck();
+}

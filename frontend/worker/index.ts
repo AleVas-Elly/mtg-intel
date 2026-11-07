@@ -678,7 +678,7 @@ async function data(request: Request, env: Env, key: string): Promise<Response> 
   if (!w) return json({ error: "Sign in first." }, 401);
   const need = docPerm(key);
   // Not shared with this person: answered like a document that isn't there, so the app shows nothing (D78).
-  if (need && !can(w.account, need)) return json({ error: "Not shared with you" }, 404);
+  if (need && !can(w.account, need)) return json({ error: "Not shared with you" }, 404, { "X-Not-Shared": "1" });
   const filter = key === "purchases" && !can(w.account, "money") ? "m"
     : key === "live" && !can(w.account, "details") ? "d" : "";
   const known = await env.DB.prepare("SELECT etag, at FROM docs WHERE key = ?").bind(key).first<{ etag: string; at: string }>();

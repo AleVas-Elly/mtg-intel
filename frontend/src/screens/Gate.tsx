@@ -7,7 +7,7 @@ import { useEffect, useState } from "preact/hooks";
 import { post } from "../api";
 import { go } from "../router";
 import { IconKey } from "../ui/icons";
-import { type Me, setMe } from "../access";
+import { type Me, onRecheck, setMe } from "../access";
 
 export interface Auth { state: "checking" | "in" | "out"; passkeys: number; ended: string | null; recheck: () => void }
 
@@ -28,7 +28,14 @@ export function useAuth(): Auth {
         try { localStorage.setItem("signed-in", s.signedIn ? "1" : "0"); } catch { /* fine */ }
       })
       .catch(() => setState((s) => (s === "checking" ? "out" : s)));  // offline: keep a known sign-in
-  useEffect(() => { check(); }, []);
+  useEffect(() => {
+    check();
+    onRecheck(check);
+    const onVisible = () => document.visibilityState === "visible" && check();
+    document.addEventListener("visibilitychange", onVisible);
+    const timer = setInterval(() => document.visibilityState === "visible" && check(), 5 * 60e3);
+    return () => { document.removeEventListener("visibilitychange", onVisible); clearInterval(timer); };
+  }, []);
   return { state, passkeys, ended, recheck: check };
 }
 

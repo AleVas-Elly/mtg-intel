@@ -2,6 +2,7 @@
 // from the last copy and then refreshes (the Worker answers 304 when nothing changed).
 
 import { useEffect, useState } from "preact/hooks";
+import { recheckAccess } from "./access";
 
 export class SignedOut extends Error {}
 
@@ -65,6 +66,7 @@ export async function refresh(key: string, persist = true): Promise<void> {
       return;
     }
     if (response.status === 404) {
+      if (response.headers.get("X-Not-Shared")) recheckAccess();  // a switch was turned off
       write(key, { etag: null, at: Date.now(), doc: null });
       return;
     }
@@ -121,6 +123,7 @@ export async function post<T>(path: string, body: unknown = {}): Promise<T> {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin",
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 403) recheckAccess();  // maybe my access just changed
   if (!response.ok) throw new Error((data as { error?: string }).error || `Request failed (${response.status})`);
   return data as T;
 }
@@ -140,6 +143,7 @@ export async function send<T>(method: "POST" | "PUT" | "DELETE", path: string, b
     throw new SignedOut();
   }
   const data = await response.json().catch(() => ({}));
+  if (response.status === 403) recheckAccess();  // maybe my access just changed
   if (!response.ok) throw new Error((data as { error?: string }).error || `Request failed (${response.status})`);
   return data as T;
 }
