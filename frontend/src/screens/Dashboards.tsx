@@ -199,7 +199,7 @@ function WantsBoard({ data, owned, history, purchases }: { data: AppData; owned:
   return (
     <>
       <div class="bt-stats">
-        <Stat lead label="To finish the want-list" value={eur(best)} note={`at today's best prices, ${priced} of ${items.length} priced`} />
+        <Stat lead label="To finish the want-list" value={eur(best)} note={`at today's best prices with shipping, ${priced} of ${items.length} priced`} />
         <Stat label="At Cardmarket's trend" value={eur(trend)} note={trend > best ? <><span class="good">{eur(trend - best)}</span> more than the best prices</> : "the same as the best prices"} />
         <Stat label="At their lowest in 90 days" value={String(lows.length)} note={lows.length ? "a good time to buy those" : "none right now"} to={() => openFiltered("/wants", "timing", "low90")} />
         <Stat label="Close to a deal" value={String(close.filter((x) => x.gap <= 10).length)} note="under 10 points from a deal" to={() => openFiltered("/wants", "deal", "close")} />

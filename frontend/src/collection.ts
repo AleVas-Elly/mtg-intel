@@ -4,6 +4,7 @@
 // covers owned printings as well as wished ones.
 import type { AppData } from "./data";
 import { cmTrend } from "./format";
+import { shownPrice } from "./markets";
 import type { HistoryDoc, Purchase, Wish } from "./types";
 
 export interface Owned {
@@ -101,12 +102,9 @@ export function totalOverTime<T>(items: T[], pointsOf: (x: T) => [number, number
 
 // ---------- the want-list side ----------
 
-/** The best price a wish could be bought for now: CardTrader's cheapest fitting copy or Cardmarket's trend. */
-export function bestNow(data: AppData, w: Wish): number | null {
-  const l = data.liveOf(w.key), cm = cmTrend(w, l?.foil);
-  const prices = [l?.price, cm].filter((v): v is number => v != null);
-  return prices.length ? Math.min(...prices) : null;
-}
+/** The best price a wish could be bought for now: the cheaper of the two prices its row shows (D75), CardTrader's
+ *  cheapest fitting copy or Cardmarket's lowest listing plus shipping. */
+export const bestNow = (data: AppData, w: Wish): number | null => shownPrice(w, data);
 
 /** Wishes as things to buy: alternatives (`one_of`) count once, at their cheapest version. */
 export function toBuy(data: AppData): { w: Wish; best: number | null; trend: number | null; qty: number }[] {
