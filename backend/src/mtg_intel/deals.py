@@ -650,6 +650,22 @@ def problem_alert(state: dict[str, Any], problems: list[str], now: datetime) -> 
     return None
 
 
+def note_site_upload(state: dict[str, Any], error: str | None) -> None:
+    """Remember whether this check's upload to the website failed. On 2026-11-06 every upload failed
+    for two hours (the site's KV quota) while the checks reported success, so the site showed old
+    prices and nothing said so. The upload runs after the problem alert, so it counts next check."""
+    if error:
+        state["site_failed"] = error[:300]
+    else:
+        state.pop("site_failed", None)
+
+
+def site_problems(state: dict[str, Any]) -> list[str]:
+    """The last check's failed website upload, as a problem for `problem_alert`."""
+    failed = state.get("site_failed")
+    return [f"The website was not updated: {failed}"] if failed else []
+
+
 def record_check(state: dict[str, Any], now: datetime, failed: int, alerts: int) -> None:
     """Keep a day of check results in the state, for the digest."""
     since = now - timedelta(hours=24)

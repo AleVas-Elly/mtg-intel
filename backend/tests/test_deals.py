@@ -266,6 +266,19 @@ def test_a_lasting_problem_alerts_once_every_six_hours_then_says_it_is_over():
     assert state == {} and deals.problem_alert(state, [], NOW + timedelta(hours=8)) is None
 
 
+def test_a_failed_site_upload_becomes_a_problem_until_an_upload_works_again():
+    state: dict = {}
+    deals.note_site_upload(state, "Server error '500 Internal Server Error' for url '/api/ingest/live'")
+    problems = deals.site_problems(state)
+    assert problems == ["The website was not updated: Server error '500 Internal Server Error' for url '/api/ingest/live'"]
+    assert deals.problem_alert(state, problems, NOW)[0] == "mtg-intel deal check needs a look"
+    assert deals.problem_alert(state, deals.site_problems(state), NOW + timedelta(minutes=5)) is None  # once, not every check
+    deals.note_site_upload(state, None)
+    assert deals.site_problems(state) == []
+    assert deals.problem_alert(state, deals.site_problems(state), NOW + timedelta(minutes=10))[0] == "mtg-intel deal check is fine again"
+    assert state == {}
+
+
 def test_daily_digest_once_a_day_from_8_with_the_closest_cards_over_10_euros():
     watch = [wish(), wish(scryfall_id="sf-a", name="Pricey", blueprint_id=11, trend=30.0),
              wish(scryfall_id="sf-b", name="Mid", blueprint_id=12, trend=12.0),

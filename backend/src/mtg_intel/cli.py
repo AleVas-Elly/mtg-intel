@@ -824,6 +824,7 @@ def check_deals(args: argparse.Namespace) -> int:
         if result.late_blueprints:
             problems.append(f"CardTrader is slow: {len(result.late_blueprints)} cards not checked within "
                             f"{CARDTRADER_BUDGET.seconds // 60} minutes")
+        problems += deals.site_problems(state)  # the last check's upload (it runs after this alert)
         for problem in problems:
             print(f"PROBLEM  {problem}", file=sys.stderr)
         problem = deals.problem_alert(state, problems, now)
@@ -864,8 +865,10 @@ def check_deals(args: argparse.Namespace) -> int:
                 if packing:
                     site_store.put("ct-history", site.ct_history_doc(watch, site_history))
                 print("site updated")
+                deals.note_site_upload(state, None)
             except httpx.HTTPError as e:
                 print(f"WARNING  site not updated: {e}", file=sys.stderr)
+                deals.note_site_upload(state, str(e))  # the next check's problem alert says so
 
     took = datetime.now(UTC) - now
     if took > SLOW_CHECK:
