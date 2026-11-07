@@ -86,6 +86,13 @@ def test_cards_get_special_version_tags(tmp_path: Path):
             scryfall_card(id="sf-3", collector_number="1", frame="1997", released_at="2023-02-03"),
             scryfall_card(id="sf-4", collector_number="2", frame="1997", released_at="1999-01-01"),
             scryfall_card(id="sf-digital", games=["arena"]),
+            # Edge of Eternities lands: borderless + inverted only on Scryfall, showcases to me (D86)
+            scryfall_card(id="sf-eos", set="eos", collector_number="1", type_line="Land",
+                          border_color="borderless", frame_effects=["inverted"]),
+            scryfall_card(id="sf-eos-creature", set="eos", collector_number="2", type_line="Creature",
+                          border_color="borderless", frame_effects=["inverted"]),
+            scryfall_card(id="sf-other-land", set="dsk", collector_number="3", type_line="Land",
+                          border_color="borderless", frame_effects=["inverted"]),
         ],
     )
 
@@ -97,6 +104,9 @@ def test_cards_get_special_version_tags(tmp_path: Path):
         "sf-2": ["borderless", "showcase", "serialized"],
         "sf-3": ["retroframe"],  # old frame on a modern card
         "sf-4": [],  # an actual 1999 card is not a retro printing
+        "sf-eos": ["borderless", "showcase"],
+        "sf-eos-creature": ["borderless"],  # only the lands
+        "sf-other-land": ["borderless"],  # only Edge of Eternities
     }
 
 

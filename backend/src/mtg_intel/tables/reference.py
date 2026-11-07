@@ -51,7 +51,7 @@ SCRYFALL_COLUMNS = {
     "card_faces": "STRUCT(name VARCHAR, mana_cost VARCHAR, type_line VARCHAR, oracle_text VARCHAR, "
     "flavor_text VARCHAR, artist VARCHAR, image_uris STRUCT(small VARCHAR, normal VARCHAR))[]",
 }
-CARDS_TABLE_VERSION = 2  # bump when the columns change, so the next build rewrites the table
+CARDS_TABLE_VERSION = 3  # bump when the columns change, so the next build rewrites the table
 
 # Special-version tags (my collection focus). Frame effects and promo types are Scryfall's own words.
 FRAME_TAGS = ["showcase", "extendedart", "etched"]
@@ -107,7 +107,12 @@ def build_cards(scryfall_jsonl_gz: Path) -> pa.Table:
                 case when border_color = 'borderless' then 'borderless' end,
                 case when coalesce(full_art, false) then 'fullart' end,
                 -- an old frame on a modern card is a deliberate retro printing
-                case when frame in ('1993', '1997') and released_at >= DATE '2020-01-01' then 'retroframe' end
+                case when frame in ('1993', '1997') and released_at >= DATE '2020-01-01' then 'retroframe' end,
+                -- house rule (D86): Edge of Eternities' borderless "station" lands are showcases to me and to
+                -- CardTrader, though Scryfall only calls them borderless + inverted
+                case when "set" = 'eos' and border_color = 'borderless' and type_line like '%Land%'
+                          and list_contains(coalesce(frame_effects, []), 'inverted')
+                          and not list_contains(coalesce(frame_effects, []), 'showcase') then 'showcase' end
             ], x -> x is not null)
             || list_filter(coalesce(frame_effects, []), x -> list_contains([{frame_tags}], x))
             || list_filter(coalesce(promo_types, []), x -> list_contains([{foil_tags}], x))

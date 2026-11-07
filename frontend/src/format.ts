@@ -72,7 +72,12 @@ export function liveFlags(w: Wish, live: LiveWish | undefined): { code: string; 
   const out = [];
   const cm = cmTrend(w, live?.foil);
   if (live && cm && (live.price / cm > 2.5 || live.price / cm < 0.4)) {
-    out.push({ code: "markets_apart", text: `CardTrader's cheapest (${eur(live.price)}) and Cardmarket's trend (${eur(cm)}) are far apart.` });
+    // Cardmarket's trend can collapse on its own (e.g. €0.02 after a spike) while its listings stay normal:
+    // say so when its cheapest listing sits near CardTrader's price.
+    const low = cmLow(w, live.foil);
+    const lowNear = low && low / live.price <= 2.5 && low / live.price >= 0.4;
+    out.push({ code: "markets_apart", text: `CardTrader's cheapest (${eur(live.price)}) and Cardmarket's trend (${eur(cm)}) are far apart.`
+      + (lowNear ? ` Cardmarket's cheapest listing (${eur(low)}) is close to CardTrader's, so the trend looks off, not the market.` : "") });
   }
   return out;
 }
