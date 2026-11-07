@@ -47,6 +47,7 @@ export function fieldStyle(cost: string | null | undefined): Record<string, stri
   const on = dark ? "#121211" : "#ffffff";
   return {
     "--f": cols[0],          // one colour: the field; the first colour of a split card
+    "--f-end": cols[n - 1],  // the last colour: what a tall pane shows below the end of the gradient
     "--fbg": background,      // what the field is painted with
     "--on-f": on,             // type on the field
     "--off-f": dark ? "#ffffff" : "#121211",  // a pill or button on the field (the inverse)

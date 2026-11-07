@@ -491,7 +491,7 @@ img { display: block; }
 }
 /* the bar and the stage paint one field: both draw the same gradient, the stage shifted up by the bar's height */
 .d-top, .d-stage { background-size: 100% 640px; background-repeat: no-repeat; background-color: var(--f); }
-.d-stage { background-position: 0 calc(-50px - env(safe-area-inset-top)); }
+.d-stage { background-position: 0 calc(-50px - env(safe-area-inset-top)); background-color: var(--f-end, var(--f)); }  /* below the gradient: its last colour, so no band shows */
 .d-top .icon-btn { background: color-mix(in srgb, var(--on-f) 16%, transparent); color: var(--on-f); }
 .d-top .icon-btn:hover { background: color-mix(in srgb, var(--on-f) 26%, transparent); }
 .d-stage .d-name, .d-stage .d-type, .d-stage .d-version { color: var(--on-f); }
