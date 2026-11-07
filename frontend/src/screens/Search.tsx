@@ -7,7 +7,7 @@ import type { AppData } from "../data";
 import { eur } from "../format";
 import { openCard } from "../router";
 import { CardImage } from "../ui/CardImage";
-import { IconPlus, IconSearch, IconWarn } from "../ui/icons";
+import { IconWants, IconPlus, IconSearch, IconWarn } from "../ui/icons";
 import { known, type ScryCard } from "../scry";
 import { openScryCard } from "./CardPane";
 import { SetSymbol } from "../ui/symbols";
@@ -122,20 +122,23 @@ export function Search({ data }: { data: AppData }) {
   }, [needShards]);
 
   useEffect(() => { if (q && cards.length === 0 && state === "idle") search(); }, []);
+  // switching where to search runs the same search again there
+  const firstScope = useRef(true);
+  useEffect(() => { if (firstScope.current) { firstScope.current = false; return; } if (q.trim()) search(); }, [scope]);
 
   return (
     <div class="page">
       <header class="head"><div><h1 class="title">Search</h1><p class="sub">Scryfall search syntax, joined with my lists and Cardmarket prices</p></div></header>
-      <form class="toolbar" onSubmit={search} role="search">
-        <label class="field" style={{ flexBasis: "100%" }}><IconSearch /><span class="sr">Search</span>
+      <form class="toolbar search-bar" onSubmit={search} role="search">
+        <div class="seg scope" role="group" aria-label="Where to search">
+          <button type="button" aria-pressed={scope === "mine"} onClick={() => setScope("mine")}><IconWants />My want-list</button>
+          <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}><IconSearch />All cards</button>
+        </div>
+        <label class="field"><IconSearch /><span class="sr">Search</span>
           <input ref={input} type="search" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellcheck={false}
             placeholder="e.g. art:cat t:creature" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
         </label>
-        <div class="seg" role="group" aria-label="Where to search">
-          <button type="button" aria-pressed={scope === "mine"} onClick={() => setScope("mine")}>My cards</button>
-          <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All cards</button>
-        </div>
-        <button class="btn primary" type="submit" disabled={!q.trim() || state === "busy"} style={{ height: "36px", borderRadius: "10px" }}>Search</button>
+        <button class="btn primary" type="submit" disabled={!q.trim() || state === "busy"}>Search</button>
       </form>
       {error && <div class="notice"><IconWarn />{error}</div>}
       {state === "idle" && (
@@ -148,7 +151,7 @@ export function Search({ data }: { data: AppData }) {
         <div class="list-head">{state === "busy" ? "Searching…" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}${more ? " (first pages)" : ""}`}<span>{scope === "mine" ? "in my want-list" : "every card, newest printing"}</span></div>
       )}
       {state === "done" && !cards.length && !error && (
-        <div class="empty"><h2>No cards found</h2><p>{scope === "mine" ? "None of my cards match. Try All cards." : "Scryfall found nothing for that search."}</p></div>
+        <div class="empty"><h2>No cards found</h2><p>{scope === "mine" ? "Nothing on my want-list matches. Try All cards." : "Scryfall found nothing for that search."}</p></div>
       )}
       <div class="cards">
         {cards.map((c) => {
@@ -166,7 +169,11 @@ export function Search({ data }: { data: AppData }) {
                 <span><SetSymbol set={c.set} rarity={c.rarity} />{c.set.toUpperCase()} · {c.collector_number}</span>
                 <span>{price != null ? `Cardmarket ${eur(price)}` : "No Cardmarket price"}{mine ? " · on my list" : ""}</span>
               </button>
-              {!mine && (can("edit") || can("suggest")) && (
+              {mine ? can("edit") && (
+                <button class="add-btn" type="button" onClick={() => openScryCard(c.id)} aria-label={`Add another copy of ${c.name}`} title="Add another copy">
+                  <IconPlus />
+                </button>
+              ) : (can("edit") || can("suggest")) && (
                 <button class="add-btn" type="button" onClick={() => openScryCard(c.id, true)} aria-label={can("edit") ? `Add ${c.name} to the want-list` : `Suggest ${c.name}`}>
                   <IconPlus />
                 </button>

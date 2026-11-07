@@ -1153,3 +1153,20 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .money.text-in input[type="date"] { width: auto; color-scheme: light dark; }
 .inbox.on-home { margin: 0; }
 .inbox.on-home .group { margin-top: 0; }
+
+/* Search: where to search is the first choice, big and always in view (user, 2026-11-07) */
+.search-bar .seg.scope { display: grid; grid-template-columns: 1fr 1fr; flex: 1 1 100%; padding: 4px; gap: 4px; border-radius: 18px; }
+.search-bar .seg.scope button {
+  height: 46px; border-radius: 14px; font-size: 15.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.search-bar .seg.scope button svg { width: 19px; height: 19px; }
+.search-bar .seg.scope button[aria-pressed="true"] { background: var(--ink); color: var(--bg); box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.45); }
+.search-bar .seg.scope button:first-child[aria-pressed="true"] { background: var(--wants); color: var(--wants-ink); }
+.search-bar .field { height: 44px; }
+.search-bar .btn.primary { height: 44px; border-radius: 999px; padding: 0 20px; }
+.search-bar .field { flex: 1 1 200px; }
+
+/* a printing I already have: on the list or owned */
+.version.mine small { color: var(--wants-text); font-weight: 650; }
+.on-list dd { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.on-list .btn svg { width: 15px; height: 15px; }

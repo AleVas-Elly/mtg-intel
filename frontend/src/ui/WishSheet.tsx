@@ -4,10 +4,12 @@ import { changed, NEW_WISH, saveEdit, settingsOf } from "../edits";
 import { can } from "../access";
 import { suggest } from "../suggestions";
 import type { AppData } from "../data";
+import { useDoc } from "../api";
+import { myPurchases, ownedCards } from "../collection";
 import { condName, langName, versionText } from "../format";
 import { preview, printings, type ScryCard } from "../scry";
 import { toast } from "../toast";
-import type { Settings, Wish } from "../types";
+import type { PurchasesDoc, Settings, Wish } from "../types";
 import { CardImage } from "./CardImage";
 import { IconClose, IconMinus, IconPlus, IconWarn } from "./icons";
 
@@ -27,8 +29,8 @@ function Seg<T extends string>({ label, value, options, onChange }: {
   );
 }
 
-/** Every printing of the card being added, to pick the exact one; printings already on the
- *  want-list can't be picked again. */
+/** Every printing of the card, to pick the exact one. Printings already on the want-list or in
+ *  the collection say so; picking one shows what I have of it (and Add a copy). */
 export function Versions({ wish, data, onPick, bare }: { wish: Wish; data?: AppData; onPick: (w: Wish) => void; bare?: boolean }) {
   const [cards, setCards] = useState<ScryCard[] | null>(null);
   useEffect(() => {
@@ -37,6 +39,9 @@ export function Versions({ wish, data, onPick, bare }: { wish: Wish; data?: AppD
       ...all.filter((c) => c.id !== wish.scryfall_id)])).catch(() => setCards([]));
   }, []);
   const mine = new Set((data?.wants?.wishes ?? []).map((w) => w.scryfall_id));
+  const purchases = useDoc<PurchasesDoc>(data && can("collection") ? "purchases" : null).doc;
+  const owned = new Map<string, number>();
+  if (data && purchases) for (const o of ownedCards(myPurchases(data.edits.ops, purchases))) owned.set(o.scryfall_id ?? "", (owned.get(o.scryfall_id ?? "") ?? 0) + o.qty);
   if (!wish.prints) return null;
   return (
     <div class="f-row stack">{!bare && <span>Version{cards && cards.length > 1 ? <small>{cards.length} printings</small> : null}</span>}
@@ -45,13 +50,14 @@ export function Versions({ wish, data, onPick, bare }: { wish: Wish; data?: AppD
           ? Array.from({ length: 4 }, () => <span class="version"><span class="thumb skeleton" /></span>)
           : cards.map((c) => {
               const v = preview(c);
-              const on = mine.has(c.id);
+              const on = mine.has(c.id), have = owned.get(c.id);
+              const tags = [on && "on the list", have && `${have} owned`].filter(Boolean).join(" · ");
               return (
-                <button type="button" class="version" role="radio" aria-checked={wish.scryfall_id === c.id} disabled={on}
+                <button type="button" class={`version${tags ? " mine" : ""}`} role="radio" aria-checked={wish.scryfall_id === c.id}
                   onClick={() => onPick({ ...v, prints: wish.prints })} title={`${c.set_name} #${c.collector_number}`}>
                   <CardImage src={v.thumb} alt="" foil={false} />
                   <b>{c.set.toUpperCase()} {c.collector_number}</b>
-                  <small>{on ? "on the list" : versionText(v)}</small>
+                  <small>{tags || versionText(v)}</small>
                 </button>
               );
             })}

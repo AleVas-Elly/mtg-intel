@@ -4,12 +4,14 @@ import { can } from "../access";
 import { useEffect, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
-import { cmShipping, eur, versionText, withShipping } from "../format";
+import { cmShipping, condName, eur, langName, versionText, withShipping } from "../format";
+import { saveEdit, undoEdit } from "../edits";
+import { toast } from "../toast";
 import { closeCard, openCard } from "../router";
 import { fetchCard, known, preview, type ScryCard } from "../scry";
 import { BigCard, CardImage } from "../ui/CardImage";
 import { fieldStyle } from "../drop";
-import { IconBack, IconClose, IconOut, IconPlus, IconWarn } from "../ui/icons";
+import { IconBack, IconClose, IconOut, IconPlus } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { Versions, WishForm } from "../ui/WishSheet";
 import { OwnedHere } from "../ui/RemoveSheet";
@@ -44,7 +46,10 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
   const q = quiet ? " quiet" : "";
 
   const w: Wish | null = card && { ...preview(card), prints: card.prints_search_uri };
-  const mine = w && (data.wants?.wishes ?? []).find((x) => x.scryfall_id === w.scryfall_id);
+  const wishes = w ? (data.wants?.wishes ?? []).filter((x) => x.scryfall_id === w.scryfall_id) : [];
+  const mine = wishes[0];
+  // a printing already on the list is never added twice: picking one shows it with Add a copy
+  useEffect(() => { if (adding && mine) setAdding(false); }, [mine?.key]);
   const [trend, trendFoil, blueprint] = (card && shard?.[card.id]) || [null, null];
   const pick = (v: Wish) => { fetchCard(v.scryfall_id!).then(setCard); };
   const field = w ? fieldStyle(w.mana_cost) : undefined;
@@ -77,11 +82,8 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
             {w.artist && <p class="hint" style={{ textAlign: "center" }}>Illustrated by {w.artist}{w.released ? ` · ${w.released.slice(0, 4)}` : ""}</p>}
             </div>
 
-            {mine ? (
-              <div class="notice saving" style={{ marginTop: "18px" }}>
-                <span>This printing is on your want-list.</span>
-                <button class="btn sm" type="button" onClick={() => openCard(mine.key)}>Open</button>
-              </div>
+            {wishes.length ? (
+              <OnTheList wishes={wishes} />
             ) : can("edit") ? (
               <button class="btn primary wide" type="button" onClick={() => setAdding(true)}><IconPlus />Add to want-list</button>
             ) : can("suggest") ? (
@@ -112,13 +114,50 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
               <CardImage src={w.thumb} alt="" foil={false} />
               <div><b>{w.name}</b><span><SetSymbol set={w.set} rarity={w.rarity} />{w.set?.toUpperCase()} {w.number} · {versionText(w)}</span></div>
             </div>
-            {mine && <div class="notice"><IconWarn />This printing is already on your want-list; pick another one.</div>}
             <WishForm wish={w} adding inPane lists={allLists(data)} data={data}
               onClose={() => setAdding(false)} onPick={(v) => fetchCard(v.scryfall_id!).then(setCard)}
               onSaved={(key) => openCard(key)} />
           </div>
         )}
       </aside>
+    </>
+  );
+}
+
+/** This printing is already on my want-list: what each wish of it asks for, Open, and Add a copy
+ *  (one more copy on that wish, saved like any edit, with Undo). */
+function OnTheList({ wishes }: { wishes: Wish[] }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const more = async (x: Wish) => {
+    setBusy(x.key);
+    const n = (x.quantity || 1) + 1;
+    try {
+      const doc = await saveEdit({ op: "update", key: x.key, settings: { quantity: String(n) } });
+      const op = [...doc.ops].reverse().find((o) => o.op === "update" && o.key === x.key);
+      toast(`${n} copies of ${x.name} on your want-list now.`, op && { label: "Undo", run: () => { undoEdit(op.id).catch(() => toast("Too late to undo: it's already saved.")); } });
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Couldn't save. Try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      <div class="group-title">On your want-list</div>
+      <div class="group on-list">
+        {wishes.map((x) => (
+          <div class="kv owned-line">
+            <dt><b>{x.quantity || 1} ×</b> {langName(x.language)} · {x.foil === "yes" ? "foil" : x.foil === "no" ? "non-foil" : "any finish"}
+              <small>{x.pending ? "Saving" : `${condName(x.condition)} or better${x.lists.length ? ` · ${x.lists.join(", ")}` : ""}`}</small></dt>
+            <dd>
+              <button class="btn sm" type="button" onClick={() => openCard(x.key)}>Open</button>
+              {can("edit") && <button class="btn sm primary" type="button" disabled={busy === x.key || x.pending === "add"}
+                title={x.pending === "add" ? "Wait until it's saved to the want-list" : undefined}
+                onClick={() => more(x)}><IconPlus />Add a copy</button>}
+            </dd>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
