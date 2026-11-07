@@ -45,8 +45,7 @@ interface Seen { at: string; browser: string; place: Place }
 
 const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
-const INVITE_MINUTES = 15; // a setup link for one of my own devices, shown as a QR code
-const PERSON_INVITE_HOURS = 24; // a link sent to someone else, who may open it later (D78)
+const INVITE_MINUTES = 15; // every setup link, mine or someone else's (user, 2026-11-07: 15 min, not 24 h; D78)
 const ACTIVITY_DAYS = 90;
 const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|purchases|targets|prices-\d{1,2})$/;
 // Want-list edits made on the site (D50): one row per waiting edit, so writes from different
@@ -243,7 +242,7 @@ function deviceName(request: Request): string {
 /** A one-time setup link for a new passkey on `acct`. Its name travels in the link (signed, not
  *  secret) so the setup page can greet the person. */
 async function invite(env: Env, origin: string, a: Pick<Account, "id" | "name"> = { id: OWNER, name: "You" }): Promise<{ url: string; expires: string }> {
-  const exp = Date.now() + (a.id === OWNER ? INVITE_MINUTES * 60e3 : PERSON_INVITE_HOURS * 3600e3);
+  const exp = Date.now() + INVITE_MINUTES * 60e3;
   const token = await sign(env.SESSION_SECRET, { kind: "invite", id: randomToken(12), acct: a.id, name: a.id === OWNER ? "" : a.name, exp });
   return { url: `${origin}/setup#${token}`, expires: new Date(exp).toISOString() };
 }
@@ -320,7 +319,7 @@ async function auth(request: Request, env: Env, path: string, url: URL, ctx: Exe
         transports: credential.transports, device: deviceName(request), created: new Date().toISOString(),
         browser, place: place(request), aaguid, account: acct,
       }),
-      env.DB.prepare("INSERT OR REPLACE INTO used_invites (id, until) VALUES (?, ?)").bind(chal.invite, Date.now() + PERSON_INVITE_HOURS * 3600e3 * 2),
+      env.DB.prepare("INSERT OR REPLACE INTO used_invites (id, until) VALUES (?, ?)").bind(chal.invite, Date.now() + INVITE_MINUTES * 60e3 * 2),
       env.DB.prepare("DELETE FROM used_invites WHERE until < ?").bind(Date.now()),
       logged(env, acct, `${first ? "Joined" : "Added a device"}: ${deviceName(request)}, ${browser}${where ? `, ${where}` : ""}`),
     ]);

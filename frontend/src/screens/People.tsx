@@ -93,7 +93,6 @@ function Ends({ value, onChange }: { value: string; onChange: (v: string) => voi
 /** The setup link as a QR code, with copy and share. */
 function InviteCard({ invite, name }: { invite: Invite; name?: string }) {
   const [copied, setCopied] = useState(false);
-  const hours = Math.round((Date.parse(invite.expires) - Date.now()) / 3600e3);
   const share = async () => {
     const nav = navigator as Navigator & { share?: (d: ShareData) => Promise<void> };
     if (nav.share) return nav.share({ title: "mtg-intel", text: name ? `${name}, here's your mtg-intel link` : "mtg-intel setup link", url: invite.url }).catch(() => {});
@@ -106,7 +105,7 @@ function InviteCard({ invite, name }: { invite: Invite; name?: string }) {
     <div class="group invite-card">
       <div class="qr" dangerouslySetInnerHTML={{ __html: renderSVG(invite.url, { border: 1 }) }} />
       <p>{name ? `Send this to ${name}, or let them scan it.` : "Scan with the other device's camera, then create its passkey."}</p>
-      <p class="hint">Works once, for {hours >= 2 ? `${hours} hours` : "15 minutes"}.</p>
+      <p class="hint">Works once, for 15 minutes.{name ? " Expired? Make a new one on their page." : ""}</p>
       <div class="invite-acts">
         <button class="btn sm" type="button" onClick={copy}>{copied ? "Copied" : "Copy link"}</button>
         {name && <button class="btn sm primary" type="button" onClick={share}>Share</button>}
