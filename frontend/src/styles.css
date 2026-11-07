@@ -489,6 +489,9 @@ img { display: block; }
   top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--fbg); color: var(--on-f);
   transition: background-color 0.6s var(--smooth);
 }
+/* the bar and the stage paint one field: both draw the same gradient, the stage shifted up by the bar's height */
+.d-top, .d-stage { background-size: 100% 640px; background-repeat: no-repeat; background-color: var(--f); }
+.d-stage { background-position: 0 calc(-50px - env(safe-area-inset-top)); }
 .d-top .icon-btn { background: color-mix(in srgb, var(--on-f) 16%, transparent); color: var(--on-f); }
 .d-top .icon-btn:hover { background: color-mix(in srgb, var(--on-f) 26%, transparent); }
 .d-stage .d-name, .d-stage .d-type, .d-stage .d-version { color: var(--on-f); }
@@ -993,12 +996,14 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .mk-prices { gap: 5px; min-width: 132px; }
 .mk { display: flex; align-items: center; justify-content: flex-end; gap: 6px; line-height: 1; color: var(--ink-2); }
 .mk img { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.mk svg { width: 14px; height: 14px; flex: none; }
 .mk b { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .mk i { font-style: normal; font-size: 12px; font-weight: 700; min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
 .mk i.good { color: var(--good); }
 .mk i.over { color: var(--ink-3); }
+.mk i.up { color: var(--warn); }  /* over its usual price: orange, as deep as the green of a saving */
 .mk.lead b { font-size: 26px; font-stretch: 70%; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
-.mk.lead img { width: 16px; height: 16px; }
+.mk.lead img, .mk.lead svg { width: 16px; height: 16px; }
 .mk.lead i { font-size: 13.5px; }
 .mk-usual { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .g-card .mk-prices { align-items: flex-start; min-width: 0; }

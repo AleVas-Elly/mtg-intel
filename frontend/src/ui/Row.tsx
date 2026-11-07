@@ -7,8 +7,15 @@ import { CardImage, preloadImage } from "./CardImage";
 import { ManaCost, SetSymbol } from "./symbols";
 import { useLook } from "../lab";
 
-export const CT_ICON = "https://www.cardtrader.com/favicon.ico";
 export const CM_ICON = "https://static.cardmarket.com/img/favicon.ico";
+/** CardTrader's mark: its own favicon is a 16 px bitmap that blurs, so this is drawn here, a dot in the CardTrader green
+ *  (the dot of "the dot and the square", D52) with a C cut out. Cardmarket's own icon stays. */
+const CtMark = () => (
+  <svg class="mk-ct" viewBox="0 0 16 16" width="14" height="14" role="img" aria-label="CardTrader">
+    <circle cx="8" cy="8" r="8" fill="var(--ct)" />
+    <path d="M10.9 5.7A3.7 3.7 0 1 0 10.9 10.3" fill="none" stroke="var(--bg)" stroke-width="1.8" stroke-linecap="round" />
+  </svg>
+);
 const under = (usual: number | null, p: number | null) => (usual && p != null ? (usual - p) / usual : null);
 const pctText = (s: number) => (s >= 0.005 ? `−${Math.round(s * 100)}%` : s <= -0.005 ? `+${Math.round(-s * 100)}%` : "0%");
 
@@ -31,12 +38,12 @@ export function Markets({ w, data, ctPrice }: { w: Wish; data: AppData; ctPrice?
     <div class="r-price mk-prices">
       {ct != null ? (
         <span class={`mk${lead === "ct" ? " lead" : ""}`} title={`CardTrader: cheapest copy that fits the wish${live?.zero ? ", via Zero (shipping included)" : ""}`}>
-          <img src={CT_ICON} alt="CardTrader" width="14" height="14" /><b>{eur(ct)}</b>{sCt != null && <i class={sCt >= 0.005 ? "good" : "over"}>{pctText(sCt)}</i>}
+          <CtMark /><b>{eur(ct)}</b>{sCt != null && <i class={sCt >= 0.005 ? "good" : sCt <= -0.005 ? "up" : "over"}>{pctText(sCt)}</i>}
         </span>
       ) : <span class="p-none">{w.blueprint_id ? "no CardTrader copy" : "not on CardTrader"}</span>}
       {cm != null ? (
         <span class={`mk${lead === "cm" ? " lead" : ""}`} title={`Cardmarket: lowest listing ${eur(low)} (any seller and condition) + ${eur(ship)} shipping`}>
-          <img src={CM_ICON} alt="Cardmarket" width="14" height="14" /><b>{eur(cm)}</b>{sCm != null && <i class={sCm >= 0.005 ? "good" : "over"}>{pctText(sCm)}</i>}
+          <img src={CM_ICON} alt="Cardmarket" width="14" height="14" /><b>{eur(cm)}</b>{sCm != null && <i class={sCm >= 0.005 ? "good" : sCm <= -0.005 ? "up" : "over"}>{pctText(sCm)}</i>}
         </span>
       ) : <span class="p-none">no Cardmarket price</span>}
       {usual != null && <span class="mk-usual">usual {eur(usual)}</span>}

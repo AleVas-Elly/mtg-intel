@@ -22,18 +22,28 @@ const FIELD: Record<string, string> = {
   G: "hsl(146 24% 26%)",
   C: "hsl(215 4% 34%)",
 };
-const LIGHT = new Set(["W"]);  // fields that take dark type
+// A card of several colours: calmer, closer in lightness (white is a mid warm grey, so white type reads on every
+// stop), and blended into each other, so the field reads as one object, not as stripes of mana colours.
+const MULTI: Record<string, string> = {
+  W: "hsl(40 9% 44%)",
+  U: "hsl(212 26% 32%)",
+  B: "hsl(265 7% 21%)",
+  R: "hsl(6 28% 34%)",
+  G: "hsl(146 18% 29%)",
+};
+const LIGHT = new Set(["W"]);  // single-colour fields that take dark type
 
 /** The inline custom properties of a card's field, from its printed mana cost (both faces joined by //). */
 export function fieldStyle(cost: string | null | undefined): Record<string, string> {
   const order = "WUBRG";
   const cs = costColours(cost ?? null).sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const names = cs.length ? cs : ["C"];
-  const cols = names.map((c) => FIELD[c]);
-  const n = cols.length;
-  const background = n === 1 ? cols[0] : `linear-gradient(135deg, ${cols
-    .map((c, i) => `${c} ${((i / n) * 100).toFixed(2)}% ${(((i + 1) / n) * 100).toFixed(2)}%`).join(", ")})`;
-  const dark = names.every((c) => LIGHT.has(c));
+  const n = names.length;
+  const cols = names.map((c) => (n > 1 ? MULTI : FIELD)[c]);
+  // each colour is centred in its share of the diagonal and fades into the next (the ends stay flat)
+  const background = n === 1 ? cols[0] : `linear-gradient(135deg in oklab, ${cols
+    .map((c, i) => `${c} ${(10 + (80 * i) / (n - 1)).toFixed(1)}%`).join(", ")})`;
+  const dark = n === 1 && LIGHT.has(names[0]);
   const on = dark ? "#121211" : "#ffffff";
   return {
     "--f": cols[0],          // one colour: the field; the first colour of a split card
