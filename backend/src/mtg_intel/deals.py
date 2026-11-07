@@ -37,6 +37,9 @@ DIGEST_HOUR = 8  # the daily digest goes with the first check from this hour (TI
 TIMEZONE = "Europe/Amsterdam"
 DIGEST_MIN_EUR = 10.0  # the digest's "closest to a deal" lists cards usually over this
 REALERT_DAYS = 7  # the same deal at the same price is repeated after a week
+# A deal that drops out of one check (CardTrader's feed is cached and can miss a copy) is remembered
+# this long: back within the hour, it is the same deal, not a new one to announce (2026-11-07).
+REMEMBER_MISSING = timedelta(hours=1)
 USUAL_DAYS = 7  # the usual CardTrader Zero price: median of the cheapest per check over this window
 USUAL_MIN_DAYS = 3  # with less history, the next-cheapest listing stands in
 # A Cardmarket trend this many times under CardTrader's own usual price is a data error, not a
@@ -245,6 +248,7 @@ class CheckResult:
     assessed: dict[str, Assessment] = field(default_factory=dict)  # wish key -> how close to a deal
     seen: set[int] = field(default_factory=set)  # every listing ID this check saw (live alerts, D54)
     seen_by: dict[int, set[int]] = field(default_factory=dict)  # blueprint -> listing IDs, ghosts included
+    copies: dict[int, Listing] = field(default_factory=dict)  # listing ID -> the copy as the feed shows it now (live alerts)
 
 
 def summarize(blueprint_id: int, listings: list[Listing], checked_at: datetime) -> list[dict[str, Any]]:
@@ -290,6 +294,7 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
         result.seen_by[blueprint_id] = {x.id for x in raw}
         listings = [x for x in raw if x.id not in (ignore or ())]
         result.seen.update(x.id for x in listings)
+        result.copies.update({x.id: x for x in listings})
         result.summary += summarize(blueprint_id, listings, now)
         for wish in wishes:
             key = wish_key(wish)
@@ -317,14 +322,20 @@ def check(session: Session, watch: list[dict[str, Any]], alerted: dict[str, dict
     current = {d.key for d in result.deals}
     checked = {wish_key(w) for bp, ws in by_blueprint.items() if bp not in result.failed_blueprints for w in ws}
     for key in list(alerted):
-        if key in checked and key not in current:
-            del alerted[key]
+        if key in checked and key not in current:  # missing from this check: remembered for a while
+            since = alerted[key].setdefault("missing", now.isoformat())
+            if now - datetime.fromisoformat(since) >= REMEMBER_MISSING:
+                del alerted[key]
     for deal in result.deals:
         last = alerted.get(deal.key)
+        if last and "missing" in last and now - datetime.fromisoformat(last["missing"]) >= REMEMBER_MISSING:
+            last = None  # gone long enough: back again is a new deal
         stale = last and (now - datetime.fromisoformat(last["at"])).days >= REALERT_DAYS
         if not last or deal.listing.price < last["price"] - 0.005 or stale:
             result.new.append(deal)
             alerted[deal.key] = {"listing": deal.listing.id, "price": deal.listing.price, "at": now.isoformat()}
+        else:
+            last.pop("missing", None)  # back within the hour: the same deal, nothing new to say
     return result
 
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
+from test_deals import item as feed_item
 from test_deals import listing, wish
 from test_tables import two_printings
 
@@ -176,6 +177,35 @@ def test_refresh_keeps_an_alert_in_the_cart_up_to_date():
     tg.edits.clear()
     lifecycle.refresh(alerts, result, [wish()], cart, {}, tg, FakeAccount(), NOW)
     assert tg.edits == []  # nothing changed, nothing edited
+
+
+def feed(*copies):
+    class S:
+        def get(self, path, params):
+            return {"10": list(copies)}
+    return S()
+
+
+def test_an_alert_whose_copy_the_feed_misses_stays_open_while_it_is_in_my_cart():
+    # The foil copy (€5.68) is missing from the feed this check; only a non-foil one (€6.50) is listed,
+    # judged against its non-foil trend (€7.52). That is no reason to end the foil alert (2026-11-07).
+    w = wish(trend=7.52, trend_foil=11.28)
+    result = deals.check(feed(feed_item(id=501, cents=650)), [w], {}, NOW)
+    alerts = {"1": open_alert(1, product=500, price=5.68)}
+    cart = {"subcarts": [{"cart_items": [{"product": {"id": 500}, "quantity": 1, "price_cents": 568}]}]}
+    lifecycle.refresh(alerts, result, [w], cart, {}, FakeTelegram(), FakeAccount(), NOW)
+    assert "closed" not in alerts["1"] and alerts["1"]["line"] != "⏹ No longer a deal"
+
+
+def test_an_alert_is_judged_by_its_own_copys_finish():
+    # A non-foil copy at €6.50 is no deal against its non-foil trend (€7.52), even though the cheapest
+    # copy on the card, a foil at €5.68, is a deal against the foil trend.
+    w = wish(trend=7.52, trend_foil=11.28)
+    result = deals.check(feed(feed_item(id=500, cents=568, foil=True), feed_item(id=501, cents=650)), [w], {}, NOW)
+    alerts = {"1": open_alert(1, product=501, price=6.50)}
+    cart = {"subcarts": [{"cart_items": [{"product": {"id": 501}, "quantity": 1, "price_cents": 650}]}]}
+    lifecycle.refresh(alerts, result, [w], cart, {}, FakeTelegram(), FakeAccount(), NOW)
+    assert alerts["1"]["state"] == "ended" and alerts["1"]["line"].startswith("⏹ No longer a deal")
 
 
 def fake_session_one():

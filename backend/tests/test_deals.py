@@ -137,9 +137,24 @@ def test_check_alerts_once_then_on_a_lower_price_and_forgets_gone_deals():
     assert len(week.new) == 1  # repeated after a week
 
     gone = deals.check(fake_session({10: [item(cents=460)]}), watch, alerted, NOW + timedelta(days=9))
-    assert gone.deals == [] and alerted == {}
+    assert gone.deals == [] and alerted["sf-loki|en|any"]["missing"] == (NOW + timedelta(days=9)).isoformat()
     back = deals.check(fake_session({10: [item(cents=300)]}), watch, alerted, NOW + timedelta(days=10))
-    assert len(back.new) == 1
+    assert len(back.new) == 1  # missing for a day: a new deal
+
+
+def test_a_deal_missing_from_a_check_or_two_is_not_announced_again():
+    alerted: dict = {}
+    first = deals.check(fake_session({10: [item(cents=288)]}), [wish()], alerted, NOW)
+    assert len(first.new) == 1
+    missed = deals.check(fake_session({10: [item(cents=460)]}), [wish()], alerted, NOW + timedelta(minutes=5))
+    assert missed.deals == [] and "sf-loki|en|any" in alerted  # remembered, not forgotten
+    back = deals.check(fake_session({10: [item(cents=288)]}), [wish()], alerted, NOW + timedelta(minutes=10))
+    assert [d.listing.price for d in back.deals] == [2.88] and back.new == []
+    assert "missing" not in alerted["sf-loki|en|any"]
+    # Missing for longer than the hour: back again counts as a new deal.
+    deals.check(fake_session({10: [item(cents=460)]}), [wish()], alerted, NOW + timedelta(minutes=20))
+    later = deals.check(fake_session({10: [item(cents=288)]}), [wish()], alerted, NOW + timedelta(hours=2))
+    assert len(later.new) == 1
 
 
 def test_a_failed_card_keeps_its_alert_memory():

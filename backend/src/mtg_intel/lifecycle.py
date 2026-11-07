@@ -285,6 +285,18 @@ def verdict(alert: dict[str, Any], *, bought_price: float | None, in_cart: bool,
     return Verdict("open", "", changed)
 
 
+def own_assessment(alert: dict[str, Any], result: deals.CheckResult, wish: dict[str, Any] | None) -> deals.Assessment | None:
+    """How the alert's own copy compares now, judged against its own finish (foil or not). Without
+    the copy in this check's feed, None: the feed missed it, which says nothing about its price.
+    Judging it against another copy (the cheapest one left) once ended a foil deal, the foil copy
+    being judged by the non-foil trend (2026-11-07)."""
+    copy = result.copies.get(int(alert["product_id"]))
+    if copy is None or wish is None:
+        return None
+    cardtrader, kind = result.usual.get(alert["key"], (None, ""))
+    return deals.assess(wish, [copy], cardtrader if kind == "usual price" else None)
+
+
 def still_a_deal(alert: dict[str, Any], price: float, assessment: deals.Assessment | None,
                  wish: dict[str, Any] | None) -> bool | None:
     """Whether the alert's copy, at its price now, still counts (with SLACK_PCT of slack, so an
@@ -405,7 +417,7 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
             v = Verdict("ended", "⏹ No longer on your want-list")
         else:
             v = verdict(alert, bought_price=bought.get(pid), in_cart=in_cart, cart_price=cart_price,
-                        in_feed=pid in result.seen, still_deal=still_a_deal(alert, price, result.assessed.get(alert["key"]), wish),
+                        in_feed=pid in result.seen, still_deal=still_a_deal(alert, price, own_assessment(alert, result, wish), wish),
                         now=now)
         if v.state == "open":
             line = v.line or (cart_line(cart, now) + (f" · price now €{v.price:.2f}" if v.price else "") if in_cart
