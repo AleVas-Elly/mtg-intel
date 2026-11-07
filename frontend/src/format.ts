@@ -94,13 +94,18 @@ export function cmLow(w: Wish, foil?: boolean): number | null {
   return null;
 }
 
-/** Shipping always added to a Cardmarket price (user, 2026-11-06): €3.50 up to €10, then growing
- *  in a straight line to €15 for a €100 card, and €15 above that. CardTrader via Zero already
- *  includes shipping. */
+/** Shipping always added to a Cardmarket price (D74): Cardmarket's own table for a single card from a Dutch
+ *  seller to the Netherlands (help.cardmarket.com/en/ShippingCosts, read 2026-11-07, packaging fee included).
+ *  Up to €25 it may go as a plain letter; above that Cardmarket requires tracked shipping. CardTrader via Zero
+ *  already includes shipping. */
+const CM_SHIPPING_NL: [number, number][] = [
+  [25, 1.7],      // Brief, untracked, up to 4 cards
+  [200, 6.2],     // Brievenbuspakje+, tracked
+  [500, 13.55],   // Aangetekend Pakket, registered
+  [5500, 18.15],  // Pakket met Verzekerservice, insured
+];
 export function cmShipping(price: number): number {
-  if (price <= 10) return 3.5;
-  if (price >= 100) return 15;
-  return Math.round((3.5 + ((price - 10) * (15 - 3.5)) / 90) * 100) / 100;
+  return (CM_SHIPPING_NL.find(([max]) => price <= max) ?? CM_SHIPPING_NL[CM_SHIPPING_NL.length - 1])[1];
 }
 /** A Cardmarket price with its estimated shipping added, the way CardTrader's Zero price already is (D69). */
 export const withShipping = (price: number): number => Math.round((price + cmShipping(price)) * 100) / 100;
