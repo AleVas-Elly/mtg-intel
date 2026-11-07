@@ -848,7 +848,7 @@ def check_deals(args: argparse.Namespace) -> int:
                       deals.price_trend(ct, None, "📉 CardTrader, cheapest copy", min_days=5)]
             out = deals.telegram(d, site_url, preview(d), image, trends)
             out.stamps = done
-            out.tip = deals.buy_tip(d.listing.price, cm, ct)
+            out.tip = deals.buy_tip(d.listing.price, deals.with_shipping(cm), ct)  # what buying costs (D78)
             return out
 
         messages = [(title, text, None) for title, text in targets]  # Cardmarket target prices: plain alerts

@@ -77,7 +77,7 @@ export function Deals({ data, card }: { data: AppData; card: string | null }) {
           ) : (
             <div class="empty">
               <h2>No deals right now</h2>
-              <p>Every 10 minutes CardTrader is checked for a copy at least 30% under its usual price, or 20% for cards usually over €20. The usual price is the higher of Cardmarket's trend and CardTrader's usual price. A Telegram message arrives when one shows up, and a short summary every morning.</p>
+              <p>Every 10 minutes CardTrader is checked for a copy at least 30% under its usual price, or 20% for cards usually over €20. The usual price is the lower of Cardmarket's trend plus shipping and CardTrader's usual price, so a deal is cheaper than you'd normally pay on either. A Telegram message arrives when one shows up, and a short summary every morning.</p>
             </div>
           )}
           {closest.length > 0 && (

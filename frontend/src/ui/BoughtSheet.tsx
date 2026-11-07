@@ -1,8 +1,9 @@
 // "Bought it" (3c): record what I paid, where and in what condition. One copy comes off the wish;
-// the saving is measured against Cardmarket's trend today (spec principle 5).
+// the saving is measured against Cardmarket's trend plus shipping today (spec principle 5, D78: the price I
+// record includes shipping).
 import { useEffect, useState } from "preact/hooks";
 import { saveEdit } from "../edits";
-import { cmTrend, condName, eur, foilOnly } from "../format";
+import { cmTrend, condName, eur, foilOnly, withShipping } from "../format";
 import { toast } from "../toast";
 import type { LiveWish, PurchaseInput, Wish } from "../types";
 import { CardImage } from "./CardImage";
@@ -20,7 +21,8 @@ export function BoughtSheet({ wish: w, live, onClose, onDone }: { wish: Wish; li
   const canPlain = w.finishes.length === 0 || w.finishes.includes("nonfoil");
   const [market, setMarket] = useState<PurchaseInput["market"]>(live ? "cardtrader" : "cardmarket");
   const [foil, setFoil] = useState(foilOnly(w) || w.foil === "yes" || (w.foil === "any" && !!live?.foil));
-  const trend = cmTrend(w, foil);
+  const rawTrend = cmTrend(w, foil);
+  const trend = rawTrend ? withShipping(rawTrend) : null;  // what buying on Cardmarket costs
   const suggested = (m: string) => (m === "cardtrader" ? live?.price : m === "cardmarket" ? trend : null);
   const [price, setPrice] = useState(() => suggested(live ? "cardtrader" : "cardmarket")?.toFixed(2) ?? "");
   const [touched, setTouched] = useState(false);
@@ -52,7 +54,7 @@ export function BoughtSheet({ wish: w, live, onClose, onDone }: { wish: Wish; li
       const purchase: PurchaseInput = {
         price_eur: paid.toFixed(2), market, condition, foil: foil ? "yes" : "no",
         language: live?.language && w.language === "any" ? live.language : w.language, date,
-        cardmarket_trend_eur: trend ? trend.toFixed(2) : "",
+        cardmarket_trend_eur: rawTrend ? rawTrend.toFixed(2) : "",  // stored as Cardmarket's own trend
       };
       const card = { name: w.name, set: w.set, number: w.number, scryfall_id: w.scryfall_id, thumb: w.thumb, rarity: w.rarity,
         tags: w.tags, set_name: w.set_name, lists: w.lists };
@@ -108,10 +110,10 @@ export function BoughtSheet({ wish: w, live, onClose, onDone }: { wish: Wish; li
           </div>
           <div class={`saving-line${saved != null && saved > 0 ? " good" : ""}`}>
             {trend == null ? "No Cardmarket price to compare with."
-              : saved == null ? `Cardmarket trend ${eur(trend)}.`
-              : saved > 0 ? <>You save <b>{eur(saved)}</b> ({Math.round((saved / trend) * 100)}%) against Cardmarket's trend of {eur(trend)}.</>
-              : saved < 0 ? <>{eur(-saved)} more than Cardmarket's trend of {eur(trend)}.</>
-              : <>The same as Cardmarket's trend.</>}
+              : saved == null ? `Cardmarket trend with shipping ${eur(trend)}.`
+              : saved > 0 ? <>You save <b>{eur(saved)}</b> ({Math.round((saved / trend) * 100)}%) against Cardmarket's trend with shipping, {eur(trend)}.</>
+              : saved < 0 ? <>{eur(-saved)} more than Cardmarket's trend with shipping, {eur(trend)}.</>
+              : <>The same as Cardmarket's trend with shipping.</>}
           </div>
           <p class="hint">{w.quantity > 1 ? `One copy comes off the wish (${w.quantity - 1} more wanted).` : "The card leaves the want-list."} It goes on your Bought list.</p>
           {error && <div class="notice"><IconWarn />{error}</div>}

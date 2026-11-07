@@ -37,6 +37,7 @@ export interface LiveWish extends Listing {
 export interface Deal {
   key: string; listing: Listing; cardmarket: number | null; cardtrader: number | null; cardtrader_kind: string;
   below_pct: number | null; tier: number | null; target: boolean; reasons: string[]; since: string; gone_at?: string;
+  reference?: number | null;  // the usual price the deal was judged against (D78)
 }
 
 export interface LiveDoc {

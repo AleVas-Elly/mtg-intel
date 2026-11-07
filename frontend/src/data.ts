@@ -2,7 +2,8 @@
 import { useMemo } from "preact/hooks";
 import { useDoc } from "./api";
 import type { Deal, EditsDoc, LiveDoc, LiveWish, WantsDoc, Wish } from "./types";
-import { cmTrend, liveFlags } from "./format";
+import { liveFlags } from "./format";
+import { usualPrice } from "./markets";
 import { overlay, useEdits } from "./edits";
 
 export interface AppData {
@@ -35,20 +36,18 @@ export function useAppData(): AppData {
   }, [wants.doc, live.doc, wants.error, live.error, edits]);
 }
 
-/** How close the cheapest CardTrader copy is to a deal: price over the lower reference. */
-/** Cheapest copy / its usual price (the higher of Cardmarket's trend and CardTrader's usual, D52). */
+/** Cheapest copy / its usual price (the deal check's own, D78). */
 export function dealRatio(w: Wish, l: LiveWish | undefined): number | null {
   if (!l) return null;
-  if (l.ref) return l.price / l.ref;
-  const refs = [cmTrend(w, l.foil), l.usual].filter((v): v is number => !!v);
-  return refs.length ? l.price / Math.max(...refs) : null;
+  const usual = usualPrice(w, l);
+  return usual ? l.price / usual : null;
 }
 
 /** Percentage points still missing before the cheapest copy is a deal (0 or less: it is one). */
 export function dealGap(w: Wish, l: LiveWish | undefined): number | null {
   if (l?.below != null && l.needs != null) return l.needs - l.below;
-  const r = dealRatio(w, l);
-  return r == null ? null : 30 - (1 - r) * 100;
+  const r = dealRatio(w, l), usual = usualPrice(w, l);
+  return r == null ? null : (usual != null && usual > 20 ? 20 : 30) - (1 - r) * 100;
 }
 
 /** Alternatives (`one_of`) count as one wish. */

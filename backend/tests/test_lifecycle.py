@@ -33,7 +33,7 @@ def test_my_purchases_become_want_list_edits_once():
     assert [(e["op"], e.get("key")) for e in edits] == [("bought", "sf-loki|en|any"), ("collected", None)]
     p = edits[0]["purchase"]
     assert (p["price_eur"], p["condition"], p["foil"], p["language"], p["date"], p["cardmarket_trend_eur"]) == \
-        ("2.88", "NM", "no", "en", "2026-11-06", "4.67")
+        ("2.88", "NM", "no", "en", "2026-11-06", "2.97")
     assert p["note"] == "CT order 20261101abc #500" and edits[0]["card"]["name"] == "Loki, God of Mischief"
     assert edits[1]["card_row"]["scryfall_id"] == "sf-other" and edits[1]["card_row"]["collector_number"] == "343"
     assert bought == {500: 2.88, 501: 1.2}
@@ -198,9 +198,9 @@ def test_an_alert_whose_copy_the_feed_misses_stays_open_while_it_is_in_my_cart()
 
 
 def test_an_alert_is_judged_by_its_own_copys_finish():
-    # A non-foil copy at €6.50 is no deal against its non-foil trend (€7.52), even though the cheapest
-    # copy on the card, a foil at €5.68, is a deal against the foil trend.
-    w = wish(trend=7.52, trend_foil=11.28)
+    # A non-foil copy at €6.50 is no deal against its non-foil trend plus shipping (€7.52), even though
+    # the cheapest copy on the card, a foil at €5.68, is a deal against the foil trend plus shipping (€11.28).
+    w = wish(trend=5.82, trend_foil=9.58)
     result = deals.check(feed(feed_item(id=500, cents=568, foil=True), feed_item(id=501, cents=650)), [w], {}, NOW)
     alerts = {"1": open_alert(1, product=501, price=6.50)}
     cart = {"subcarts": [{"cart_items": [{"product": {"id": 501}, "quantity": 1, "price_cents": 650}]}]}

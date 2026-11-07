@@ -82,10 +82,7 @@ export function TierPill({ d }: { d: Deal }) {
 
 /** The usual price a deal is judged against (D52) and what it saves. */
 export function usualOf(d: Deal, data: AppData): number | null {
-  const ref = data.liveOf(d.key)?.ref;
-  if (ref) return ref;
-  const refs = [d.cardmarket, d.cardtrader].filter((v): v is number => !!v);
-  return refs.length ? Math.max(...refs) : null;
+  return data.liveOf(d.key)?.ref ?? d.reference ?? null;  // the deal check's own usual price (D78)
 }
 
 const open = (key: string) => (e: Event) => { e.preventDefault(); openCard(key); };

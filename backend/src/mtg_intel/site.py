@@ -104,7 +104,7 @@ def scryfall_small(image_url: str | None) -> str | None:
 def purchases_doc(text: str, cards: pa.Table, now: datetime, cardmarket_day: pa.Table | None = None,
                   price_date: str | None = None) -> dict[str, Any]:
     """Cards I bought ("Bought it", 3c), newest first, with what each saved against Cardmarket's
-    trend on the day (spec principle 5) and, given the latest Cardmarket day, what the same finish
+    trend plus shipping on the day (spec principle 5, D78: the price I record includes shipping) and, given the latest Cardmarket day, what the same finish
     is worth now (the Bought dashboard)."""
     import pyarrow.compute as pc
 
@@ -128,6 +128,8 @@ def purchases_doc(text: str, cards: pa.Table, now: datetime, cardmarket_day: pa.
         card = images.get(r.get("scryfall_id") or "", {})
         price = float(r["price_eur"])
         trend = float(r["cardmarket_trend_eur"]) if r.get("cardmarket_trend_eur") else None
+        if trend is not None:
+            trend = round(trend + deals.cm_shipping(trend), 2)  # what buying on Cardmarket would have cost
         trend_now, trend_foil_now = worth.get(r.get("scryfall_id") or "", (None, None))
         value = trend_foil_now if r.get("foil") == "yes" else trend_now
         out.append({
@@ -417,7 +419,7 @@ def live_doc(result: deals.CheckResult, watch: list[dict[str, Any]], now: dateti
     for d in result.deals:
         current[d.key] = {
             "key": d.key, "listing": listing_doc(d.listing), "cardmarket": d.cardmarket, "cardtrader": d.cardtrader,
-            "cardtrader_kind": d.cardtrader_kind, "below_pct": d.below_pct,
+            "cardtrader_kind": d.cardtrader_kind, "below_pct": d.below_pct, "reference": d.reference,
             "tier": d.tier[0] if d.tier else None, "target": any("target" in r for r in d.reasons),
             "reasons": d.reasons, "since": now.isoformat(),
         }
@@ -436,7 +438,7 @@ def live_doc(result: deals.CheckResult, watch: list[dict[str, Any]], now: dateti
     for key, listing in result.cheapest.items():
         usual, kind = result.usual.get(key, (None, ""))
         wishes[key] = listing_doc(listing) | {"count": result.counts.get(key, 0), "usual": usual, "usual_kind": kind}
-        if key in result.assessed:  # the bot's own judgement (D52), so the site ranks closeness the same way
+        if key in result.assessed:  # the bot's own judgement (D78), so the site shows and ranks the same usual price
             a = result.assessed[key]
             wishes[key] |= {"ref": a.reference, "below": a.below_pct, "needs": a.floor}
     return {"checked_at": now.isoformat(), "cards_checked": len({w["blueprint_id"] for w in watch}),

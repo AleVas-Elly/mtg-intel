@@ -2,6 +2,7 @@
 // straight away; a GitHub job writes it into the want-list file within a few minutes.
 import { peek, send, setLocal, useDoc } from "./api";
 import type { Edit, EditsDoc, Purchase, Settings, Wish } from "./types";
+import { withShipping } from "./format";
 
 /** What a new wish starts with (user, 2026-10-22): English, any finish, NM or better, any CardTrader
  *  seller, on the Showcase list. */
@@ -86,7 +87,8 @@ export async function dismissFailed(): Promise<void> {
 export function pendingPurchases(ops: Edit[]): Purchase[] {
   return ops.filter((o) => o.op === "bought" && o.purchase && o.card).map((o, i) => {
     const p = o.purchase!, c = o.card!;
-    const price = Number(p.price_eur), trend = p.cardmarket_trend_eur ? Number(p.cardmarket_trend_eur) : null;
+    const price = Number(p.price_eur), raw = p.cardmarket_trend_eur ? Number(p.cardmarket_trend_eur) : null;
+    const trend = raw ? withShipping(raw) : null;  // what buying on Cardmarket would have cost (D78)
     return {
       n: -1 - i, date: p.date, name: c.name ?? "", set: c.set ?? null, number: c.number ?? null, scryfall_id: c.scryfall_id ?? null,
       language: p.language, foil: p.foil === "yes", condition: p.condition, price, market: p.market, cardmarket: trend,

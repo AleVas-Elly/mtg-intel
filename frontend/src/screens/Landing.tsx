@@ -185,7 +185,7 @@ export function Landing({ busy, error, onSignIn, local, setupMissing }: {
         <VersionField id={bolt} />
       </Section>
 
-      <Section title="Two markets, one price" tone="flip" lead="CardTrader's cheapest fitting copy is checked every ten minutes and set beside Cardmarket's trend. The usual price is the higher of the two, so one odd listing can't fake a deal. A deal starts 30% under it, or 20% for cards usually over €20.">
+      <Section title="Two markets, one price" tone="flip" lead="CardTrader's cheapest fitting copy is checked every ten minutes and set beside Cardmarket's trend. The usual price is the lower of the two, Cardmarket's with shipping, so a deal is cheaper than you'd normally pay anywhere. A deal starts 30% under it, or 20% for cards usually over €20.">
         <MarketsDrop />
       </Section>
 

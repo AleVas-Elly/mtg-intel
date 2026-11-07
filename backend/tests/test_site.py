@@ -133,7 +133,7 @@ def test_purchases_doc_shows_newest_first_with_the_saving():
 
     doc = site.purchases_doc(text, cards, NOW)
 
-    assert [(p["name"], p["saved"], p["foil"]) for p in doc["purchases"]] == [("B", None, True), ("A", 1.6, False)]
+    assert [(p["name"], p["saved"], p["foil"]) for p in doc["purchases"]] == [("B", None, True), ("A", 3.3, False)]  # 5.10 + €1.70 shipping
     assert doc["purchases"][1]["thumb"] == "https://cards.scryfall.io/small/front/a.jpg"
     assert doc["purchases"][1]["lists"] == ["Showcase"]
 

@@ -3,8 +3,9 @@
 `watch_table` (built with the tables) holds each want-list wish with its Cardmarket reference
 prices. `check` asks CardTrader for the live listings of every wished card, keeps the ones that
 fit the wish (language, foil, condition, Zero), and compares the cheapest with its usual price:
-the higher of the Cardmarket trend for its finish and the usual CardTrader price for the same wish
-(D52, was the lower in D47). At least 30% under is a deal, 20% for cards usually over €20, in
+the lower of the Cardmarket trend for its finish plus Cardmarket's shipping, and the usual
+CardTrader price for the same wish, which already includes shipping (D78; the higher in D52, the
+lower without shipping in D47). At least 30% under is a deal, 20% for cards usually over €20, in
 three tiers; at or under my target price is one too. A daily digest says the checks are alive.
 """
 
@@ -40,8 +41,8 @@ REALERT_DAYS = 7  # the same deal at the same price is repeated after a week
 # A deal that drops out of one check (CardTrader's feed is cached and can miss a copy) is remembered
 # this long: back within the hour, it is the same deal, not a new one to announce (2026-11-07).
 REMEMBER_MISSING = timedelta(hours=1)
-USUAL_DAYS = 7  # the usual CardTrader Zero price: median of the cheapest per check over this window
-USUAL_MIN_DAYS = 3  # with less history, the next-cheapest listing stands in
+USUAL_DAYS = 14  # the usual CardTrader Zero price: median of each day's cheapest over this window (D78) ...
+USUAL_MIN_DAYS = 5  # ... with at least this many days; with less, the next-cheapest listing stands in
 # A Cardmarket trend this many times under CardTrader's own usual price is a data error, not a
 # market (e.g. €0.02 for Counterspell SLD #7123 against €12.66): taking the lower of the two would
 # block every deal on the card, so the trend is shown but not used.
@@ -137,15 +138,17 @@ def cardmarket_reference(listing: Listing, wish: dict[str, Any]) -> float | None
 
 
 def usual_zero_price(wish: dict[str, Any], history: list[dict[str, Any]], now: datetime) -> float | None:
-    """Median over the last week of the cheapest listing fitting this wish in each past check
-    (from the check summaries), or None with less than `USUAL_MIN_DAYS` days of history."""
-    cheapest: dict[datetime, float] = {}
+    """The median, over the last two weeks, of each day's cheapest listing fitting this wish (from
+    the check summaries), or None with less than `USUAL_MIN_DAYS` days (D78). By day, not by check:
+    one cheap copy left listed for a few days can't become the usual price and erase its own deal."""
+    cheapest: dict[date, float] = {}
     since = now - timedelta(days=USUAL_DAYS)
     for row in history:
         listing = Listing(0, row["min_price"], row["condition"], row["language"], row["foil"], row["zero"], "", 1)
         if row["checked_at"] >= since and row["checked_at"] < now and fits(listing, wish):
-            cheapest[row["checked_at"]] = min(cheapest.get(row["checked_at"], row["min_price"]), row["min_price"])
-    if len({t.date() for t in cheapest}) < USUAL_MIN_DAYS:
+            day = row["checked_at"].date()
+            cheapest[day] = min(cheapest.get(day, row["min_price"]), row["min_price"])
+    if len(cheapest) < USUAL_MIN_DAYS:
         return None
     return median(cheapest.values())
 
@@ -190,10 +193,10 @@ def wish_key(wish: dict[str, Any]) -> str:
 
 
 def assess(wish: dict[str, Any], listings: list[Listing], usual: float | None = None) -> Assessment | None:
-    """Judge the cheapest fitting copy against the usual price (D52): the higher of the Cardmarket
-    trend and CardTrader's usual price, so a copy cheap on either market counts. CardTrader's next
-    cheapest copy (before 3 days of history) is only used without a Cardmarket trend: one pricey
-    listing must not make an ordinary copy look like a steal."""
+    """Judge the cheapest fitting copy against the usual price (D78): the lower of the Cardmarket
+    trend plus shipping and CardTrader's usual price, so a deal is cheaper than I could normally buy
+    the card anywhere. CardTrader's next cheapest copy (before 5 days of history) is only used
+    without a Cardmarket trend: one pricey listing must not make an ordinary copy look like a steal."""
     matching = sorted((x for x in listings if fits(x, wish)), key=lambda x: x.price)
     if not matching:
         return None
@@ -205,11 +208,12 @@ def assess(wish: dict[str, Any], listings: list[Listing], usual: float | None = 
         cardtrader, kind = matching[1].price, "next cheapest copy"
     else:
         cardtrader, kind = None, ""
-    trusted = not (cardmarket and cardtrader and max(cardmarket, cardtrader) > REFERENCE_RATIO * min(cardmarket, cardtrader))
-    references = [cardmarket] if cardmarket and trusted else []
+    shipped = round(cardmarket + cm_shipping(cardmarket), 2) if cardmarket else None  # what buying there costs
+    trusted = not (shipped and cardtrader and max(shipped, cardtrader) > REFERENCE_RATIO * min(shipped, cardtrader))
+    references = [shipped] if shipped and trusted else []
     if cardtrader and (kind == "usual price" or not references):
         references.append(cardtrader)
-    reference = max(references) if references else None
+    reference = min(references) if references else None
     below = round((1 - best.price / reference) * 100, 6) if reference else None  # exact 20% stays 20
     base = PRICEY_DEAL_PCT if reference and reference > PRICEY_EUR else DEAL_PCT
     floor = wish.get("deal_pct") if wish.get("deal_pct") is not None else base
@@ -359,7 +363,9 @@ def message(deal: Deal) -> tuple[str, str]:
         pct = (1 - x.price / reference) * 100
         return f"{pct:.0f}% less" if pct >= 0 else f"{-pct:.0f}% more"
 
-    compared = [(f"Cardmarket trend €{deal.cardmarket:.2f} ({off(deal.cardmarket)})" if deal.cardmarket_trusted
+    shipped = deal.cardmarket + cm_shipping(deal.cardmarket) if deal.cardmarket else 0
+    compared = [(f"Cardmarket trend €{deal.cardmarket:.2f} + €{shipped - deal.cardmarket:.2f} shipping ({off(shipped)})"
+                 if deal.cardmarket_trusted
                  else f"Cardmarket trend €{deal.cardmarket:.2f} (looks wrong, not used)") if deal.cardmarket else "",
                 f"CardTrader Zero {deal.cardtrader_kind} €{deal.cardtrader:.2f} ({off(deal.cardtrader)})"
                 if deal.cardtrader else ""]
@@ -431,6 +437,11 @@ CM_SHIPPING_NL = [(25.0, 1.70), (200.0, 6.20), (500.0, 13.55), (5500.0, 18.15)]
 
 def cm_shipping(price: float) -> float:
     return next((cost for top, cost in CM_SHIPPING_NL if price <= top), CM_SHIPPING_NL[-1][1])
+
+
+def with_shipping(points: list[tuple[str, float]]) -> list[tuple[str, float]]:
+    """Cardmarket prices per day as what buying there costs: each plus its shipping (D78)."""
+    return [(d, round(v + cm_shipping(v), 2)) for d, v in points if v]
 
 
 def market_lines(deal: Deal) -> list[tuple[str, str, str]]:
@@ -633,9 +644,9 @@ def cardmarket_url(w: dict[str, Any]) -> str:
 
 
 def cardmarket_targets(watch: list[dict[str, Any]], alerted: dict[str, dict], now: datetime) -> list[tuple[str, str]]:
-    """Wishes with a target price whose Cardmarket trend is at or under it (alerted once, again
-    only when the trend drops further). Cardmarket can't be checked live (D17), so this uses the
-    daily price guide."""
+    """Wishes with a target price whose Cardmarket trend plus shipping (what buying there costs,
+    D78) is at or under it (alerted once, again only when it drops further). Cardmarket can't be
+    checked live (D17), so this uses the daily price guide."""
     messages = []
     for w in watch:
         if w.get("max_price_eur") is None:
@@ -644,16 +655,18 @@ def cardmarket_targets(watch: list[dict[str, Any]], alerted: dict[str, dict], no
         foil = w["foil"] == "yes" or (bool(finishes) and "nonfoil" not in finishes)
         trend = w.get("trend_foil") if foil else w.get("trend")
         key = f"cardmarket|{w['scryfall_id']}|{w['language']}|{w['foil']}"
-        if trend is None or trend > w["max_price_eur"]:
+        price = round(trend + cm_shipping(trend), 2) if trend is not None else None
+        if price is None or price > w["max_price_eur"]:
             alerted.pop(key, None)
             continue
-        if key in alerted and trend >= alerted[key]["price"] - 0.005:
+        if key in alerted and price >= alerted[key]["price"] - 0.005:
             continue
-        alerted[key] = {"price": trend, "at": now.isoformat()}
+        alerted[key] = {"price": price, "at": now.isoformat()}
         link = f"https://www.cardmarket.com/en/Magic/Products?idProduct={w['cardmarket_id']}" if w.get("cardmarket_id") else ""
         messages.append((
-            f"Target: {w['name']} €{trend:.2f} on Cardmarket",
-            f"{w['name']}: Cardmarket trend €{trend:.2f} is at or under my €{w['max_price_eur']:.2f} target.\n{link}".strip(),
+            f"Target: {w['name']} €{price:.2f} on Cardmarket",
+            f"{w['name']}: Cardmarket trend €{trend:.2f} + €{price - trend:.2f} shipping = €{price:.2f}, at or under my "
+            f"€{w['max_price_eur']:.2f} target.\n{link}".strip(),
         ))
     return messages
 

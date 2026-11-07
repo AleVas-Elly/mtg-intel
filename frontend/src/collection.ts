@@ -4,7 +4,7 @@
 // covers owned printings as well as wished ones.
 import { can } from "./access";
 import type { AppData } from "./data";
-import { cmTrend } from "./format";
+import { cmTrend, withShipping } from "./format";
 import { shownPrice, type PriceFrom } from "./markets";
 import type { HistoryDoc, Purchase, Wish } from "./types";
 
@@ -108,12 +108,15 @@ export function totalOverTime<T>(items: T[], pointsOf: (x: T) => [number, number
  *  cheapest fitting copy or Cardmarket's lowest listing plus shipping. */
 export const bestNow = (data: AppData, w: Wish, from: PriceFrom = "best"): number | null => shownPrice(w, data, from);
 
+/** Cardmarket's trend plus shipping: what buying at the trend would cost (D78). */
+const trendShipped = (w: Wish, data: AppData) => { const t = cmTrend(w, data.liveOf(w.key)?.foil); return t ? withShipping(t) : null; };
+
 /** Wishes as things to buy: alternatives (`one_of`) count once, at their cheapest version. */
 export function toBuy(data: AppData, from: PriceFrom = "best"): { w: Wish; best: number | null; trend: number | null; qty: number }[] {
   const groups = new Map<string, Wish[]>();
   for (const w of data.wants?.wishes ?? []) groups.set(w.one_of || w.key, [...(groups.get(w.one_of || w.key) ?? []), w]);
   return [...groups.values()].map((ws) => {
-    const priced = ws.map((w) => ({ w, best: bestNow(data, w, from), trend: cmTrend(w, data.liveOf(w.key)?.foil) }))
+    const priced = ws.map((w) => ({ w, best: bestNow(data, w, from), trend: trendShipped(w, data) }))
       .sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity));
     return { ...priced[0], qty: Math.max(1, priced[0].w.quantity || 1) };
   });

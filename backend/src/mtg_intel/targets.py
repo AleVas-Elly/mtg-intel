@@ -1,7 +1,7 @@
 """Target price suggestions (D55): a target I would realistically hit, from the last 90 days.
 
-For each wish, the best price of each day (the lower of Cardmarket's trend for its finish and the
-cheapest CardTrader copy fitting the wish) over the last 90 days; the suggested target is the
+For each wish, the best price of each day (the lower of Cardmarket's trend for its finish plus
+shipping, D78, and the cheapest CardTrader copy fitting the wish, shipping included via Zero) over the last 90 days; the suggested target is the
 price reached on about 15% of those days, rounded down to a clean number. Suggested only where it
 helps: a wish with no target, a target never reached in 90 days, or one reached so often that it
 rings on ordinary prices. Sent weekly on Telegram (one tap sets it) and shown on the site.
@@ -92,7 +92,7 @@ def all_suggestions(watch: list[dict[str, Any]], price_rows: dict[str, list[dict
     out = []
     for w in watch:
         foil = w.get("foil") == "yes" or (bool(w.get("finishes")) and "nonfoil" not in w["finishes"])
-        cm = deals.trend_points(price_rows.get(w.get("scryfall_id") or "", []), foil)
+        cm = deals.with_shipping(deals.trend_points(price_rows.get(w.get("scryfall_id") or "", []), foil))
         ct = deals.cardtrader_points(check_rows.get(w["blueprint_id"], []), w)
         s = suggest(w, cm, ct)
         if s:

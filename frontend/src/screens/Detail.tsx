@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
-import { ago, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText } from "../format";
+import { ago, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText, withShipping } from "../format";
 import { marketView, pctClass, pctText } from "../markets";
 import { closeCard } from "../router";
 import { saveEdit, undoEdit } from "../edits";
@@ -158,7 +158,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
             {w.links.cardmarket && <a class="btn" href={w.links.cardmarket} target="_blank" rel="noopener">Dutch NM<IconOut /></a>}
           </div>
         </div>
-        {usual != null && <p class="usual-line">Both prices against the usual {eur(usual)}: the higher of Cardmarket's trend and CardTrader's usual price{mv.ctUsual != null ? ` (${eur(mv.ctUsual)})` : ""}.</p>}
+        {usual != null && <p class="usual-line">Both prices against the usual {eur(usual)}: the lower of Cardmarket's trend plus shipping{trend ? ` (${eur(withShipping(trend))})` : ""} and CardTrader's usual price{mv.ctUsual != null ? ` (${eur(mv.ctUsual)})` : ""}.</p>}
 
         {can("bought") && <button class="btn wide soft" type="button" onClick={() => setBuying(true)} disabled={w.pending === "add"}
           title={w.pending === "add" ? "Wait until it's saved to the want-list" : undefined}><IconBag />Bought it</button>}
