@@ -615,6 +615,26 @@ async function edits(request: Request, env: Env, rest: string, ctx: ExecutionCon
   return json(await editsDoc(env, me));
 }
 
+/** GET /api/ct/<blueprint>: CardTrader's live copies of one card, for "Check CardTrader" on a card's
+ *  pane (D83). Asked of the timer Worker, which holds the CardTrader token; kept 5 minutes in the
+ *  edge cache so a second look costs CardTrader nothing. Needs the live deals switch (D78). */
+async function ctCopies(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
+  const w = await who(request, env);
+  if (!w) return json({ error: "Sign in first." }, 401);
+  if (!can(w.account, "deals")) return json({ error: "CardTrader prices aren't shared with you." }, 403);
+  if (!/^\d{1,9}$/.test(rest) || request.method !== "GET") return json({ error: "Not found" }, 404);
+  if (!env.TRIGGER) return json({ error: "CardTrader can't be checked from here." }, 503);
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(`https://ct-cache.internal/${rest}`);
+  const hit = await cache.match(key);
+  if (hit) return new Response(hit.body, { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store" } });
+  const r = await env.TRIGGER.fetch(`https://trigger/ct?bp=${rest}`).catch(() => null);
+  if (!r?.ok) return json({ error: "CardTrader didn't answer. Try again in a minute." }, 502);
+  const body = await r.text();
+  ctx.waitUntil(cache.put(key, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=300" } })));
+  return new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store" } });
+}
+
 interface Suggestion { id: string; account: string; name: string; at: string; scryfall_id: string; settings: Record<string, string>; card: Record<string, unknown> }
 
 /** Cards someone suggested for my want-list (D78). GET: mine to answer (everyone's) or their own;
@@ -869,6 +889,7 @@ export default {
       if (path.startsWith("/api/data/")) return await data(request, env, path.slice(10));
       if (path.startsWith("/api/ingest/")) return await ingest(request, env, path.slice(12), url);
       if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
+      if (path.startsWith("/api/ct/")) return await ctCopies(request, env, path.slice(8), ctx);
       if (path.startsWith("/sym/")) return await symbol(request, path.slice(5), ctx);
       if (path === "/api/telegram") return await telegram(request, env);
       if (path.startsWith("/p/")) return await preview(env, path.slice(3));

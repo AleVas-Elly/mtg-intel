@@ -351,18 +351,27 @@ def history_doc(history: pa.Table | None) -> dict[str, Any]:
     return {"base": base.isoformat() if base else None, "cards": cards}
 
 
-def price_shards(cards: pa.Table, cardmarket_day: pa.Table) -> dict[int, dict[str, list]]:
-    """Latest Cardmarket trend (non-foil, foil) of every printing, split by the first byte of its ID."""
+def price_shards(cards: pa.Table, cardmarket_day: pa.Table, card_ids: pa.Table | None = None) -> dict[int, dict[str, list]]:
+    """Latest Cardmarket trend (non-foil, foil) of every printing, split by the first byte of its ID,
+    and, given the card IDs table, its CardTrader card (blueprint) for "Check CardTrader" (D83):
+    [trend, trend_foil] or [trend, trend_foil, blueprint]. A printing with no Cardmarket price is
+    sent when it has a blueprint."""
     con = duckdb.connect()
     con.register("c", cards)
     con.register("p", cardmarket_day)
+    blueprints = "select null::varchar as scryfall_id, null::bigint as bp where false"
+    if card_ids is not None:
+        con.register("i", card_ids)
+        blueprints = """select scryfall_id, min(try_cast(external_id as bigint)) as bp from i
+                        where source = 'cardtrader' and try_cast(external_id as bigint) is not null group by scryfall_id"""
     rows = con.execute(
-        """select c.scryfall_id, p.trend, p.trend_foil from c join p on p.id_product = c.cardmarket_id
-           where p.trend is not null or p.trend_foil is not null"""
+        f"""select c.scryfall_id, p.trend, p.trend_foil, b.bp from c
+            left join p on p.id_product = c.cardmarket_id left join ({blueprints}) b on b.scryfall_id = c.scryfall_id
+            where p.trend is not null or p.trend_foil is not null or b.bp is not null"""
     ).fetchall()
     shards: dict[int, dict[str, list]] = {n: {} for n in range(PRICE_SHARDS)}
-    for sid, trend, trend_foil in rows:
-        shards[shard_of(sid)][sid] = [trend, trend_foil]
+    for sid, trend, trend_foil, bp in rows:
+        shards[shard_of(sid)][sid] = [trend, trend_foil] if bp is None else [trend, trend_foil, int(bp)]
     return shards
 
 
@@ -391,7 +400,7 @@ def export_tables(site: Site, load: Callable[[str], pa.Table | None], changed: I
         latest = days[-1] if days else (f"prices/cardmarket/{latest_day[:4]}/{latest_day}.parquet" if latest_day else None)
         day = load(latest) if latest else None
         if cards is not None and day is not None:
-            for n, shard in price_shards(cards, day).items():
+            for n, shard in price_shards(cards, day, load("reference/card_ids.parquet")).items():
                 site.put(f"prices-{n}", shard)
             sent.append(f"prices-0…{PRICE_SHARDS - 1}")
             text = purchases() if purchases else None

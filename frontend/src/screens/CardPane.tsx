@@ -13,6 +13,7 @@ import { IconBack, IconClose, IconOut, IconPlus, IconWarn } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { Versions, WishForm } from "../ui/WishSheet";
 import { OwnedHere } from "../ui/RemoveSheet";
+import { CtCheck } from "../ui/CtCheck";
 import type { Wish } from "../types";
 
 // The + in Search opens the pane straight on the form.
@@ -23,7 +24,8 @@ export function openScryCard(id: string, add = false) {
 }
 
 const shardOf = (id: string) => parseInt(id.slice(0, 2), 16) % 32;
-type Shard = Record<string, [number | null, number | null]>;
+/** Per printing: Cardmarket's trend, foil trend and, when known, its CardTrader card (D83). */
+type Shard = Record<string, [number | null, number | null, number?]>;
 
 const cardmarketLink = (id: number) => `https://www.cardmarket.com/en/Magic/Products?idProduct=${id}&sellerCountry=23&minCondition=2`;
 
@@ -43,7 +45,7 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
 
   const w: Wish | null = card && { ...preview(card), prints: card.prints_search_uri };
   const mine = w && (data.wants?.wishes ?? []).find((x) => x.scryfall_id === w.scryfall_id);
-  const [trend, trendFoil] = (card && shard?.[card.id]) || [null, null];
+  const [trend, trendFoil, blueprint] = (card && shard?.[card.id]) || [null, null];
   const pick = (v: Wish) => { fetchCard(v.scryfall_id!).then(setCard); };
   const field = w ? fieldStyle(w.mana_cost) : undefined;
 
@@ -97,11 +99,7 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
                 <span class="note">All sellers, latest day</span>
                 {card?.cardmarket_id && <a class="btn" href={cardmarketLink(card.cardmarket_id)} target="_blank" rel="noopener">Dutch NM<IconOut /></a>}
               </div>
-              <div class="market">
-                <span class="label">CardTrader</span>
-                <span class="big">–</span>
-                <span class="note">Checked every 10 minutes once it's on the want-list</span>
-              </div>
+              <CtCheck key={card?.id} blueprint={blueprint ?? null} foilOnly={!!w && !w.finishes.includes("nonfoil") && w.finishes.length > 0} />
             </div>
 
             <div class="group-title">Other printings</div>

@@ -2,7 +2,7 @@
 // at all; a workflow_dispatch call starts a run within seconds. The workflows keep their own
 // schedules as a fallback.
 
-import { telegramUpdate } from "./telegram.ts";
+import { cardtrader, telegramUpdate } from "./telegram.ts";
 import { fastLane } from "./fastlane.ts";
 
 const SCHEDULE = {
@@ -142,6 +142,23 @@ export default {
   async fetch(request, env) {
     if (new URL(request.url).pathname === "/telegram") {
       return telegramUpdate(request, env, () => dispatch(env, "wantlist.yml"), () => dispatch(env, "deals.yml"));
+    }
+    // "Check CardTrader" on a card's pane (D83): the live copies of one card, asked for by hand.
+    // The token stays here; the website only sees prices, conditions, languages and countries.
+    if (request.method === "GET" && new URL(request.url).pathname === "/ct") {
+      const bp = Number(new URL(request.url).searchParams.get("bp"));
+      if (!Number.isInteger(bp) || bp <= 0) return new Response("Not valid", { status: 400 });
+      if (!env.CARDTRADER_TOKEN) return new Response("No CardTrader token", { status: 503 });
+      const answer = await cardtrader(env, "GET", `/marketplace/products?blueprint_id=${bp}`);
+      if (!answer) return new Response("CardTrader didn't answer", { status: 502 });
+      const copies = (answer[String(bp)] || []).filter((p) => {
+        const props = p.properties_hash || {};
+        return !p.graded && !p.on_vacation && !props.signed && !props.altered && p.price_currency === "EUR";
+      }).map((p) => ({
+        price: p.price_cents / 100, condition: p.properties_hash?.condition || "", language: p.properties_hash?.mtg_language || "",
+        foil: !!p.properties_hash?.mtg_foil, zero: !!p.user?.can_sell_via_hub, country: p.user?.country_code || "", quantity: p.quantity || 1,
+      })).sort((a, b) => a.price - b.price);
+      return new Response(JSON.stringify({ checked_at: new Date().toISOString(), copies }), { headers: { "Content-Type": "application/json" } });
     }
     // A quiet note from the website (D78): someone joined, or suggested a card.
     if (request.method === "POST" && new URL(request.url).pathname === "/notify") {

@@ -133,7 +133,7 @@ export function setLocal<T>(key: string, doc: T) {
   write(key, { etag: null, at: Date.now(), doc });
 }
 
-export async function send<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function send<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method, credentials: "same-origin",
     ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),

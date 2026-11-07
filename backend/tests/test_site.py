@@ -104,6 +104,16 @@ def test_price_shards_split_by_the_id_prefix():
     assert sum(len(s) for s in shards.values()) == 2
 
 
+def test_price_shards_carry_the_cardtrader_card():
+    cards = pa.table({"scryfall_id": ["00aa", "21bb", "40cc"], "cardmarket_id": [1, 2, 3]})
+    day = pa.table({"id_product": [1], "trend": [0.5], "trend_foil": [None]})
+    ids = pa.table({"scryfall_id": ["00aa", "00aa", "21bb", "40cc"], "source": ["cardtrader", "cardtrader", "cardtrader", "tcgplayer"],
+                    "external_id": ["70", "55", "81", "9"]})
+    shards = site.price_shards(cards, day, ids)
+    assert shards[0] == {"00aa": [0.5, None, 55]}  # the lowest blueprint; 40cc has neither price nor blueprint
+    assert shards[1] == {"21bb": [None, None, 81]}  # no Cardmarket price, but CardTrader can be checked
+
+
 def test_uploads_retry_network_and_server_errors():
     calls = []
 
