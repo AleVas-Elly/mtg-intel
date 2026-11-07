@@ -100,7 +100,7 @@ export function RemoveSheet({ o, onClose }: { o: Owned; onClose: () => void }) {
           </div>
           <p class="hint">{reason === "mistake"
             ? `The purchase record is deleted, as if it was never added.`
-            : `${qty === 1 ? "It leaves" : "They leave"} the collection and its value. What you paid stays on record; turn on Sold or gone in the Collection's filters to see ${qty === 1 ? "it" : "them"}.`}</p>
+            : `${qty === 1 ? "It leaves" : "They leave"} the collection and its value. What you paid stays on record; the Collection's Sold tab lists ${qty === 1 ? "it" : "them"}.`}</p>
           {error && <div class="notice"><IconWarn />{error}</div>}
         </div>
         <footer class="sheet-foot">

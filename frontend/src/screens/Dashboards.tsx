@@ -5,7 +5,7 @@ import { can } from "../access";
 import type { ComponentChildren } from "preact";
 import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { useDoc } from "../api";
-import { bestNow, completionBySet, gainOf, moves, myPurchases, ownedCards, series, toBuy, totalOverTime, valueOf, type Owned } from "../collection";
+import { bestNow, completionBySet, gainOf, moves, myPurchases, ownedCards, series, soldSummary, toBuy, totalOverTime, valueOf, type Owned } from "../collection";
 import type { PriceFrom } from "../markets";
 import type { AppData } from "../data";
 import { dealGap, wishCount } from "../data";
@@ -15,7 +15,7 @@ import { day, eur, showsFoil } from "../format";
 import { go, link, openCard } from "../router";
 import { CardImage } from "../ui/CardImage";
 import { SetSymbol } from "../ui/symbols";
-import type { HistoryDoc, PurchasesDoc, Wish } from "../types";
+import type { HistoryDoc, Purchase, PurchasesDoc, Wish } from "../types";
 import { openOwned } from "./Collection";
 import { Breakdown, Months, pct, signed, tone, totals } from "./Bought";
 import "./bought.css";
@@ -261,7 +261,8 @@ function WantsBoard({ data, owned, history, purchases, from }: { data: AppData; 
 
 // ---------- the collection dashboard ----------
 
-function CollectionBoard({ data, owned, history, purchases }: { data: AppData; owned: Owned[]; history: HistoryDoc | null | undefined; purchases: PurchasesDoc | null | undefined }) {
+function CollectionBoard({ data, owned, all, history, purchases }: { data: AppData; owned: Owned[]; all: Purchase[]; history: HistoryDoc | null | undefined; purchases: PurchasesDoc | null | undefined }) {
+  const out = soldSummary(all);
   const worth = owned.reduce((t, o) => t + (valueOf(o) ?? 0), 0);
   const valued = owned.filter((o) => o.now != null);
   const paid = valued.reduce((t, o) => t + o.paid, 0);
@@ -287,11 +288,18 @@ function CollectionBoard({ data, owned, history, purchases }: { data: AppData; o
   }
   return (
     <>
-      <div class="bt-stats">
+      <div class={`bt-stats${out.copies > 0 ? " with-sold" : ""}`}>
         <Stat lead to={() => { try { sessionStorage.setItem("collection-sort", "value"); } catch { /* fine */ } go("/collection"); }} label="Worth now" value={eur(worth)} note={`Cardmarket's trend${purchases?.price_date ? ` on ${day(purchases.price_date)}` : ""}${valued.length < owned.length ? `, ${valued.length} of ${owned.length} priced` : ""}`} />
         {can("money") && <Stat to={() => openFiltered("/collection", "move", gain >= 0 ? "gain" : "loss")} label="Since bought" value={signed(gain)} cls={tone(gain)} note={paid > 0 ? `${pct(gain / paid)} ${gain >= 0 ? "up" : "down"} on ${eur(paid)} paid` : "nothing priced yet"} />}
-        <Stat label="Cards" value={String(copies)} note={`${owned.length} different printings`} />
-        <Stat label="Sets" value={String(sets)} note="with at least one card" />
+        <Stat label="Cards" value={String(copies)} note={`${owned.length} ${owned.length === 1 ? "printing" : "printings"} in ${sets} ${sets === 1 ? "set" : "sets"}`} />
+        {out.copies > 0 ? (
+          // What left the collection (D81): opens the Collection's Sold tab
+          <Stat to={() => { try { sessionStorage.setItem("collection-tab", "sold"); } catch { /* fine */ } go("/collection"); window.scrollTo({ top: 0 }); }}
+            label="Sold" value={can("money") && out.sold > out.unpriced ? eur(out.soldFor) : String(out.sold)}
+            note={can("money") && out.sold > out.unpriced
+              ? <><span class={tone(out.soldFor - out.paidFor)}>{signed(out.soldFor - out.paidFor)}</span> against what you paid</>
+              : [`${out.sold} sold`, out.traded ? `${out.traded} traded` : "", out.lost ? `${out.lost} lost` : ""].filter(Boolean).join(", ")} />
+        ) : <Stat label="Sets" value={String(sets)} note="with at least one card" />}
       </div>
       <div class="db-grid">
         <ValueCard title="Value over time" make={overOwned} label="Collection at Cardmarket's trend" upIsGood
@@ -328,7 +336,8 @@ export function Dashboards({ data }: { data: AppData }) {
   const tab: Tab = !can("wants") ? "collection" : !can("collection") ? "wants" : chosen;
   const purchases = useDoc<PurchasesDoc>("purchases").doc;
   const history = useDoc<HistoryDoc>("history").doc;
-  const owned = useMemo(() => ownedCards(myPurchases(data.edits.ops, purchases)), [purchases, data.edits.ops]);
+  const all = useMemo(() => myPurchases(data.edits.ops, purchases), [purchases, data.edits.ops]);
+  const owned = useMemo(() => ownedCards(all), [all]);
   const pick = (t: Tab) => { setTab(t); try { sessionStorage.setItem("dash-tab", t); } catch { /* fine */ } };
   const [from, setFrom] = useState<PriceFrom>(() => { try { return (sessionStorage.getItem("dash-prices") as PriceFrom) || "best"; } catch { return "best"; } });
   const pickFrom = (f: PriceFrom) => { setFrom(f); try { sessionStorage.setItem("dash-prices", f); } catch { /* fine */ } };
@@ -351,7 +360,7 @@ export function Dashboards({ data }: { data: AppData }) {
       {data.wants === undefined && tab === "wants" ? <div class="bt-stats"><div class="bt-stat skeleton" style={{ height: "110px" }} /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /><div class="bt-stat skeleton" /></div>
         : tab === "wants"
           ? <WantsBoard key="w" data={data} owned={owned} history={history} purchases={purchases} from={from} />
-          : <CollectionBoard key="c" data={data} owned={owned} history={history} purchases={purchases} />}
+          : <CollectionBoard key="c" data={data} owned={owned} all={all} history={history} purchases={purchases} />}
     </div>
   );
 }

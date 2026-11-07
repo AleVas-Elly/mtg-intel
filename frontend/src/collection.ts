@@ -58,6 +58,18 @@ export function withRemovals(purchases: Purchase[], ops: Edit[]): Purchase[] {
 export const myPurchases = (ops: Edit[], doc: PurchasesDoc | null | undefined): Purchase[] =>
   withRemovals([...pendingPurchases(ops), ...(doc?.purchases ?? [])], ops);
 
+/** What left the collection (D79, D81): copies sold, the selling price and what those copies cost
+ *  (only copies with a price count, `unpriced` says how many sold without one), traded or gifted, lost. */
+export function soldSummary(purchases: Purchase[]) {
+  const gone = purchases.filter((p) => p.gone);
+  const sold = gone.filter((p) => p.gone === "sold"), priced = sold.filter((p) => p.sold != null);
+  return {
+    copies: gone.length, sold: sold.length, unpriced: sold.length - priced.length,
+    soldFor: priced.reduce((t, p) => t + (p.sold ?? 0), 0), paidFor: priced.reduce((t, p) => t + (p.price ?? 0), 0),
+    traded: gone.filter((p) => p.gone === "traded").length, lost: gone.filter((p) => p.gone === "lost").length,
+  };
+}
+
 /** Cards I own now, or (gone = true) the copies that left, grouped per printing, finish, language and
  *  condition (and, when gone, per reason and day). */
 export function ownedCards(purchases: Purchase[], gone = false): Owned[] {

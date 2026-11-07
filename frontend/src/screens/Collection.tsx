@@ -3,7 +3,7 @@
 import { can } from "../access";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
-import { gainOf, moves, myPurchases, ownedCards, series, valueOf, type Owned } from "../collection";
+import { gainOf, moves, myPurchases, ownedCards, series, soldSummary, valueOf, type Owned } from "../collection";
 import type { AppData } from "../data";
 import { EMPTY, activeCount, applyFilters, costColours, optionCounts, type FilterState, type Group, type Option } from "../filters";
 import { day, eur, langName, langShort, tagName } from "../format";
@@ -48,8 +48,6 @@ function groupsFor(owned: Owned[], history: HistoryDoc | null | undefined): Grou
   const sets = new Map(owned.filter((o) => o.set).map((o) => [o.set!, o]));
   const move = (o: Owned) => moves(series(o.scryfall_id, o.foil, history));
   return [
-    // Off: the cards I own. On: only the copies that left (D79), which never count in the totals.
-    ...(owned.some((o) => o.gone) ? [{ id: "status", label: "Status", open: true, options: [{ id: "gone", label: "Sold or gone", test: (o: Owned) => !!o.gone }] }] : []),
     { id: "source", label: "Where it came from", open: true, options: count((o) => o.markets).map((m) => ({ id: m, label: m === "other" ? "Bought elsewhere" : `Bought on ${MARKET[m] ?? m}`, test: (o) => o.markets.includes(m) })) },
     { id: "price", label: "Worth (a copy)", open: true, options: PRICE.map((p) => ({ id: p.id, label: p.label, test: (o) => o.now != null && o.now >= p.lo && o.now < p.hi })) },
     {
@@ -86,7 +84,10 @@ const FILTER_KEY = "collection-filters";
 function readFilters(): FilterState {
   try {
     const s = JSON.parse(localStorage.getItem(FILTER_KEY) || "null");
-    if (s && typeof s.sel === "object") return { sel: s.sel, min: s.min ?? "", max: s.max ?? "" };
+    if (s && typeof s.sel === "object") {
+      const { status, ...sel } = s.sel;  // the old Sold or gone filter, now the Sold tab (D81)
+      return { sel, min: s.min ?? "", max: s.max ?? "" };
+    }
   } catch { /* fine */ }
   return EMPTY;
 }
@@ -147,23 +148,23 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
   const [sort, setSort] = useState<string>(() => sessionStorage.getItem("collection-sort") || "value");
   const [filters, setFilters] = useState<FilterState>(readFilters);
   const [sheet, setSheet] = useState(false);
+  // Owned, or Sold: the cards that left (D81). Opened on Sold from the dashboard's Sold tile.
+  const [tab, setTab] = useState<"owned" | "sold">(() => { try { return sessionStorage.getItem("collection-tab") === "sold" ? "sold" : "owned"; } catch { return "owned"; } });
+  const pickTab = (t: "owned" | "sold") => { setTab(t); try { sessionStorage.setItem("collection-tab", t); } catch { /* fine */ } };
   useEffect(() => { try { localStorage.setItem(FILTER_KEY, JSON.stringify(filters)); } catch { /* fine */ } }, [filters]);
 
   const all = useMemo(() => myPurchases(data.edits.ops, doc), [doc, data.edits.ops]);
   const owned = useMemo(() => ownedCards(all), [all]);
   const left = useMemo(() => ownedCards(all, true), [all]);
-  const showGone = !!filters.sel.status?.length && left.length > 0;
+  const showGone = left.length > 0 && (tab === "sold" || !owned.length);
   const base = showGone ? left : owned;
   const groups = useMemo(() => groupsFor([...owned, ...left], history), [owned, left, history]);
   const needle = q.trim().toLowerCase();
   const searched = useMemo(() => needle ? base.filter((o) => o.name.toLowerCase().includes(needle) || (o.set ?? "") === needle ||
     (o.set_name ?? "").toLowerCase().includes(needle) || o.tags.some((t) => t.includes(needle))) : base, [base, needle]);
   const price = (o: Owned) => o.now;
-  const counts = useMemo(() => {
-    const c = optionCounts(searched, groups, filters, price, qtyOf);
-    c.set("status:gone", qtyOf(left));  // counted over the copies that left, whatever is on screen
-    return c;
-  }, [searched, groups, filters, left]);
+  const counts = useMemo(() => optionCounts(searched, groups, filters, price, qtyOf), [searched, groups, filters]);
+  const summary = useMemo(() => soldSummary(all), [all]);
   const shown = useMemo(() => {
     const rows = applyFilters(searched, groups, filters, price);
     const c30 = (o: Owned) => moves(series(o.scryfall_id, o.foil, history)).change30;
@@ -176,8 +177,9 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
       name: (a, b) => a.name.localeCompare(b.name),
       set: (a, b) => (a.set ?? "").localeCompare(b.set ?? "") || (parseInt(a.number ?? "0") - parseInt(b.number ?? "0")),
     };
+    if (showGone) return rows.sort((a, b) => (b.gone_date ?? "").localeCompare(a.gone_date ?? ""));  // newest first
     return rows.sort(by[sort] ?? by.value);
-  }, [searched, groups, filters, sort, history]);
+  }, [searched, groups, filters, sort, history, showGone]);
 
   const pickSort = (s: string) => { setSort(s); try { sessionStorage.setItem("collection-sort", s); } catch { /* fine */ } };
   const on = activeCount(filters);
@@ -209,16 +211,37 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
               <FilterPanel groups={groups} state={filters} onChange={setFilters} counts={counts} />
             </aside>
             <div class="side-main">
+              {left.length > 0 && owned.length > 0 && (
+                <div class="seg coll-tabs" role="tablist" aria-label="Collection">
+                  <button type="button" role="tab" aria-selected={!showGone} aria-pressed={!showGone} onClick={() => pickTab("owned")}>Owned<small>{qtyOf(owned)}</small></button>
+                  <button type="button" role="tab" aria-selected={showGone} aria-pressed={showGone} onClick={() => pickTab("sold")}>Sold<small>{qtyOf(left)}</small></button>
+                </div>
+              )}
+              {showGone && (
+                <div class="sold-sum">
+                  <p class="sold-main">{summary.sold ? <>{summary.sold} {summary.sold === 1 ? "card" : "cards"} sold</> : "Nothing sold yet"}
+                    {can("money") && summary.sold > summary.unpriced && <>{" for "}<b>{eur(summary.soldFor)}</b>{" · paid "}{eur(summary.paidFor)}{" · "}
+                      <b class={summary.soldFor - summary.paidFor >= 0 ? "good" : "bad"}>{summary.soldFor - summary.paidFor >= 0 ? "+" : "−"}{eur(Math.abs(summary.soldFor - summary.paidFor))}</b></>}
+                  </p>
+                  {(summary.traded > 0 || summary.lost > 0 || (can("money") && summary.unpriced > 0)) && (
+                    <p class="sold-more">{[
+                      summary.traded ? `${summary.traded} traded or gifted` : "",
+                      summary.lost ? `${summary.lost} lost` : "",
+                      can("money") && summary.unpriced ? `${summary.unpriced} sold without a price, not counted` : "",
+                    ].filter(Boolean).join(" · ")}</p>
+                  )}
+                </div>
+              )}
               <div class="toolbar">
                 <label class="field"><IconSearch /><span class="sr">Filter</span>
-                  <input type="search" placeholder="Search your cards" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
+                  <input type="search" placeholder={showGone ? "Search what left" : "Search your cards"} value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
                 </label>
                 <button type="button" class="btn sm filters-btn" aria-label={`Filters${on ? `, ${on} on` : ""}`} onClick={() => setSheet(true)}>
                   <IconFilter />Filters{on > 0 && <span class="f-on">{on}</span>}
                 </button>
-                <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
+                {!showGone && <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
                   {SORTS.filter((s) => can("money") || (s.id !== "gain" && s.id !== "loss")).map((s) => <option value={s.id}>{s.label}</option>)}
-                </select>
+                </select>}
               </div>
               {(on > 0 || needle) && (
                 <div class="list-head shown-line">
@@ -231,7 +254,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
                   {shown.map((o, i) => <OwnedRow o={o} data={data} n={i} current={!!current && current === o.scryfall_id} />)}
                 </div>
               ) : <div class="empty"><h2>No cards match</h2><p>Loosen a filter, or <button type="button" class="link" onClick={clear}>clear them all</button>.</p></div>}
-              <p class="hint">{showGone ? "Cards you sold, traded, gave away or lost. They don't count in the collection's worth." : <>Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own.{can("money") ? " Since bought compares it with what you paid." : ""}</>}</p>
+              <p class="hint">{showGone ? "Cards you sold, traded, gave away or lost, newest first. They don't count in the collection's worth." : <>Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own.{can("money") ? " Since bought compares it with what you paid." : ""}</>}</p>
             </div>
           </div>
         </div>

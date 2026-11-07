@@ -265,7 +265,13 @@ img { display: block; }
 .p-cm::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--cm); }
 .p-none { font-size: 13px; color: var(--ink-3); }
 .row.gone { opacity: 0.6; }
-.row.out { opacity: 0.62; }  /* a collection card that was sold, traded or lost (D79) */
+.row.out { opacity: 0.62; }
+.coll-tabs { margin: 4px 0 10px; }  /* Owned · Sold (D81) */
+.sold-sum { margin: 2px 0 12px; }
+.sold-main { font-size: 15px; color: var(--ink); }
+.sold-main .good { color: var(--good); }
+.sold-main .bad { color: var(--bad); }
+.sold-more { font-size: 13px; color: var(--ink-2); margin-top: 3px; }  /* a collection card that was sold, traded or lost (D79) */
 .owned-line { align-items: center; }
 .owned-line dt { color: var(--ink); }
 .owned-line dt small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-2); }

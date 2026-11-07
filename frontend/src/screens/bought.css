@@ -16,6 +16,7 @@
 .bt-stat.lead b.good { color: var(--tier-1-ink); }
 @media (min-width: 640px) {
   .bt-stats { grid-template-columns: 1.3fr 1fr 1fr 0.75fr; }
+  .bt-stats.with-sold { grid-template-columns: 1.3fr 1fr 0.8fr 1fr; }  /* the Collection's Sold tile holds a price (D81) */
 }
 
 .bt-grid { display: grid; gap: 10px; }
