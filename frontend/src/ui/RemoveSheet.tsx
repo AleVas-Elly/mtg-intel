@@ -153,7 +153,7 @@ export function OwnedHere({ data, id }: { data: AppData; id: string | null }) {
           <div class="kv owned-line left">
             <dt><b>{o.qty} ×</b> {copyText(o)}<small>{o.pending ? "Saving" : goneText(o)}</small></dt>
             <dd>{can("bought") && o.settled
-              ? <button class="btn sm" type="button" onClick={() => setDeleting(o)} aria-label={`Delete the record of ${o.name}`}>Delete</button>
+              ? <button class="btn sm danger-soft" type="button" onClick={() => setDeleting(o)} aria-label={`Delete the record of ${o.name}`}>Delete</button>
               : GONE_TEXT[o.gone ?? ""]}</dd>
           </div>
         ))}
