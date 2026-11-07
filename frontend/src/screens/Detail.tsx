@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
-import { ago, cmShipping, cmTrend, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText, withShipping } from "../format";
+import { ago, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText } from "../format";
+import { marketView, pctClass, pctText } from "../markets";
 import { closeCard } from "../router";
 import { saveEdit, undoEdit } from "../edits";
 import { toast } from "../toast";
@@ -85,14 +86,13 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
     );
   }
   const flags = data.flagsOf(w);
-  const trend = cmTrend(w, foil);
   const fin = foil ? "_foil" : "";
-  const low = w.cm[`low${fin}` as "low"];
   const avg7 = w.cm[`avg7${fin}` as "avg7"];
-  // Cardmarket's price all in, like CardTrader's Zero price: the trend plus the shipping estimated for a card of that price
-  const cmShip = trend ? cmShipping(trend) : null;
-  const cmAll = trend ? withShipping(trend) : null;
-  const cheaper = live && cmAll ? (live.price < cmAll ? "ct" : "cm") : null;
+  // The same two prices as the list row (markets.ts): CardTrader's cheapest fitting copy and Cardmarket's lowest listing plus
+  // shipping, each against the usual price; the trend and 7-day figures are context
+  const mv = marketView(w, data, foil);
+  const { cm: cmAll, ship: cmShip, low, trend, usual, sCt, sCm } = mv;
+  const cheaper = mv.ct != null && cmAll != null ? (mv.ct <= cmAll ? "ct" : "cm") : null;
   const tier = deal?.tier ? TIERS[deal.tier] : null;
 
   return (
@@ -138,23 +138,24 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
         <div class="group markets">
           <div class="market">
             <span class="label">CardTrader{w.zero ? " · Zero" : ""}</span>
-            <span class="big">{live ? eur(live.price) : "–"}</span>
+            <span class="big">{live ? eur(live.price) : "–"}{live && sCt != null && <i class={`pct ${pctClass(sCt)}`}>{pctText(sCt)}</i>}</span>
             {cheaper === "ct" && <span class="cheaper">Cheaper here</span>}
             <span class="note">{live
               ? `${condName(live.condition)} · ${langName(live.language)}${live.foil ? " · foil" : ""} · ${countryName(live.country)}`
               : w.blueprint_id ? "No copy fits the wish right now" : "Not on CardTrader"}</span>
-            {live && <span class="note">{live.count} fitting {live.count === 1 ? "copy" : "copies"}{live.usual ? ` · ${live.usual_kind === "usual price" ? "usual" : "next"} ${eur(live.usual)}` : ""}</span>}
+            {live && <span class="note">{live.count} fitting {live.count === 1 ? "copy" : "copies"}{live.usual ? ` · ${live.usual_kind === "usual price" ? "its usual" : "next copy"} ${eur(live.usual)}` : ""}</span>}
             {w.links.cardtrader && <a class="btn" href={w.links.cardtrader} target="_blank" rel="noopener">Open<IconOut /></a>}
           </div>
           <div class="market cm">
             <span class="label">Cardmarket{cmShip != null && <small class="incl"> (incl. shipping {eur(cmShip)})</small>}</span>
-            <span class="big">{eur(cmAll)}</span>
+            <span class="big">{eur(cmAll)}{sCm != null && <i class={`pct ${pctClass(sCm)}`}>{pctText(sCm)}</i>}</span>
             {cheaper === "cm" && <span class="cheaper">Cheaper here</span>}
-            <span class="note">Trend{foil ? " foil" : ""}{trend ? ` ${eur(trend)}` : ""}{low ? ` · low ${eur(low)}` : ""}{avg7 ? ` · 7-day ${eur(avg7)}` : ""}</span>
+            <span class="note">{low ? `Lowest listing ${eur(low)}` : "No lowest listing"}{trend ? ` · trend${foil ? " foil" : ""} ${eur(trend)}` : ""}{avg7 ? ` · 7-day ${eur(avg7)}` : ""}</span>
             <span class="note">All sellers{w.cm.date ? `, ${day(w.cm.date)}` : ""}</span>
             {w.links.cardmarket && <a class="btn" href={w.links.cardmarket} target="_blank" rel="noopener">Dutch NM<IconOut /></a>}
           </div>
         </div>
+        {usual != null && <p class="usual-line">Both prices against the usual {eur(usual)}: the higher of Cardmarket's trend and CardTrader's usual price{mv.ctUsual != null ? ` (${eur(mv.ctUsual)})` : ""}.</p>}
 
         <button class="btn wide soft" type="button" onClick={() => setBuying(true)} disabled={w.pending === "add"}
           title={w.pending === "add" ? "Wait until it's saved to the want-list" : undefined}><IconBag />Bought it</button>

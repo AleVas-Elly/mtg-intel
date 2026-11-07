@@ -1005,6 +1005,11 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .mk.lead b { font-size: 26px; font-stretch: 70%; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
 .mk.lead img, .mk.lead svg { width: 16px; height: 16px; }
 .mk.lead i { font-size: 13.5px; }
+.market .big .pct { font: 700 15px/1 var(--font); font-stretch: 100%; margin-left: 10px; vertical-align: 6px; letter-spacing: 0; }
+.pct.good { color: var(--good); }
+.pct.up { color: var(--warn); }
+.pct.over { color: var(--ink-3); }
+.usual-line { margin: 10px 4px 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.4; }
 .market .label .incl { font-size: 10.5px; font-weight: 500; opacity: 0.75; letter-spacing: 0; white-space: nowrap; }
 .mk-usual { font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .g-card .mk-prices { align-items: flex-start; min-width: 0; }

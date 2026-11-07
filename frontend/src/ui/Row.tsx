@@ -1,6 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { AppData } from "../data";
-import { cmLow, cmShipping, cmTrend, collectorLine, eur, showsFoil, wishLine } from "../format";
+import { collectorLine, eur, showsFoil, wishLine } from "../format";
+import { marketView, pctClass, pctText } from "../markets";
 import { openCard } from "../router";
 import type { Wish } from "../types";
 import { CardImage, preloadImage } from "./CardImage";
@@ -19,34 +20,24 @@ const CtMark = () => (
     </g>
   </svg>
 );
-const under = (usual: number | null, p: number | null) => (usual && p != null ? (usual - p) / usual : null);
-const pctText = (s: number) => (s >= 0.005 ? `−${Math.round(s * 100)}%` : s <= -0.005 ? `+${Math.round(-s * 100)}%` : "0%");
 
 /** Both markets for a wish: CardTrader's cheapest fitting copy (shipping included via Zero) and
  *  Cardmarket's lowest listing plus shipping, each with how far under the usual price it is; the
  *  market that saves more is set bigger. */
 export function Markets({ w, data, ctPrice }: { w: Wish; data: AppData; ctPrice?: number | null }) {
   const live = data.liveOf(w.key);
-  const ct = ctPrice !== undefined ? ctPrice : live?.price ?? null;
-  const trend = cmTrend(w, live?.foil);
-  const low = cmLow(w, live?.foil);
-  const ship = low != null ? cmShipping(low) : null;
-  const cm = low != null ? Math.round((low + ship!) * 100) / 100 : null;
-  const refs = [trend, live?.usual].filter((v): v is number => !!v);
-  const usual = live?.ref ?? (refs.length ? Math.max(...refs) : null);
-  const sCt = under(usual, ct), sCm = under(usual, cm);
-  const lead = ct == null ? "cm" : cm == null ? "ct" : (sCt ?? -9) >= (sCm ?? -9) ? "ct" : "cm";
+  const { ct, cm, low, ship, usual, sCt, sCm, lead } = marketView(w, data, live?.foil, ctPrice);
   if (w.pending === "add") return <div class="r-price"><span class="p-none">prices soon</span></div>;
   return (
     <div class="r-price mk-prices">
       {ct != null ? (
         <span class={`mk${lead === "ct" ? " lead" : ""}`} title={`CardTrader: cheapest copy that fits the wish${live?.zero ? ", via Zero (shipping included)" : ""}`}>
-          <CtMark /><b>{eur(ct)}</b>{sCt != null && <i class={sCt >= 0.005 ? "good" : sCt <= -0.005 ? "up" : "over"}>{pctText(sCt)}</i>}
+          <CtMark /><b>{eur(ct)}</b>{sCt != null && <i class={pctClass(sCt)}>{pctText(sCt)}</i>}
         </span>
       ) : <span class="p-none">{w.blueprint_id ? "no CardTrader copy" : "not on CardTrader"}</span>}
       {cm != null ? (
         <span class={`mk${lead === "cm" ? " lead" : ""}`} title={`Cardmarket: lowest listing ${eur(low)} (any seller and condition) + ${eur(ship)} shipping`}>
-          <img src={CM_ICON} alt="Cardmarket" width="14" height="14" /><b>{eur(cm)}</b>{sCm != null && <i class={sCm >= 0.005 ? "good" : sCm <= -0.005 ? "up" : "over"}>{pctText(sCm)}</i>}
+          <img src={CM_ICON} alt="Cardmarket" width="14" height="14" /><b>{eur(cm)}</b>{sCm != null && <i class={pctClass(sCm)}>{pctText(sCm)}</i>}
         </span>
       ) : <span class="p-none">no Cardmarket price</span>}
       {usual != null && <span class="mk-usual">usual {eur(usual)}</span>}
