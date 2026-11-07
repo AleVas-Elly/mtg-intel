@@ -629,7 +629,11 @@ async function ctCopies(request: Request, env: Env, rest: string, ctx: Execution
   const hit = await cache.match(key);
   if (hit) return new Response(hit.body, { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store" } });
   const r = await env.TRIGGER.fetch(`https://trigger/ct?bp=${rest}`).catch(() => null);
-  if (!r?.ok) return json({ error: "CardTrader didn't answer. Try again in a minute." }, 502);
+  if (!r?.ok) {
+    const why = r ? ((await r.json().catch(() => null)) as { error?: string } | null)?.error ?? `timer answered ${r.status}` : "timer unreachable";
+    console.log(`ct ${rest}: ${why}`);
+    return json({ error: `CardTrader didn't answer (${why}). Try again in a minute.` }, 502);
+  }
   const body = await r.text();
   ctx.waitUntil(cache.put(key, new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "max-age=300" } })));
   return new Response(body, { headers: { "Content-Type": "application/json", "Cache-Control": "private, no-store" } });

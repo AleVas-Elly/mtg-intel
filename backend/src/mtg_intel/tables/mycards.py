@@ -295,7 +295,9 @@ def _remove_owned(purchases: list[dict[str, str]], op: dict) -> tuple[str, bool]
     """A "removed" edit (D79) on the purchases rows, changed in place: "owned" names the copies
     (scryfall_id or name, foil, language, condition) and "remove" says how many left and why. Sold,
     traded (or gifted) and lost copies stay as rows marked gone, oldest first; a mistake deletes the
-    newest rows. Returns the message and whether it worked."""
+    newest rows. With "gone" and "gone_date" in "owned", the copies are ones that already left, and
+    only a mistake applies: their records are deleted (D84, e.g. a test card). Returns the message and
+    whether it worked."""
     owned = {k: str(v or "").strip() for k, v in (op.get("owned") or {}).items()}
     remove = op.get("remove") or {}
     reason = str(remove.get("reason") or "")
@@ -320,13 +322,19 @@ def _remove_owned(purchases: list[dict[str, str]], op: dict) -> tuple[str, bool]
             return "the selling price can't be negative", False
     else:
         sold = ""
+    left = owned.get("gone") or ""
+    if left and reason != "mistake":
+        return "a card that already left can only be deleted", False
     same = (lambda p: p.get("scryfall_id") == owned["scryfall_id"]) if owned.get("scryfall_id") else \
         (lambda p: not p.get("scryfall_id") and p.get("name") == owned.get("name"))
-    rows = [p for p in purchases if same(p) and not p.get("gone") and (p.get("foil") or "no") == (owned.get("foil") or "no")
+    status = (lambda p: p.get("gone") == left and (p.get("gone_date") or "") == owned.get("gone_date", "")) if left else \
+        (lambda p: not p.get("gone"))
+    rows = [p for p in purchases if same(p) and status(p) and (p.get("foil") or "no") == (owned.get("foil") or "no")
             and (p.get("language") or "") == (owned.get("language") or "") and p.get("condition") == owned.get("condition")]
     name = owned.get("name") or (rows[0]["name"] if rows else "this card")
     if len(rows) < qty:
-        return f"{name}: only {len(rows)} {'copy' if len(rows) == 1 else 'copies'} left in the collection", False
+        where = f"{left} on {owned.get('gone_date')}" if left else "left in the collection"
+        return f"{name}: only {len(rows)} {'copy' if len(rows) == 1 else 'copies'} {where}", False
     if reason == "mistake":
         for p in sorted(rows, key=lambda p: p.get("date") or "")[-qty:]:
             purchases.remove(p)

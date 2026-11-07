@@ -41,7 +41,8 @@ export function withRemovals(purchases: Purchase[], ops: Edit[]): Purchase[] {
   for (const op of ops) {
     if (op.op !== "removed" || !op.owned || !op.remove) continue;
     const r = op.owned, { reason, qty, date, sold_eur } = op.remove;
-    const mine = out.filter((p) => !p.gone && !p.pending && isRef(p, r)).sort((a, b) => a.date.localeCompare(b.date));
+    const status = (p: Purchase) => (r.gone ? p.gone === r.gone && (p.gone_date ?? "") === (r.gone_date ?? "") : !p.gone);
+    const mine = out.filter((p) => status(p) && !p.pending && isRef(p, r)).sort((a, b) => a.date.localeCompare(b.date));
     if (mine.length < qty) continue;  // the job will refuse it too
     if (reason === "mistake") {
       const drop = new Set(mine.slice(-qty));

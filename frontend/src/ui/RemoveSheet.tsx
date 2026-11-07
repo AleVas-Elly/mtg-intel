@@ -12,6 +12,7 @@ import { day, eur, langName } from "../format";
 import { toast } from "../toast";
 import type { GoneReason, PurchasesDoc } from "../types";
 import { CardImage } from "./CardImage";
+import { Confirm } from "./Confirm";
 import { IconClose, IconWarn } from "./icons";
 
 const today = () => new Date().toLocaleDateString("sv-SE");  // YYYY-MM-DD in my time zone
@@ -114,12 +115,25 @@ export function RemoveSheet({ o, onClose }: { o: Owned; onClose: () => void }) {
   );
 }
 
+/** Delete the records of copies that already left (D84), with Undo for a few seconds. */
+async function deleteRecord(o: Owned) {
+  try {
+    const owned = { ...refOf(o), gone: o.gone ?? "", gone_date: o.gone_date ?? "" };
+    const doc = await saveEdit({ op: "removed", owned, remove: { reason: "mistake", qty: o.settled, date: today(), sold_eur: "" } });
+    const op = [...doc.ops].reverse().find((x) => x.op === "removed" && x.owned?.gone === owned.gone && x.owned?.scryfall_id === owned.scryfall_id);
+    toast(`Deleted the record of ${o.name}.`, op && { label: "Undo", run: () => { undoEdit(op.id).catch(() => toast("Too late to undo: it's already deleted.")); } });
+  } catch (err) {
+    toast(err instanceof Error ? err.message : "Couldn't delete it. Try again.");
+  }
+}
+
 /** "In your collection" on a card's pane: the copies I own of this printing, each with Remove, and
  *  the ones that left. Nothing when I own none and none left. */
 export function OwnedHere({ data, id }: { data: AppData; id: string | null }) {
   const allowed = can("collection");
   const doc = useDoc<PurchasesDoc>(allowed && id ? "purchases" : null).doc;
   const [removing, setRemoving] = useState<Owned | null>(null);
+  const [deleting, setDeleting] = useState<Owned | null>(null);
   if (!allowed || !id || !doc) return null;
   const all = myPurchases(data.edits.ops, doc).filter((p) => p.scryfall_id === id);
   const owned = ownedCards(all), gone = ownedCards(all, true).sort((a, b) => (b.gone_date ?? "").localeCompare(a.gone_date ?? ""));
@@ -138,11 +152,18 @@ export function OwnedHere({ data, id }: { data: AppData; id: string | null }) {
         {gone.map((o) => (
           <div class="kv owned-line left">
             <dt><b>{o.qty} ×</b> {copyText(o)}<small>{o.pending ? "Saving" : goneText(o)}</small></dt>
-            <dd>{GONE_TEXT[o.gone ?? ""]}</dd>
+            <dd>{can("bought") && o.settled
+              ? <button class="btn sm" type="button" onClick={() => setDeleting(o)} aria-label={`Delete the record of ${o.name}`}>Delete</button>
+              : GONE_TEXT[o.gone ?? ""]}</dd>
           </div>
         ))}
       </div>
       {removing && <RemoveSheet o={removing} onClose={() => setRemoving(null)} />}
+      {deleting && (
+        <Confirm title={`Delete the record of ${deleting.name}?`}
+          text={`${deleting.settled === 1 ? "This copy" : `These ${deleting.settled} copies`} and what you paid${deleting.sold != null ? " and sold for" : ""} are deleted, as if never recorded. Use it for test cards or mistakes.`}
+          action="Delete" onCancel={() => setDeleting(null)} onConfirm={() => { const o = deleting; setDeleting(null); deleteRecord(o); }} />
+      )}
     </>
   );
 }

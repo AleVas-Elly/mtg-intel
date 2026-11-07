@@ -67,7 +67,11 @@ export interface PurchaseInput {
 export type GoneReason = "sold" | "traded" | "lost" | "mistake";
 
 /** Which owned copies a "removed" edit means: the Collection's grouping of purchases. */
-export interface OwnedRef { scryfall_id: string; name: string; foil: "yes" | "no"; language: string; condition: string }
+export interface OwnedRef {
+  scryfall_id: string; name: string; foil: "yes" | "no"; language: string; condition: string;
+  /** Copies that already left (D84): only "mistake" applies, which deletes their records */
+  gone?: string; gone_date?: string;
+}
 
 export interface Edit {
   id: string; at: string; op: "add" | "update" | "remove" | "bought" | "removed"; key?: string; scryfall_id?: string;

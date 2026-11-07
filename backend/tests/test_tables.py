@@ -315,6 +315,26 @@ def test_removed_marks_copies_gone_oldest_first_and_a_mistake_deletes_the_newest
     assert (saved[0]["gone"], saved[0]["gone_date"], saved[0]["sold_eur"]) == ("sold", "2026-11-07", "6.50")
 
 
+def test_a_card_that_left_can_be_deleted_but_not_sold_again(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    row = {"name": "Slippery Bogle", "scryfall_id": "sf-1", "language": "en", "foil": "no", "condition": "NM",
+           "price_eur": "0.10", "market": "other", "date": "2026-11-07"}
+    purchases = [row | {"gone": "sold", "gone_date": "2026-11-07", "sold_eur": "0.01"}, dict(row)]
+    owned = {"scryfall_id": "sf-1", "name": "Slippery Bogle", "foil": "no", "language": "en", "condition": "NM",
+             "gone": "sold", "gone_date": "2026-11-07"}
+    ops = [
+        {"id": "a", "op": "removed", "owned": owned, "remove": {"reason": "sold", "qty": 1, "date": "2026-11-07"}},
+        {"id": "b", "op": "removed", "owned": owned | {"gone_date": "2026-11-01"}, "remove": {"reason": "mistake", "qty": 1}},
+        {"id": "c", "op": "removed", "owned": owned, "remove": {"reason": "mistake", "qty": 1}},
+    ]
+
+    _, results = mycards.apply_edits("", ops, cards, {}, purchases=purchases)
+
+    assert [(r["id"], r["ok"]) for r in results] == [("a", False), ("b", False), ("c", True)]
+    assert results[1]["message"] == "Slippery Bogle: only 0 copies sold on 2026-11-01"
+    assert purchases == [row]  # the sold record is gone; the copy still owned stays
+
+
 def test_collection_reads_manabox_headers(tmp_path: Path):
     cards = two_printings(tmp_path)
     text = (
