@@ -156,7 +156,9 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
   const all = useMemo(() => myPurchases(data.edits.ops, doc), [doc, data.edits.ops]);
   const owned = useMemo(() => ownedCards(all), [all]);
   const left = useMemo(() => ownedCards(all, true), [all]);
-  const showGone = left.length > 0 && (tab === "sold" || !owned.length);
+  // The Sold tab is always there (user, 2026-11-07), even with nothing sold yet.
+  const showGone = tab === "sold" || (!owned.length && left.length > 0);
+  const noneLeft = showGone && !left.length;
   const base = showGone ? left : owned;
   const groups = useMemo(() => groupsFor([...owned, ...left], history), [owned, left, history]);
   const needle = q.trim().toLowerCase();
@@ -211,13 +213,19 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
               <FilterPanel groups={groups} state={filters} onChange={setFilters} counts={counts} />
             </aside>
             <div class="side-main">
-              {left.length > 0 && owned.length > 0 && (
+              {(
                 <div class="seg coll-tabs" role="tablist" aria-label="Collection">
                   <button type="button" role="tab" aria-selected={!showGone} aria-pressed={!showGone} onClick={() => pickTab("owned")}>Owned<small>{qtyOf(owned)}</small></button>
                   <button type="button" role="tab" aria-selected={showGone} aria-pressed={showGone} onClick={() => pickTab("sold")}>Sold<small>{qtyOf(left)}</small></button>
                 </div>
               )}
-              {showGone && (
+              {noneLeft && (
+                <div class="empty">
+                  <h2>Nothing sold yet</h2>
+                  <p>When you sell, trade, give away or lose a card, open it from Owned and tap Remove in its pane. It moves here, with what you sold it for.</p>
+                </div>
+              )}
+              {showGone && !noneLeft && (
                 <div class="sold-sum">
                   <p class="sold-main">{summary.sold ? <>{summary.sold} {summary.sold === 1 ? "card" : "cards"} sold</> : "Nothing sold yet"}
                     {can("money") && summary.sold > summary.unpriced && <>{" for "}<b>{eur(summary.soldFor)}</b>{" · paid "}{eur(summary.paidFor)}{" · "}
@@ -232,6 +240,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
                   )}
                 </div>
               )}
+              {!noneLeft && <>
               <div class="toolbar">
                 <label class="field"><IconSearch /><span class="sr">Filter</span>
                   <input type="search" placeholder={showGone ? "Search what left" : "Search your cards"} value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} />
@@ -255,6 +264,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
                 </div>
               ) : <div class="empty"><h2>No cards match</h2><p>Loosen a filter, or <button type="button" class="link" onClick={clear}>clear them all</button>.</p></div>}
               <p class="hint">{showGone ? "Cards you sold, traded, gave away or lost, newest first. They don't count in the collection's worth." : <>Worth is Cardmarket's trend for each card's finish{doc?.price_date ? ` on ${day(doc.price_date)}` : ""}, times the copies you own.{can("money") ? " Since bought compares it with what you paid." : ""}</>}</p>
+              </>}
             </div>
           </div>
         </div>
