@@ -692,8 +692,11 @@ def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: b
     counts = {kind: sum(m.kind == kind for m in moves) for kind, _ in trends.SECTIONS}
     print("price moves: " + ", ".join(f"{n} {kind}" for kind, n in counts.items()))
     note = trends.weekly_note(moves, os.environ.get("SITE_URL"))
-    if note:
-        print(note)
+    if note:  # readable in a terminal: Telegram's HTML without its tags
+        import html
+        import re
+
+        print(html.unescape(re.sub(r"<[^>]+>", "", note)))
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if send and note and token and chat:
         sent = telegram_call(client, token, "sendMessage", {
