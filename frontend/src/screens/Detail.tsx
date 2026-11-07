@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
-import { ago, cmTrend, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText } from "../format";
+import { ago, cmShipping, cmTrend, condName, countryName, day, eur, foilOnly, time, langName, showsFoil, TIERS, versionText, withShipping } from "../format";
 import { closeCard } from "../router";
 import { saveEdit, undoEdit } from "../edits";
 import { toast } from "../toast";
@@ -89,7 +89,10 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const fin = foil ? "_foil" : "";
   const low = w.cm[`low${fin}` as "low"];
   const avg7 = w.cm[`avg7${fin}` as "avg7"];
-  const cheaper = live && trend ? (live.price < trend ? "ct" : "cm") : null;
+  // Cardmarket's price all in, like CardTrader's Zero price: the trend plus the shipping estimated for a card of that price
+  const cmShip = trend ? cmShipping(trend) : null;
+  const cmAll = trend ? withShipping(trend) : null;
+  const cheaper = live && cmAll ? (live.price < cmAll ? "ct" : "cm") : null;
   const tier = deal?.tier ? TIERS[deal.tier] : null;
 
   return (
@@ -144,10 +147,10 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
             {w.links.cardtrader && <a class="btn" href={w.links.cardtrader} target="_blank" rel="noopener">Open<IconOut /></a>}
           </div>
           <div class="market cm">
-            <span class="label">Cardmarket</span>
-            <span class="big">{eur(trend)}</span>
+            <span class="label">Cardmarket{cmShip != null && <small class="incl"> (incl. shipping {eur(cmShip)})</small>}</span>
+            <span class="big">{eur(cmAll)}</span>
             {cheaper === "cm" && <span class="cheaper">Cheaper here</span>}
-            <span class="note">Trend{foil ? " foil" : ""}{low ? ` · low ${eur(low)}` : ""}{avg7 ? ` · 7-day ${eur(avg7)}` : ""}</span>
+            <span class="note">Trend{foil ? " foil" : ""}{trend ? ` ${eur(trend)}` : ""}{low ? ` · low ${eur(low)}` : ""}{avg7 ? ` · 7-day ${eur(avg7)}` : ""}</span>
             <span class="note">All sellers{w.cm.date ? `, ${day(w.cm.date)}` : ""}</span>
             {w.links.cardmarket && <a class="btn" href={w.links.cardmarket} target="_blank" rel="noopener">Dutch NM<IconOut /></a>}
           </div>

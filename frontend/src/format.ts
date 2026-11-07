@@ -102,3 +102,5 @@ export function cmShipping(price: number): number {
   if (price >= 100) return 15;
   return Math.round((3.5 + ((price - 10) * (15 - 3.5)) / 90) * 100) / 100;
 }
+/** A Cardmarket price with its estimated shipping added, the way CardTrader's Zero price already is (D69). */
+export const withShipping = (price: number): number => Math.round((price + cmShipping(price)) * 100) / 100;

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { useDoc } from "../api";
 import { allLists, type AppData } from "../data";
-import { eur, versionText } from "../format";
+import { cmShipping, eur, versionText, withShipping } from "../format";
 import { closeCard, openCard } from "../router";
 import { fetchCard, known, preview, type ScryCard } from "../scry";
 import { BigCard, CardImage } from "../ui/CardImage";
@@ -85,9 +85,9 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
             <div class="group-title">Prices</div>
             <div class="group markets">
               <div class="market cm">
-                <span class="label">Cardmarket</span>
-                <span class="big">{eur(trend ?? trendFoil)}</span>
-                <span class="note">{trend != null ? "Trend" : trendFoil != null ? "Trend foil" : "No Cardmarket price yet"}{trend != null && trendFoil != null ? ` · foil ${eur(trendFoil)}` : ""}</span>
+                <span class="label">Cardmarket{(trend ?? trendFoil) != null && <small class="incl"> (incl. shipping {eur(cmShipping((trend ?? trendFoil)!))})</small>}</span>
+                <span class="big">{(trend ?? trendFoil) != null ? eur(withShipping((trend ?? trendFoil)!)) : "–"}</span>
+                <span class="note">{trend != null ? `Trend ${eur(trend)}` : trendFoil != null ? `Trend foil ${eur(trendFoil)}` : "No Cardmarket price yet"}{trend != null && trendFoil != null ? ` · foil ${eur(trendFoil)}` : ""}</span>
                 <span class="note">All sellers, latest day</span>
                 {card?.cardmarket_id && <a class="btn" href={cardmarketLink(card.cardmarket_id)} target="_blank" rel="noopener">Dutch NM<IconOut /></a>}
               </div>
