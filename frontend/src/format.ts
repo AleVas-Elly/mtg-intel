@@ -71,13 +71,15 @@ export const tierOf = (d: Deal) => (d.tier ? TIERS[d.tier] : null);
 export function liveFlags(w: Wish, live: LiveWish | undefined): { code: string; text: string }[] {
   const out = [];
   const cm = cmTrend(w, live?.foil);
+  const apart = (x: number) => x / (live?.price ?? 1) > 2.5 || x / (live?.price ?? 1) < 0.4;
   if (live && cm && (live.price / cm > 2.5 || live.price / cm < 0.4)) {
-    // Cardmarket's trend can collapse on its own (e.g. €0.02 after a spike) while its listings stay normal:
-    // say so when its cheapest listing sits near CardTrader's price.
+    // Cardmarket's trend can collapse on its own (Counterspell SLD #7123: €0.02 for a week) while its listings stay
+    // normal. When its cheapest listing is near CardTrader's price the markets agree and the trend is the odd one
+    // out: the deal logic already ignores such a trend (REFERENCE_RATIO), so it is not worth a flag (D86).
     const low = cmLow(w, live.foil);
-    const lowNear = low && low / live.price <= 2.5 && low / live.price >= 0.4;
-    out.push({ code: "markets_apart", text: `CardTrader's cheapest (${eur(live.price)}) and Cardmarket's trend (${eur(cm)}) are far apart.`
-      + (lowNear ? ` Cardmarket's cheapest listing (${eur(low)}) is close to CardTrader's, so the trend looks off, not the market.` : "") });
+    if (!low || apart(low)) {
+      out.push({ code: "markets_apart", text: `CardTrader's cheapest (${eur(live.price)}) and Cardmarket's trend (${eur(cm)}) are far apart.` });
+    }
   }
   return out;
 }
