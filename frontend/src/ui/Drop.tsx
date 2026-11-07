@@ -2,7 +2,7 @@
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import type { AppData } from "../data";
-import { artUrl, checkState, clock, useArtColour, useNow } from "../drop";
+import { artUrl, checkState, clock, fieldStyle, useNow } from "../drop";
 import { ago, collectorLine, eur, langShort, time, TIERS } from "../format";
 import { openCard } from "../router";
 import type { Deal, Wish } from "../types";
@@ -95,10 +95,9 @@ const warm = (w: Wish) => () => preloadImage(w.image, 0);
 export function DropCard({ d, w, data, kind, n, current, extra }: {
   d: Deal; w: Wish; data: AppData; kind: "line" | "small"; n?: number; current?: boolean; extra?: ComponentChildren;
 }) {
-  const colour = useArtColour(w.image);
   const gone = !!d.gone_at;
   const usual = usualOf(d, data);
-  const style = { ...(colour && !gone ? { "--f": colour } : {}), "--n": n ?? 0 };
+  const style = { ...(gone ? {} : fieldStyle(w.mana_cost)), "--n": n ?? 0 };
   const href = `?card=${encodeURIComponent(w.key)}`;
   if (kind === "small") {
     return (

@@ -3,7 +3,7 @@
 // price on this page is an example, labelled as one.
 import type { ComponentChildren } from "preact";
 import { useEffect, useState } from "preact/hooks";
-import { useArtColour } from "../drop";
+import { fieldStyle } from "../drop";
 import { eur } from "../format";
 import { Roll } from "../ui/Drop";
 import { IconKey } from "../ui/icons";
@@ -14,10 +14,10 @@ const CARD = (id: string) => `https://cards.scryfall.io/normal/front/${id[0]}/${
 
 /** Example drops for the hero: public cards, made-up prices (said on the page). */
 const EXAMPLES = [
-  { id: "881b6202-6d02-489b-b79c-62142c42ed1f", name: "Orcish Bowmasters", line: "Borderless · HOC 19 · English · NM", usual: 45.4, price: 27.2, tier: "Steal", cls: "t3", under: 40 },
-  { id: "bdd2c783-1483-490a-ae93-c4664a0a9564", name: "The One Ring", line: "Borderless · HOC 44 · English · NM", usual: 113.6, price: 79.9, tier: "Great deal", cls: "t2", under: 30, gone: true },
-  { id: "a71d1ec3-2d7a-4749-8936-8bf7a8b83d84", name: "Ragavan, Nimble Pilferer", line: "Borderless · FCA 43 · English · NM", usual: 31.6, price: 24.9, tier: "Good deal", cls: "t1", under: 21 },
-  { id: "be326fe9-4ed8-4f64-934c-9955edea5fdb", name: "Atraxa, Grand Unifier", line: "Borderless · FCA 49 · English · NM", usual: 27.2, price: 21.5, tier: "Good deal", cls: "t1", under: 21 },
+  { id: "881b6202-6d02-489b-b79c-62142c42ed1f", name: "Orcish Bowmasters", cost: "{1}{B}", line: "Borderless · HOC 19 · English · NM", usual: 45.4, price: 27.2, tier: "Steal", cls: "t3", under: 40 },
+  { id: "bdd2c783-1483-490a-ae93-c4664a0a9564", name: "The One Ring", cost: "{4}", line: "Borderless · HOC 44 · English · NM", usual: 113.6, price: 79.9, tier: "Great deal", cls: "t2", under: 30, gone: true },
+  { id: "a71d1ec3-2d7a-4749-8936-8bf7a8b83d84", name: "Ragavan, Nimble Pilferer", cost: "{R}", line: "Borderless · FCA 43 · English · NM", usual: 31.6, price: 24.9, tier: "Good deal", cls: "t1", under: 21 },
+  { id: "be326fe9-4ed8-4f64-934c-9955edea5fdb", name: "Atraxa, Grand Unifier", cost: "{3}{W}{U}{B}{G}", line: "Borderless · FCA 49 · English · NM", usual: 27.2, price: 21.5, tier: "Good deal", cls: "t1", under: 21 },
 ];
 const STEP_MS = 4600;
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -28,7 +28,7 @@ function ExampleDrop() {
   const [i, setI] = useState(0);
   const [landed, setLanded] = useState(false);
   const ex = EXAMPLES[i % EXAMPLES.length];
-  const colour = useArtColour(ART(ex.id));
+  const field = fieldStyle(ex.cost);
   useEffect(() => {
     if (still()) { setLanded(true); return; }
     setLanded(false);
@@ -46,7 +46,7 @@ function ExampleDrop() {
   const c = 2 * Math.PI * 19;
   return (
     <figure class="ex" aria-label="An example deal">
-      <div class="ex-drop drop" key={i} style={colour ? { "--f": colour } : undefined}>
+      <div class="ex-drop drop" key={i} style={field}>
         <div class="ex-art"><img src={ART(ex.id)} alt={`${ex.name}, card art`} /></div>
         <div class="ex-body">
           <h3>{ex.name}</h3>
@@ -91,10 +91,10 @@ function Section({ id, title, lead, children, tone }: { id?: string; title: stri
 
 /** The facts that make a version, on that card's own colour field. */
 function VersionField({ id }: { id: string }) {
-  const colour = useArtColour(ART(id));
+  const field = fieldStyle("{R}");  // Lightning Bolt
   const facts = [["Version", "Borderless"], ["Set and number", "SLC 83"], ["Language", "English"], ["Finish", "Foil or not"], ["Condition", "Near Mint or better"], ["Seller", "Via CardTrader Zero"]];
   return (
-    <div class="l-field" style={colour ? { "--f": colour } : undefined}>
+    <div class="l-field" style={field}>
       <img class="l-card" src={CARD(id)} alt="Lightning Bolt, borderless" loading="lazy" />
       <dl>{facts.map(([k, v]) => <div><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
     </div>
@@ -104,10 +104,10 @@ function VersionField({ id }: { id: string }) {
 /** Both markets for one copy, as a drop: the way Home shows a deal. */
 function MarketsDrop() {
   const id = EXAMPLES[0].id;
-  const colour = useArtColour(ART(id));
+  const field = fieldStyle(EXAMPLES[0].cost);
   return (
     <figure class="ex">
-      <div class="drop l-mdrop" style={colour ? { "--f": colour } : undefined}>
+      <div class="drop l-mdrop" style={field}>
         <div class="l-mart"><img src={ART(id)} alt="Orcish Bowmasters, card art" loading="lazy" /></div>
         <div class="l-mbody">
           <h3>Orcish Bowmasters</h3>
@@ -125,17 +125,17 @@ function MarketsDrop() {
 
 /** A slow ribbon of card art, each in its own colour field: the kind of printings it watches. */
 const RIBBON = [
-  { id: "881b6202-6d02-489b-b79c-62142c42ed1f", name: "Orcish Bowmasters" },
-  { id: "bdd2c783-1483-490a-ae93-c4664a0a9564", name: "The One Ring" },
-  { id: "a71d1ec3-2d7a-4749-8936-8bf7a8b83d84", name: "Ragavan, Nimble Pilferer" },
-  { id: "bba5ea18-4e58-42a8-b613-2178706476a6", name: "Lightning Bolt" },
-  { id: "be326fe9-4ed8-4f64-934c-9955edea5fdb", name: "Atraxa, Grand Unifier" },
-  { id: "c68629ff-72b3-40a2-b578-cddb6ddb4ccf", name: "Sheoldred, the Apocalypse" },
+  { id: "881b6202-6d02-489b-b79c-62142c42ed1f", name: "Orcish Bowmasters", cost: "{1}{B}" },
+  { id: "bdd2c783-1483-490a-ae93-c4664a0a9564", name: "The One Ring", cost: "{4}" },
+  { id: "a71d1ec3-2d7a-4749-8936-8bf7a8b83d84", name: "Ragavan, Nimble Pilferer", cost: "{R}" },
+  { id: "bba5ea18-4e58-42a8-b613-2178706476a6", name: "Lightning Bolt", cost: "{R}" },
+  { id: "be326fe9-4ed8-4f64-934c-9955edea5fdb", name: "Atraxa, Grand Unifier", cost: "{3}{W}{U}{B}{G}" },
+  { id: "c68629ff-72b3-40a2-b578-cddb6ddb4ccf", name: "Sheoldred, the Apocalypse", cost: "{2}{B}{B}" },
 ];
-function RibbonArt({ id, name }: { id: string; name: string }) {
-  const colour = useArtColour(ART(id));
+function RibbonArt({ id, name, cost }: { id: string; name: string; cost: string }) {
+  const field = fieldStyle(cost);
   return (
-    <li style={colour ? { "--f": colour } : undefined}>
+    <li style={field}>
       <img src={ART(id)} alt={name} loading="lazy" />
       <span>{name}</span>
     </li>

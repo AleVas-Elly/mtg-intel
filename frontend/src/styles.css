@@ -317,8 +317,8 @@ img { display: block; }
 
 /* ---------- drops: a deal in its own colour field ---------- */
 .drop {
-  --f: var(--field);
-  position: relative; display: grid; color: #fff; background: var(--f); border-radius: var(--radius); overflow: hidden;
+  --f: var(--field); --fbg: var(--f); --on-f: #fff; --off-f: #121211;
+  position: relative; display: grid; color: var(--on-f); background: var(--fbg); border-radius: var(--radius); overflow: hidden;
   text-decoration: none; isolation: isolate; transition: background-color 0.6s var(--smooth), transform var(--t-press) var(--out);
 }
 .drop:active { transform: scale(0.985); }
@@ -326,14 +326,14 @@ img { display: block; }
 .drop .art img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.5s var(--smooth), transform 0.8s var(--smooth); }
 .drop .art img.ready { opacity: 1; }
 .drop:hover .art img { transform: scale(1.04); }
-.drop .d-ink, .hero .d-ink { color: rgba(255, 255, 255, 0.8); }
+.drop .d-ink, .hero .d-ink { color: color-mix(in srgb, var(--on-f) 80%, transparent); }
 .drop .tier.t1 { background: rgba(198, 255, 61, 0.2); color: #e2ff9e; }
-.drop .tier.t3, .hero .tier.t3 { background: #fff; color: #121211; }
-.drop .tier.target, .hero .tier.target { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.drop .tier.t3, .hero .tier.t3 { background: var(--on-f); color: var(--off-f); }
+.drop .tier.target, .hero .tier.target { background: color-mix(in srgb, var(--on-f) 18%, transparent); color: var(--on-f); }
 .drop .mana img.ok, .hero .mana img.ok { box-shadow: -0.5px 1px 0 rgba(0, 0, 0, 0.6); }
-.drop .set-sym, .hero .set-sym { filter: drop-shadow(0 0 0.7px rgba(255, 255, 255, 0.8)); }
-.drop .btn, .hero .btn { background: rgba(255, 255, 255, 0.16); color: #fff; }
-.drop .btn:hover, .hero .btn:hover { background: rgba(255, 255, 255, 0.26); }
+.drop .set-sym, .hero .set-sym { filter: drop-shadow(0 0 0.7px color-mix(in srgb, var(--on-f) 80%, transparent)); }
+.drop .btn, .hero .btn { background: color-mix(in srgb, var(--on-f) 16%, transparent); color: var(--on-f); }
+.drop .btn:hover, .hero .btn:hover { background: color-mix(in srgb, var(--on-f) 26%, transparent); }
 .drop .btn.primary, .hero .btn.primary { background: #c6ff3d; color: #121211; }
 .drop:focus-visible { outline-offset: 3px; }
 
@@ -367,7 +367,7 @@ img { display: block; }
 }
 
 /* gone: greyed, struck, stamped */
-.drop.gone { --f: var(--surface); color: var(--ink-2); }
+.drop.gone { --f: var(--surface); --fbg: var(--surface); --on-f: var(--ink); --off-f: var(--bg); color: var(--ink-2); }
 .drop.gone .art img { filter: grayscale(1); opacity: 0.45; }
 .drop.gone h3 > span:first-child { text-decoration: line-through; text-decoration-thickness: 1.5px; }
 .drop.gone .d-ink { color: var(--ink-3); }
@@ -396,8 +396,8 @@ img { display: block; }
 .home-head .title { font-size: 30px; }
 .home-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 .hero {
-  --f: var(--field);
-  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); background: var(--f); color: #fff; border-radius: 28px; overflow: hidden;
+  --f: var(--field); --fbg: var(--f); --on-f: #fff; --off-f: #121211;
+  position: relative; display: grid; grid-template-columns: minmax(0, 1fr); background: var(--fbg); color: var(--on-f); border-radius: 28px; overflow: hidden;
   isolation: isolate; transition: background-color 0.8s var(--smooth);
 }
 .hero .art { position: relative; aspect-ratio: 626 / 457; overflow: hidden; cursor: pointer; background: color-mix(in srgb, var(--f) 70%, #000); }
@@ -463,7 +463,7 @@ img { display: block; }
 /* ---------- detail (the card pane) ---------- */
 .detail-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.45); animation: fade var(--t-pane) var(--out); }
 .detail {
-  --f: var(--field);
+  --f: var(--field); --fbg: var(--f); --on-f: #fff; --off-f: #121211;
   position: fixed; z-index: 61; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--bg);
   animation: rise var(--t-pane) var(--out);
   padding: 0 max(16px, env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
@@ -482,20 +482,20 @@ img { display: block; }
 /* the card's own colour field at the top of the pane */
 .d-stage {
   margin: 0 calc(-1 * max(16px, env(safe-area-inset-right))) 0 calc(-1 * max(16px, env(safe-area-inset-left)));
-  padding: 4px 16px 26px; background: var(--f); color: #fff; transition: background-color 0.6s var(--smooth);
+  padding: 4px 16px 26px; background: var(--fbg); color: var(--on-f); transition: background-color 0.6s var(--smooth);
 }
 .d-top {
   display: flex; justify-content: space-between; align-items: center; position: sticky; z-index: 3;
-  top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--f); color: #fff;
+  top: 0; margin: 0 -16px 10px; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--fbg); color: var(--on-f);
   transition: background-color 0.6s var(--smooth);
 }
-.d-top .icon-btn { background: rgba(255, 255, 255, 0.16); color: #fff; }
-.d-top .icon-btn:hover { background: rgba(255, 255, 255, 0.26); }
-.d-stage .d-name, .d-stage .d-type, .d-stage .d-version { color: #fff; }
-.d-stage .d-type { color: rgba(255, 255, 255, 0.75); }
-.d-stage .chip { background: rgba(255, 255, 255, 0.16); color: #fff; }
+.d-top .icon-btn { background: color-mix(in srgb, var(--on-f) 16%, transparent); color: var(--on-f); }
+.d-top .icon-btn:hover { background: color-mix(in srgb, var(--on-f) 26%, transparent); }
+.d-stage .d-name, .d-stage .d-type, .d-stage .d-version { color: var(--on-f); }
+.d-stage .d-type { color: color-mix(in srgb, var(--on-f) 75%, transparent); }
+.d-stage .chip { background: color-mix(in srgb, var(--on-f) 16%, transparent); color: var(--on-f); }
 .d-stage .chip.warn { background: #ffb35c; color: #241300; }
-.d-stage .set-sym { filter: drop-shadow(0 0 0.7px rgba(255, 255, 255, 0.8)); }
+.d-stage .set-sym { filter: drop-shadow(0 0 0.7px color-mix(in srgb, var(--on-f) 80%, transparent)); }
 .d-name { text-align: center; margin: 20px 0 4px; font-weight: 800; font-stretch: 112%; font-size: 26px; line-height: 1.08; letter-spacing: -0.03em; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap; }
 .d-type { text-align: center; color: var(--ink-2); font-size: 13.5px; }
 .d-version { display: flex; justify-content: center; align-items: center; gap: 7px; flex-wrap: wrap; margin: 12px 0 0; font-size: 13.5px; color: var(--ink-2); }
@@ -953,7 +953,7 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .sheet .filters { padding-bottom: 8px; }
 .sheet .f-opt { min-height: 42px; font-size: 15px; }
 .d-top + .d-stage, .d-top + .pane-mode > .d-stage { margin-top: -10px; }
-.d-stage .hint { color: rgba(255, 255, 255, 0.72); }
+.d-stage .hint { color: color-mix(in srgb, var(--on-f) 72%, transparent); }
 .drop.line .stamp { right: auto; left: 40px; }
 @media (max-width: 640px) { .drop.line .stamp { left: 14px; top: 44px; } }
 .hero .art { order: -1; }
@@ -978,7 +978,7 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
 .hero .acts { flex-wrap: nowrap; }
 /* a stamp that sits in the flow (the pane, the landing) */
 .stamp.still { position: static; translate: none; rotate: -6deg; align-self: flex-start; animation: none; }
-.d-gone { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 14px; color: rgba(255, 255, 255, 0.85); }
+.d-gone { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 16px; font-size: 14px; color: color-mix(in srgb, var(--on-f) 85%, transparent); }
 .d-gone .stamp { border-color: #ff8a80; color: #ff8a80; font-size: 14px; }
 .d-gone s { opacity: 0.8; }
 .detail.was-deal .d-stage, .detail.was-deal .d-top { background: color-mix(in srgb, var(--f) 45%, #2a2a2e); }

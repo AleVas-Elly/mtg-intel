@@ -2,7 +2,7 @@
 // the other deals beside it, the countdown to the next check, the counts, and what went today.
 import type { AppData } from "../data";
 import { dealGap, dealRatio, wishCount } from "../data";
-import { useArtColour } from "../drop";
+import { fieldStyle } from "../drop";
 import { collectorLine, eur } from "../format";
 import { link, openCard } from "../router";
 import type { Deal, Wish } from "../types";
@@ -13,11 +13,11 @@ import { ManaCost, SetSymbol } from "../ui/symbols";
 const today = () => new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
 function HeroDeal({ d, w, data }: { d: Deal; w: Wish; data: AppData }) {
-  const colour = useArtColour(w.image);
+  const field = fieldStyle(w.mana_cost);
   const usual = usualOf(d, data);
   const save = usual ? usual - d.listing.price : null;
   return (
-    <section class="hero" data-key={w.key} style={colour ? { "--f": colour } : undefined} aria-label="Best deal right now">
+    <section class="hero" data-key={w.key} style={field} aria-label="Best deal right now">
       <div class="body">
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-start" }}>
           <TierPill d={d} />
@@ -42,11 +42,11 @@ function HeroDeal({ d, w, data }: { d: Deal; w: Wish; data: AppData }) {
 
 /** No deal today: the wish closest to one leads instead, quieter. */
 function HeroClosest({ w, data }: { w: Wish; data: AppData }) {
-  const colour = useArtColour(w.image);
+  const field = fieldStyle(w.mana_cost);
   const l = data.liveOf(w.key);
   const r = dealRatio(w, l);
   return (
-    <section class="hero quiet" data-key={w.key} style={colour ? { "--f": colour } : undefined} aria-label="Closest to a deal">
+    <section class="hero quiet" data-key={w.key} style={field} aria-label="Closest to a deal">
       <div class="body">
         <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "flex-start" }}>
           <span class="tier target">No deals right now · closest</span>

@@ -6,7 +6,7 @@ import { closeCard } from "../router";
 import { saveEdit, undoEdit } from "../edits";
 import { toast } from "../toast";
 import { WishSheet } from "../ui/WishSheet";
-import { useArtColour } from "../drop";
+import { fieldStyle } from "../drop";
 import { BigCard } from "../ui/CardImage";
 import { PriceChart, type Point } from "../ui/Chart";
 import { IconBack, IconBag, IconClose, IconCopy, IconEdit, IconOut, IconTrash, IconWarn } from "../ui/icons";
@@ -53,7 +53,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   const recent = useDoc<RecentDoc>("ct-recent", 120_000);
   const suggestions = useDoc<TargetsDoc>("targets").doc;
   const live = data.liveOf(wishKey);
-  const colour = useArtColour(w?.image);
+  const field = w ? fieldStyle(w.mana_cost) : undefined;
   const deal = data.dealOf(wishKey);
   const gone = !deal ? data.live?.gone.find((d) => d.key === wishKey) : undefined;
   const bothFinishes = !!w && w.foil === "any" && !foilOnly(w) && w.finishes.some((f) => f !== "nonfoil");
@@ -95,7 +95,7 @@ export function Detail({ data, wishKey }: { data: AppData; wishKey: string }) {
   return (
     <>
       <div class={`detail-backdrop${q}`} onClick={closeCard} />
-      <aside class={`detail${q}${gone ? " was-deal" : ""}`} aria-label={w.name} style={colour ? { "--f": colour } : undefined}>
+      <aside class={`detail${q}${gone ? " was-deal" : ""}`} aria-label={w.name} style={field}>
         <div class="d-top">
           <button class="icon-btn" onClick={closeCard} aria-label="Back"><IconBack /></button>
           {w.links.scryfall && <a class="icon-btn" href={w.links.scryfall} target="_blank" rel="noopener" aria-label="Open on Scryfall"><IconOut /></a>}

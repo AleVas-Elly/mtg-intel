@@ -1,25 +1,11 @@
-// The Drop (D57): each card brings a flat colour field taken from its own art. The colour is
-// sampled once per picture in the browser (Scryfall's image CDN allows it) and remembered.
+// The Drop (D57, D66): each deal is a flat field in its card's own mana colour: a white card on a
+// white field, a blue card on blue, and a multicolour card split into halves (three or more in
+// stripes). The fields are darker and less saturated than the mana symbols, so the page stays calm.
 import { useEffect, useState } from "preact/hooks";
+import { costColours } from "./filters";
 
-// v2: the fields are desaturated, so the colours sampled before (v1) are sampled again
-const KEY = "art-colours-v2";
-const colours: Record<string, string> = (() => {
-  try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch { return {}; }
-})();
-let saveTimer: number | undefined;
-const remember = (src: string, colour: string) => {
-  colours[src] = colour;
-  clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => {
-    try {
-      const keys = Object.keys(colours);
-      // keep the newest few hundred
-      for (const k of keys.slice(0, Math.max(0, keys.length - 600))) delete colours[k];
-      localStorage.setItem(KEY, JSON.stringify(colours));
-    } catch { /* fine */ }
-  }, 400);
-};
+// The sampled colours of the old version (art-colours-v1/v2) are no longer used.
+try { for (const k of ["art-colours-v1", "art-colours-v2"]) localStorage.removeItem(k); } catch { /* private window */ }
 
 /** The art crop of a Scryfall card picture (any size), or null for pictures from elsewhere. */
 export function artUrl(src: string | null | undefined): string | null {
@@ -27,72 +13,34 @@ export function artUrl(src: string | null | undefined): string | null {
   return src.replace(/\/(small|normal|large|png|border_crop)\//, "/art_crop/").replace(/\.png(\?|$)/, ".jpg$1");
 }
 
-function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const l = (max + min) / 2;
-  if (max === min) return [0, 0, l];
-  const d = max - min;
-  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-  const h = max === r ? (g - b) / d + (g < b ? 6 : 0) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
-  return [h * 60, s, l];
-}
+/** Each mana colour as a field: its hue, desaturated and darkened. White stays a light stone so it reads as white. */
+const FIELD: Record<string, string> = {
+  W: "hsl(42 12% 80%)",
+  U: "hsl(212 34% 29%)",
+  B: "hsl(265 8% 17%)",
+  R: "hsl(6 38% 31%)",
+  G: "hsl(146 24% 26%)",
+  C: "hsl(215 4% 34%)",
+};
+const LIGHT = new Set(["W"]);  // fields that take dark type
 
-/** The deep field colour for a picture: its strongest hue family, darkened so white type reads on it. */
-function fieldOf(img: HTMLImageElement): string {
-  const w = 32, h = 24;
-  const canvas = document.createElement("canvas");
-  canvas.width = w; canvas.height = h;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0, w, h);
-  const px = ctx.getImageData(0, 0, w, h).data;
-  const buckets = Array.from({ length: 12 }, () => ({ score: 0, h: 0, s: 0, n: 0 }));
-  let greyL = 0, greyN = 0;
-  for (let i = 0; i < px.length; i += 4) {
-    const [hue, sat, lig] = rgbToHsl(px[i], px[i + 1], px[i + 2]);
-    if (sat < 0.12 || lig < 0.08 || lig > 0.93) { greyL += lig; greyN++; continue; }
-    const b = buckets[Math.floor(hue / 30) % 12];
-    const weight = sat * (lig > 0.15 && lig < 0.75 ? 1 : 0.4);
-    b.score += weight; b.h += hue * weight; b.s += sat * weight; b.n += weight;
-  }
-  const best = buckets.reduce((a, b) => (b.score > a.score ? b : a));
-  if (best.score < (w * h) * 0.04) return `hsl(${Math.round(best.n ? best.h / best.n : 220)} 8% 18%)`;
-  const hue = Math.round(best.h / best.n);
-  // desaturated (D66): half the saturation the art has, so the fields sit calmer on the ground
-  const sat = 0.5 * Math.min(0.78, Math.max(0.28, (best.s / best.n) * 1.15 + 0.08));
-  return `hsl(${hue} ${Math.round(sat * 100)}% 21%)`;
-}
-
-const waiting = new Map<string, Promise<string | null>>();
-function sample(src: string): Promise<string | null> {
-  if (colours[src]) return Promise.resolve(colours[src]);
-  let p = waiting.get(src);
-  if (!p) {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = src;
-    p = img.decode().then(() => {
-      const c = fieldOf(img);
-      remember(src, c);
-      return c;
-    }, () => null).finally(() => waiting.delete(src));
-    waiting.set(src, p);
-  }
-  return p;
-}
-
-/** The colour field for a card picture; null until it is known (the drop shows its neutral field). */
-export function useArtColour(image: string | null | undefined): string | null {
-  const src = artUrl(image);
-  const [colour, setColour] = useState<string | null>(() => (src ? colours[src] ?? null : null));
-  useEffect(() => {
-    if (!src) return setColour(null);
-    if (colours[src]) return setColour(colours[src]);
-    let live = true;
-    sample(src).then((c) => { if (live) setColour(c); });
-    return () => { live = false; };
-  }, [src]);
-  return colour;
+/** The inline custom properties of a card's field, from its printed mana cost (both faces joined by //). */
+export function fieldStyle(cost: string | null | undefined): Record<string, string> {
+  const order = "WUBRG";
+  const cs = costColours(cost ?? null).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+  const names = cs.length ? cs : ["C"];
+  const cols = names.map((c) => FIELD[c]);
+  const n = cols.length;
+  const background = n === 1 ? cols[0] : `linear-gradient(135deg, ${cols
+    .map((c, i) => `${c} ${((i / n) * 100).toFixed(2)}% ${(((i + 1) / n) * 100).toFixed(2)}%`).join(", ")})`;
+  const dark = names.every((c) => LIGHT.has(c));
+  const on = dark ? "#121211" : "#ffffff";
+  return {
+    "--f": cols[0],          // one colour: the field; the first colour of a split card
+    "--fbg": background,      // what the field is painted with
+    "--on-f": on,             // type on the field
+    "--off-f": dark ? "#ffffff" : "#121211",  // a pill or button on the field (the inverse)
+  };
 }
 
 /** A clock that ticks every `ms`. */

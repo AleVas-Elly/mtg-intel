@@ -7,7 +7,7 @@ import { eur, versionText } from "../format";
 import { closeCard, openCard } from "../router";
 import { fetchCard, known, preview, type ScryCard } from "../scry";
 import { BigCard, CardImage } from "../ui/CardImage";
-import { useArtColour } from "../drop";
+import { fieldStyle } from "../drop";
 import { IconBack, IconClose, IconOut, IconPlus, IconWarn } from "../ui/icons";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { Versions, WishForm } from "../ui/WishSheet";
@@ -43,12 +43,12 @@ export function CardPane({ data, id }: { data: AppData; id: string }) {
   const mine = w && (data.wants?.wishes ?? []).find((x) => x.scryfall_id === w.scryfall_id);
   const [trend, trendFoil] = (card && shard?.[card.id]) || [null, null];
   const pick = (v: Wish) => { fetchCard(v.scryfall_id!).then(setCard); };
-  const colour = useArtColour(w?.image);
+  const field = w ? fieldStyle(w.mana_cost) : undefined;
 
   return (
     <>
       <div class={`detail-backdrop${q}`} onClick={closeCard} />
-      <aside class={`detail${q}`} aria-label={card?.name ?? "Card"} style={colour ? { "--f": colour } : undefined}>
+      <aside class={`detail${q}`} aria-label={card?.name ?? "Card"} style={field}>
         <div class="d-top">
           {adding
             ? <button class="icon-btn" onClick={() => setAdding(false)} aria-label="Back to the card"><IconBack /></button>
