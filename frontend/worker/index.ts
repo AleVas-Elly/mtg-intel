@@ -37,7 +37,7 @@ interface Passkey {
   browser?: string; // "Safari on macOS", at creation (passkeys made before 2026-11-06 lack it)
   place?: Place; // where it was created, from Cloudflare's guess for the IP
   aaguid?: string; // which passkey app holds it
-  account?: string; // whose it is (D76); the passkeys made before are mine, "owner"
+  account?: string; // whose it is (D78); the passkeys made before are mine, "owner"
 }
 
 /** Last time a device used the site: one row per passkey, written at most every few hours. */
@@ -46,7 +46,7 @@ interface Seen { at: string; browser: string; place: Place }
 const SESSION_DAYS = 180;
 const CHALLENGE_MINUTES = 5;
 const INVITE_MINUTES = 15; // a setup link for one of my own devices, shown as a QR code
-const PERSON_INVITE_HOURS = 24; // a link sent to someone else, who may open it later (D76)
+const PERSON_INVITE_HOURS = 24; // a link sent to someone else, who may open it later (D78)
 const ACTIVITY_DAYS = 90;
 const DATA_KEY = /^(wants|history|live|ct-recent|ct-history|purchases|targets|prices-\d{1,2})$/;
 // Want-list edits made on the site (D50): one row per waiting edit, so writes from different
@@ -119,11 +119,11 @@ async function accounts(env: Env): Promise<Account[]> {
     .map((r) => JSON.parse(r.doc) as Account);
 }
 
-/** One line in the activity log (D76). */
+/** One line in the activity log (D78). */
 const logged = (env: Env, who: string, what: string) =>
   env.DB.prepare("INSERT INTO activity (account, at, what) VALUES (?, ?, ?)").bind(who, new Date().toISOString(), what.slice(0, 300));
 
-/** A quiet Telegram note to me through the timer Worker, which holds the bot token (D76). */
+/** A quiet Telegram note to me through the timer Worker, which holds the bot token (D78). */
 function notify(env: Env, ctx: ExecutionContext | null, text: string) {
   if (!env.TRIGGER) return;
   const job = env.TRIGGER.fetch("https://trigger/notify", {
@@ -407,7 +407,7 @@ async function auth(request: Request, env: Env, path: string, url: URL, ctx: Exe
       self ? { "Set-Cookie": cookie("sid", "", 0) } : {});
   }
 
-  // People (D76): only I manage them.
+  // People (D78): only I manage them.
   if (path === "people" || path.startsWith("people/") || path === "activity") {
     if (!isOwner(me)) return json({ error: "Only the owner manages people." }, 403);
     return people(request, env, path, body, origin);
@@ -526,7 +526,7 @@ async function people(request: Request, env: Env, path: string, body: Record<str
 
 interface Edit { id: string; at: string; op: "add" | "update" | "remove" | "bought" | "collected" | "unbought"; key?: string; scryfall_id?: string;
   settings?: Record<string, string>; card?: Record<string, unknown>; purchase?: Record<string, string>;
-  by?: string; // the account that made it on the site (D76); none for the GitHub jobs' and Telegram's
+  by?: string; // the account that made it on the site (D78); none for the GitHub jobs' and Telegram's
 }
 
 async function waitingEdits(env: Env): Promise<Edit[]> {
@@ -563,7 +563,7 @@ function editText(e: Partial<Edit>): string {
 }
 
 /** POST /api/edits (one edit), DELETE /api/edits/<id> (undo a waiting edit), DELETE /api/edits/failed.
- *  Adding, changing and removing wishes needs the edit switch; marking bought the bought switch (D76). */
+ *  Adding, changing and removing wishes needs the edit switch; marking bought the bought switch (D78). */
 async function edits(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
   const w = await who(request, env);
   if (!w) return json({ error: "Sign in first." }, 401);
@@ -606,7 +606,7 @@ async function edits(request: Request, env: Env, rest: string, ctx: ExecutionCon
 
 interface Suggestion { id: string; account: string; name: string; at: string; scryfall_id: string; settings: Record<string, string>; card: Record<string, unknown> }
 
-/** Cards someone suggested for my want-list (D76). GET: mine to answer (everyone's) or their own;
+/** Cards someone suggested for my want-list (D78). GET: mine to answer (everyone's) or their own;
  *  POST: suggest (the suggest switch); DELETE <id>: dismiss (me) or take back (theirs);
  *  POST <id>/add: I add it, queued like any want-list edit. */
 async function suggestions(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
@@ -677,7 +677,7 @@ async function data(request: Request, env: Env, key: string): Promise<Response> 
   if (!DATA_KEY.test(key)) return json({ error: "Not found" }, 404);
   if (!w) return json({ error: "Sign in first." }, 401);
   const need = docPerm(key);
-  // Not shared with this person: answered like a document that isn't there, so the app shows nothing (D76).
+  // Not shared with this person: answered like a document that isn't there, so the app shows nothing (D78).
   if (need && !can(w.account, need)) return json({ error: "Not shared with you" }, 404);
   const filter = key === "purchases" && !can(w.account, "money") ? "m"
     : key === "live" && !can(w.account, "details") ? "d" : "";

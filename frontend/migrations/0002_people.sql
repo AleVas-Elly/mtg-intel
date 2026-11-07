@@ -1,4 +1,4 @@
--- People and access (spec D76): each passkey belongs to an account. The passkeys made before this
+-- People and access (spec D78): each passkey belongs to an account. The passkeys made before this
 -- are mine, the account `owner`, which always has every permission.
 
 CREATE TABLE accounts (id TEXT PRIMARY KEY, created TEXT NOT NULL, doc TEXT NOT NULL);

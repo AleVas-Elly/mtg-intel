@@ -18,7 +18,7 @@ export interface Owned {
 }
 
 export const valueOf = (o: Owned) => (o.now != null ? o.now * o.qty : null);
-/** Worth now minus what I paid; unknown for someone who may not see money (D76). */
+/** Worth now minus what I paid; unknown for someone who may not see money (D78). */
 export const gainOf = (o: Owned) => (o.now != null && can("money") ? o.now * o.qty - o.paid : null);
 
 export function ownedCards(purchases: Purchase[]): Owned[] {

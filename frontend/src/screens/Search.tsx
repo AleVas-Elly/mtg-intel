@@ -1,5 +1,6 @@
 // Card search like the `cards` skill (spec D45): Scryfall does the matching, my lists and
 // Cardmarket prices are joined in here. "My cards" names my exact printings in the query.
+import { can } from "../access";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { peek, refresh } from "../api";
 import type { AppData } from "../data";
@@ -165,8 +166,8 @@ export function Search({ data }: { data: AppData }) {
                 <span><SetSymbol set={c.set} rarity={c.rarity} />{c.set.toUpperCase()} · {c.collector_number}</span>
                 <span>{price != null ? `Cardmarket ${eur(price)}` : "No Cardmarket price"}{mine ? " · on my list" : ""}</span>
               </button>
-              {!mine && (
-                <button class="add-btn" type="button" onClick={() => openScryCard(c.id, true)} aria-label={`Add ${c.name} to the want-list`}>
+              {!mine && (can("edit") || can("suggest")) && (
+                <button class="add-btn" type="button" onClick={() => openScryCard(c.id, true)} aria-label={can("edit") ? `Add ${c.name} to the want-list` : `Suggest ${c.name}`}>
                   <IconPlus />
                 </button>
               )}

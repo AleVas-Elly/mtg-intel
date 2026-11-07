@@ -182,7 +182,7 @@ function EditsStatus({ data }: { data: AppData }) {
 }
 
 
-/** Cards suggested for the want-list (D76): for me to add or dismiss, or someone's own, waiting. */
+/** Cards suggested for the want-list (D78): for me to add or dismiss, or someone's own, waiting. */
 function Inbox() {
   const me = useMe();
   const list = useSuggestions(me.owner || can("suggest"));

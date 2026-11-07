@@ -134,7 +134,7 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
 }
 
 
-/** Home for someone who doesn't see live deals (D76): what they can open here. */
+/** Home for someone who doesn't see live deals (D78): what they can open here. */
 function Welcome({ name }: { name: string }) {
   const places = [
     can("wants") && ["/wants", "the want-list"],

@@ -1,4 +1,4 @@
-// Cards someone suggested for my want-list (spec D76): an inbox I answer with Add or Dismiss.
+// Cards someone suggested for my want-list (spec D78): an inbox I answer with Add or Dismiss.
 import { useEffect, useState } from "preact/hooks";
 import { refresh, send } from "./api";
 import type { Settings, Wish } from "./types";

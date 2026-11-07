@@ -1,4 +1,4 @@
-// People and access in Settings (spec D76): invite someone with a name, a preset and an end date;
+// People and access in Settings (spec D78): invite someone with a name, a preset and an end date;
 // see who connected; change what each person can see and do; take it back.
 import { renderSVG } from "uqr";
 import { useEffect, useState } from "preact/hooks";

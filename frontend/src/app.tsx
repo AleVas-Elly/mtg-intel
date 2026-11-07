@@ -29,7 +29,7 @@ const TABS: { path: string; label: string; Icon: typeof IconHome; needs?: Perm }
   { path: "/search", label: "Search", Icon: IconSearch },
   { path: "/check", label: "Check", Icon: IconCheck, needs: "wants" },
 ];
-/** Screens someone without that switch can't open (D76): they land on Home. */
+/** Screens someone without that switch can't open (D78): they land on Home. */
 const NEEDS: Record<string, Perm> = { "/deals": "deals", "/wants": "wants", "/collection": "collection", "/bought": "collection", "/check": "wants" };
 
 export function App() {

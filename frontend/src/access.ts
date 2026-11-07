@@ -1,4 +1,4 @@
-// Who is signed in and what they may see and do (spec D76). The Worker enforces every switch; the
+// Who is signed in and what they may see and do (spec D78). The Worker enforces every switch; the
 // app only hides what someone can't use. Kept in localStorage so the right screens paint at once.
 import { useEffect, useState } from "preact/hooks";
 

@@ -1,4 +1,4 @@
-// People and access (spec D76): who may see and do what on the site. Each passkey belongs to an
+// People and access (spec D78): who may see and do what on the site. Each passkey belongs to an
 // account; my own passkeys are the account `owner`, which always has everything and alone manages
 // people. Every switch is checked here on the server, not only hidden in the app.
 

@@ -93,7 +93,7 @@ export function WishForm({ wish: given, adding, lists, data, onClose, onPick, on
     set("list")((chosen.includes(name) ? chosen.filter((l) => l !== name) : [...chosen, name]).join("; "));
   const finishes = wish.finishes.length ? wish.finishes : ["nonfoil", "foil"];
   const qty = Number(s.quantity) || 1;
-  // someone who may suggest but not edit sends the card to the owner's inbox instead (D76)
+  // someone who may suggest but not edit sends the card to the owner's inbox instead (D78)
   const suggesting = adding && !can("edit");
 
   const save = async (e: Event) => {

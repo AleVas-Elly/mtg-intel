@@ -143,6 +143,18 @@ export default {
     if (new URL(request.url).pathname === "/telegram") {
       return telegramUpdate(request, env, () => dispatch(env, "wantlist.yml"), () => dispatch(env, "deals.yml"));
     }
+    // A quiet note from the website (D78): someone joined, or suggested a card.
+    if (request.method === "POST" && new URL(request.url).pathname === "/notify") {
+      const { text } = await request.json().catch(() => ({}));
+      if (typeof text !== "string" || !text || text.length > 600) return new Response("Not valid", { status: 400 });
+      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return new Response("No bot", { status: 503 });
+      const sent = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_notification: true }),
+      }).catch(() => null);
+      return new Response(sent?.ok ? "sent" : "failed", { status: sent?.ok ? 200 : 502 });
+    }
     if (request.method !== "POST" || new URL(request.url).pathname !== "/wantlist" || !env.GITHUB_TOKEN) {
       return new Response("Not found", { status: 404 });
     }
