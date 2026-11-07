@@ -31,3 +31,11 @@ export function marketView(w: Wish, data: AppData, foil?: boolean, ctPrice?: num
   const lead = ct == null ? "cm" : cm == null ? "ct" : (sCt ?? -9) >= (sCm ?? -9) ? "ct" : "cm";
   return { ct, cm, low, ship, trend, usual, ctUsual: live?.usual ?? null, sCt, sCm, lead };
 }
+
+/** The cheaper of the two prices a row shows (D72): what the Price sort and the price filter use, so their
+ *  order matches what is on screen. */
+export function shownPrice(w: Wish, data: AppData): number | null {
+  const { ct, cm } = marketView(w, data, data.liveOf(w.key)?.foil);
+  const prices = [ct, cm].filter((v): v is number => v != null);
+  return prices.length ? Math.min(...prices) : null;
+}

@@ -3,6 +3,7 @@
 import type { AppData } from "./data";
 import { dealGap } from "./data";
 import { cmTrend, langName, tagName } from "./format";
+import { shownPrice } from "./markets";
 import type { HistoryDoc, Wish } from "./types";
 
 export type Icon = { mana: string } | { set: string; rarity?: string | null } | { rarity: string };
@@ -67,8 +68,8 @@ const COLOURS: [string, string][] = [["W", "White"], ["U", "Blue"], ["B", "Black
 const TYPES = ["Creature", "Instant", "Sorcery", "Artifact", "Enchantment", "Land", "Planeswalker", "Battle", "Legendary"];
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Cardmarket price used by the price filter and the price sort: the wish's finish. */
-export const priceOf = (data: AppData, w: Wish) => cmTrend(w, data.liveOf(w.key)?.foil);
+/** The price the price filter and the price sort use: the cheaper of the two the row shows (D72). */
+export const priceOf = (data: AppData, w: Wish) => shownPrice(w, data);
 
 /** Every group, its options built from the wishes on the list. */
 export function buildGroups(wishes: Wish[], data: AppData, history: HistoryDoc | null | undefined, today = Date.now()): Group<Wish>[] {
