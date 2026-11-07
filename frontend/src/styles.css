@@ -265,13 +265,13 @@ img { display: block; }
 .p-cm::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: var(--cm); }
 .p-none { font-size: 13px; color: var(--ink-3); }
 .row.gone { opacity: 0.6; }
-.row.out { opacity: 0.62; }
+.row.out { opacity: 0.62; }  /* a collection card that was sold, traded or lost (D79) */
 .coll-tabs { margin: 4px 0 10px; }  /* Owned · Sold (D81) */
 .sold-sum { margin: 2px 0 12px; }
 .sold-main { font-size: 15px; color: var(--ink); }
 .sold-main .good { color: var(--good); }
 .sold-main .bad { color: var(--bad); }
-.sold-more { font-size: 13px; color: var(--ink-2); margin-top: 3px; }  /* a collection card that was sold, traded or lost (D79) */
+.sold-more { font-size: 13px; color: var(--ink-2); margin-top: 3px; }
 .owned-line { align-items: center; }
 .owned-line dt { color: var(--ink); }
 .owned-line dt small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--ink-2); }
@@ -1041,20 +1041,20 @@ button.link { border: 0; background: none; padding: 0; font: inherit; font-weigh
   .row { gap: 10px; padding: 12px 12px; }
 }
 
-/* ---------- section colours (D62): the Want-list is cyan, the Collection pink ---------- */
+/* ---------- section colours (D62): the Want-list is cyan, the Collection violet (D82: pink read as danger) ---------- */
 :root {
   --wants: #0a8aa6; --wants-ink: #ffffff; --wants-text: #0b6f86;
-  --coll: #d0306f; --coll-ink: #ffffff; --coll-text: #b0245d;
+  --coll: #6a48d6; --coll-ink: #ffffff; --coll-text: #5536b8;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --wants: #2fd3f0; --wants-ink: #03161b; --wants-text: #74e4f8;
-    --coll: #ff5fa2; --coll-ink: #23000f; --coll-text: #ff94c2;
+    --coll: #a58bff; --coll-ink: #140a33; --coll-text: #c3b2ff;
   }
 }
 :root[data-theme="dark"] {
   --wants: #2fd3f0; --wants-ink: #03161b; --wants-text: #74e4f8;
-  --coll: #ff5fa2; --coll-ink: #23000f; --coll-text: #ff94c2;
+  --coll: #a58bff; --coll-ink: #140a33; --coll-text: #c3b2ff;
 }
 :root[data-section="wants"] { --sec: var(--wants); --sec-ink: var(--wants-ink); --sec-text: var(--wants-text); }
 :root[data-section="collection"] { --sec: var(--coll); --sec-ink: var(--coll-ink); --sec-text: var(--coll-text); }
