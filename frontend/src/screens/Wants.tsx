@@ -5,7 +5,7 @@ import { dealGap, wishCount } from "../data";
 import { day } from "../format";
 import { dismissFailed } from "../edits";
 import { LOCAL } from "../env";
-import { IconFilter, IconSearch, IconWarn } from "../ui/icons";
+import { IconArrowDown, IconArrowUp, IconFilter, IconSearch, IconWarn } from "../ui/icons";
 import { CardList, RowSkeleton } from "../ui/Row";
 import { FilterPanel, FilterSheet } from "../ui/Filters";
 import { EMPTY, activeCount, applyFilters, buildGroups, change30, optionCounts, priceOf, type FilterState } from "../filters";
@@ -13,14 +13,19 @@ import type { HistoryDoc, Wish } from "../types";
 
 export { change30 };
 
-const SORTS = [
-  { id: "deal", label: "Closest to a deal" },
-  { id: "price", label: "Highest price" },
-  { id: "drop", label: "Biggest 30-day drop" },
-  { id: "rise", label: "Biggest 30-day rise" },
-  { id: "name", label: "Name" },
-  { id: "set", label: "Set" },
+// Each sort has the order it starts in; the arrow beside the menu reverses it (D67). "Date added" is the
+// wish's place in the want-list file, where new wishes are appended, so newest first is the larger line.
+type Dir = "asc" | "desc";
+const SORTS: { id: string; label: string; dir: Dir }[] = [
+  { id: "deal", label: "Closest to a deal", dir: "asc" },
+  { id: "price", label: "Price", dir: "desc" },
+  { id: "added", label: "Date added", dir: "desc" },
+  { id: "drop", label: "Biggest 30-day drop", dir: "asc" },
+  { id: "rise", label: "Biggest 30-day rise", dir: "desc" },
+  { id: "name", label: "Name", dir: "asc" },
+  { id: "set", label: "Set", dir: "asc" },
 ];
+const startDir = (sort: string): Dir => SORTS.find((s) => s.id === sort)?.dir ?? "asc";
 
 const FILTER_KEY = "wants-filters";
 function readFilters(): FilterState {
@@ -34,6 +39,10 @@ function readFilters(): FilterState {
 export function Wants({ data, card }: { data: AppData; card: string | null }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<string>(() => sessionStorage.getItem("wants-sort") || "deal");
+  const [dir, setDir] = useState<Dir>(() => {
+    const d = sessionStorage.getItem("wants-dir");
+    return d === "asc" || d === "desc" ? d : startDir(sessionStorage.getItem("wants-sort") || "deal");
+  });
   const [filters, setFilters] = useState<FilterState>(readFilters);
   const [sheet, setSheet] = useState(false);
   // price history feeds "Lowest in 90 days", the 30-day moves and their sorts
@@ -51,19 +60,30 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
 
   const shown = useMemo(() => {
     const rows = applyFilters(searched, groups, filters, (w) => priceOf(data, w));
-    const price = (w: Wish) => priceOf(data, w) ?? -1;
-    const by: Record<string, (a: Wish, b: Wish) => number> = {
-      deal: (a, b) => (dealGap(a, data.liveOf(a.key)) ?? 999) - (dealGap(b, data.liveOf(b.key)) ?? 999),
-      price: (a, b) => price(b) - price(a),
-      drop: (a, b) => (change30(a, history.doc) ?? 9) - (change30(b, history.doc) ?? 9),
-      rise: (a, b) => (change30(b, history.doc) ?? -9) - (change30(a, history.doc) ?? -9),
+    const num: Record<string, (w: Wish) => number | null> = {
+      deal: (w) => dealGap(w, data.liveOf(w.key)),
+      price: (w) => priceOf(data, w),
+      added: (w) => w.line,
+      drop: (w) => change30(w, history.doc),
+      rise: (w) => change30(w, history.doc),
+    };
+    const text: Record<string, (a: Wish, b: Wish) => number> = {
       name: (a, b) => a.name.localeCompare(b.name),
       set: (a, b) => (a.set ?? "").localeCompare(b.set ?? "") || (parseInt(a.number ?? "0") - parseInt(b.number ?? "0")),
     };
-    return rows.sort(by[sort] ?? by.deal);
-  }, [searched, groups, filters, sort, data, history.doc]);
+    const sign = dir === "asc" ? 1 : -1;
+    const key = num[sort];
+    // cards with nothing to sort by (no price, no live copy, no history) stay last in either direction
+    return rows.sort(key ? (a, b) => {
+      const x = key(a), y = key(b);
+      if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1;
+      return sign * (x - y);
+    } : (a, b) => sign * (text[sort] ?? text.name)(a, b));
+  }, [searched, groups, filters, sort, dir, data, history.doc]);
 
-  const pickSort = (s: string) => { setSort(s); try { sessionStorage.setItem("wants-sort", s); } catch { /* fine */ } };
+  const keepSort = (s: string, d: Dir) => { try { sessionStorage.setItem("wants-sort", s); sessionStorage.setItem("wants-dir", d); } catch { /* fine */ } };
+  const pickSort = (s: string) => { const d = startDir(s); setSort(s); setDir(d); keepSort(s, d); };
+  const flipSort = () => { const d: Dir = dir === "asc" ? "desc" : "asc"; setDir(d); keepSort(sort, d); };
   const showChange = sort === "drop" || sort === "rise";
   const on = activeCount(filters);
   const total = wishCount(wishes), n = wishCount(shown);
@@ -97,6 +117,11 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
               <select class="select" aria-label="Sort" value={sort} onChange={(e) => pickSort((e.target as HTMLSelectElement).value)}>
                 {SORTS.map((s) => <option value={s.id}>{s.label}</option>)}
               </select>
+              <button type="button" class="icon-btn sort-dir" onClick={flipSort}
+                aria-label={dir === "asc" ? "Ascending: tap for descending" : "Descending: tap for ascending"}
+                title={dir === "asc" ? "Ascending" : "Descending"}>
+                {dir === "asc" ? <IconArrowUp /> : <IconArrowDown />}
+              </button>
             </div>
             {data.wants && (on > 0 || q.trim()) && (
               <div class="list-head shown-line">
@@ -105,7 +130,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
               </div>
             )}
             {!data.wants ? <RowSkeleton /> : shown.length ? (
-              <CardList data={data} current={card} swap={JSON.stringify([filters, sort])} items={shown.map((w) => {
+              <CardList data={data} current={card} swap={JSON.stringify([filters, sort, dir])} items={shown.map((w) => {
                 const c = showChange ? change30(w, history.doc) : null;
                 return {
                   w, extra: showChange && c != null ? (
