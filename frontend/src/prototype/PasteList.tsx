@@ -251,7 +251,7 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
     <div class="pl-table">
       <BulkBar target={target} items={picked.length ? picked : items} setAll={(p) => setAll(p, picked.length ? sel : undefined)} lot={lot} setLot={setLot}
         selected={picked.length} total={items.length} onSelectAll={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))}
-        onLeaveOut={() => { setAll({ status: "dropped" }, sel); setSel([]); }} />
+        onLeaveOut={() => { setAll({ status: "dropped" }, sel); setSel([]); }} onClear={() => setSel([])} />
       {items.map((it, i) => (
         <div class={`pl-row${open === it.id ? " open" : ""}${sel.includes(it.id) ? " picked" : ""}`} id={`pl-row-${it.id}`}>
           <input type="checkbox" class="pl-check-box" checked={sel.includes(it.id)} onChange={() => flip(it.id)} aria-label={`Select ${it.card?.name}`} />
@@ -278,47 +278,65 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
   );
 }
 
-/** Set language, condition, finish on every card; "More options" sets the rarer ones for every card. */
-function BulkBar({ target, setAll, items, lot, setLot, selected, total, onSelectAll, onLeaveOut }: {
+/** Settings for every card, or only the ticked ones: a header line (who, actions), then labelled fields in a grid. */
+function BulkBar({ target, setAll, items, lot, setLot, selected, total, onSelectAll, onLeaveOut, onClear }: {
   target: Target; setAll: (p: Partial<Item>) => void; items: Item[]; lot: string; setLot: (v: string) => void;
-  selected: number; total: number; onSelectAll: () => void; onLeaveOut: () => void;
+  selected: number; total: number; onSelectAll: () => void; onLeaveOut: () => void; onClear: () => void;
 }) {
   const [more, setMore] = useState(false);
-  const same = (k: "lang" | "cond" | "finish") => (items.every((x) => x[k] === items[0]?.[k]) ? items[0]?.[k] : "");
+  const same = (k: "lang" | "cond" | "finish" | "deal") => (items.every((x) => x[k] === items[0]?.[k]) ? items[0]?.[k] ?? "" : "");
+  const Mixed = ({ v }: { v: string }) => <option value="" disabled>{v}</option>;
   return (
-    <div class="pl-bulk">
-      <div class="pl-bulk-main">
-        <input type="checkbox" class="pl-check-box" checked={selected === total} ref={(el) => { if (el) el.indeterminate = selected > 0 && selected < total; }}
-          onChange={onSelectAll} aria-label="Select every card" />
-        <span>{selected ? `${selected} selected` : "Every card"}</span>
-        {target === "wants" ? <LangPick value={same("lang")} onChange={(lang) => setAll({ lang })} /> : (
-          <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language for every card">
-            <option value="" disabled>Language…</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-          </select>
-        )}
-        <select class="select sm" value={same("cond")} onChange={(e) => setAll({ cond: (e.target as HTMLSelectElement).value })} aria-label="Condition for every card">
-          <option value="" disabled>Condition…</option>{CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
-        </select>
-        <select class="select sm" value={same("finish")} onChange={(e) => setAll({ finish: (e.target as HTMLSelectElement).value })} aria-label="Finish for every card">
-          <option value="" disabled>Finish…</option>
-          {(target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]).map((f) => <option value={f}>{finishName(f)}</option>)}
-        </select>
-        {selected > 0 && <button type="button" class="btn sm" onClick={onLeaveOut}>Leave out</button>}
-        <button type="button" class="pl-link" aria-expanded={more} onClick={() => setMore(!more)}><em>{more ? "Fewer options" : "More options"}</em></button>
+    <div class={`pl-bulk${selected ? " scoped" : ""}`}>
+      <div class="pl-bulk-top">
+        <label class="pl-bulk-who">
+          <input type="checkbox" class="pl-check-box" checked={selected === total} ref={(el) => { if (el) el.indeterminate = selected > 0 && selected < total; }}
+            onChange={onSelectAll} aria-label="Select every card" />
+          <b>{selected ? `${selected} of ${total} selected` : `Every card · ${total}`}</b>
+        </label>
+        <small>{selected ? "Changes here apply to the ticked cards only." : "Tick cards to change only some of them."}</small>
+        {selected > 0 && <span class="pl-bulk-acts">
+          <button type="button" class="pl-link" onClick={onClear}><em>Clear</em></button>
+          <button type="button" class="btn sm danger-soft" onClick={onLeaveOut}>Leave out {selected}</button>
+        </span>}
       </div>
-      {more && (target === "wants" ? (
-        <div class="pl-bulk-more">
-          <label>Deal from <span class="money"><input inputMode="numeric" placeholder="20" onChange={(e) => setAll({ deal: (e.target as HTMLInputElement).value })} /><span>%</span></span></label>
-          <label>{selected ? "Add them to" : "Add every card to"} <ListPick value={same2(items, "lists")} onChange={(lists) => setAll({ lists })} /></label>
-          <label>CardTrader Zero only <input type="checkbox" class="switch" onChange={(e) => setAll({ zero: (e.target as HTMLInputElement).checked })} /></label>
+      <div class="pl-bulk-grid">
+        <div class="pl-f"><small>Language</small>
+          {target === "wants" ? <LangPick value={same("lang")} onChange={(lang) => setAll({ lang })} /> : (
+            <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language">
+              <Mixed v="Mixed" />{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
+            </select>
+          )}
         </div>
-      ) : (
-        <div class="pl-bulk-more">
-          <label>Paid for the whole lot <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span></label>
-          <small>{lot ? "Shared out across the cards without their own price, by Cardmarket price. A price typed on a card wins." : "Bought several cards for one price? It's shared out by Cardmarket price."}</small>
-          <label>Date bought <span class="money text-in"><input type="date" onChange={(e) => setAll({ date: (e.target as HTMLInputElement).value })} /></span></label>
+        <div class="pl-f"><small>{target === "wants" ? "Worst condition" : "Condition"}</small>
+          <select class="select sm" value={same("cond")} onChange={(e) => setAll({ cond: (e.target as HTMLSelectElement).value })} aria-label="Condition">
+            <Mixed v="Mixed" />{CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
+          </select>
         </div>
-      ))}
+        <div class="pl-f"><small>Finish</small>
+          <select class="select sm" value={same("finish")} onChange={(e) => setAll({ finish: (e.target as HTMLSelectElement).value })} aria-label="Finish">
+            <Mixed v="Mixed" />{(target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]).map((f) => <option value={f}>{finishName(f)}</option>)}
+          </select>
+        </div>
+        {more && (target === "wants" ? <>
+          <div class="pl-f"><small>Deal from</small>
+            <span class="money"><input inputMode="numeric" placeholder={same("deal") === "" && items.some((x) => x.deal) ? "mixed" : "20"} value={same("deal")} onInput={(e) => setAll({ deal: (e.target as HTMLInputElement).value })} /><span>%</span></span>
+          </div>
+          <div class="pl-f"><small>CardTrader Zero only</small>
+            <input type="checkbox" class="switch" checked={items.every((x) => x.zero)} onChange={(e) => setAll({ zero: (e.target as HTMLInputElement).checked })} aria-label="CardTrader Zero only" />
+          </div>
+          <div class="pl-f wide"><small>Lists</small><ListPick value={same2(items, "lists")} onChange={(lists) => setAll({ lists })} /></div>
+        </> : <>
+          <div class="pl-f"><small>Paid for the whole lot</small>
+            <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span>
+          </div>
+          <div class="pl-f"><small>Date bought</small>
+            <span class="money text-in"><input type="date" onChange={(e) => setAll({ date: (e.target as HTMLInputElement).value })} /></span>
+          </div>
+          <p class="pl-f wide pl-note">{lot ? "The lot's price is shared across the cards without their own price, by Cardmarket price. A price typed on a card wins." : "Bought several cards for one price? Type it once; it's shared out by Cardmarket price."}</p>
+        </>)}
+        <button type="button" class="pl-more-toggle" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Fewer options" : "More options"}</button>
+      </div>
     </div>
   );
 }
