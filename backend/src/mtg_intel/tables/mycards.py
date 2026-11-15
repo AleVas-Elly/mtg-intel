@@ -276,13 +276,18 @@ def ready_edits(ops: list[dict], now: datetime) -> tuple[list[dict], list[dict]]
     return [op for op in ops if op not in held], held
 
 
+# Notes the jobs and the bot write, one per order item or alert message (lifecycle._marker, telegram.ts).
+AUTO_NOTES = ("CT order", "Zero box", "Telegram ")
+
+
 def _recorded(purchases: list[dict[str, str]], row: dict[str, str]) -> str | None:
-    """Why a purchase from my CardTrader orders is already in the purchases list, or None: the same
-    order item (its note), or the same card and price recorded by hand within three days."""
+    """Why a purchase is already in the purchases list, or None: the same order item or Telegram alert
+    (its automatic note; a note typed on the site can repeat), or the same card and price recorded by
+    hand within three days."""
     from datetime import date
 
     for p in purchases:
-        if row["note"] and p.get("note") == row["note"]:
+        if row["note"].startswith(AUTO_NOTES) and p.get("note") == row["note"]:
             return "already recorded"
         if (p.get("scryfall_id") == row["scryfall_id"] and p.get("price_eur") == row["price_eur"]
                 and p.get("market") == "cardtrader" and not (p.get("note") or "").startswith(("CT order", "Zero box"))
@@ -391,6 +396,11 @@ def apply_edits(text: str, ops: list[dict], cards: pa.Table, blueprint_of: dict[
             results.append({"id": op.get("id"), "ok": True, "message": f"added {row['name']}", "key": key})
         elif kind == "bought":
             index = keys.get(str(op.get("key")))
+            note = str((op.get("purchase") or {}).get("note") or "")
+            if index is None and note.startswith(AUTO_NOTES) and any(p.get("note") == note for p in purchases or []):
+                # e.g. a second tap on the same alert, after the first took the last copy off the wish
+                results.append({"id": op.get("id"), "ok": True, "message": "already recorded"})
+                continue
             if index is None:
                 results.append({"id": op.get("id"), "ok": False, "message": "this wish is no longer on the want-list"})
                 continue

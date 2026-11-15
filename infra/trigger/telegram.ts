@@ -171,7 +171,7 @@ async function bought(env: TelegramEnv, q: CallbackQuery, m: Message): Promise<v
     purchase: {
       price_eur: paid.toFixed(2), market: "cardtrader", condition: grade, foil: isFoil ? "yes" : "no",
       language: w.language === "any" ? copyLanguage : w.language, date: at.toLocaleDateString("sv-SE", { timeZone: TIMEZONE }),
-      cardmarket_trend_eur: trend ? trend.toFixed(2) : "", note: "Telegram",
+      cardmarket_trend_eur: trend ? trend.toFixed(2) : "", note: `Telegram ${m.chat.id}:${m.message_id}`, // one per alert: a second tap is recorded once
     },
     hold_until: holdUntil,
     tg: { chat: m.chat.id, message: m.message_id, data: q.data, links: linkRows(m).flat() },

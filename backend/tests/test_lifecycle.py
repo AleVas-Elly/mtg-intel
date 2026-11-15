@@ -317,3 +317,21 @@ def test_fast_lane_keeps_25_top_places_and_5_rotating():
     assert len(a) == len(b) == 30
     assert [f["key"] for f in a[:25]] == [f["key"] for f in b[:25]]  # the top places stay
     assert {f["key"] for f in a[25:]} != {f["key"] for f in b[25:]}  # the explorers move on
+
+
+def test_each_telegram_purchase_is_recorded_once(tmp_path: Path):
+    cards = two_printings(tmp_path)
+    wishes = [{"name": "Elvish Archdruid", "scryfall_id": sid, "language": "en", "foil": "any", "quantity": "1"}
+              for sid in ("sf-1", "sf-new")]
+    buy = {"price_eur": "3.50", "market": "cardtrader", "condition": "NM", "foil": "no", "date": "2026-11-06"}
+    purchases: list[dict] = []
+    ops = [{"id": "a", "op": "bought", "key": "sf-1|en|any", "purchase": buy | {"note": "Telegram 7:100"}},
+           {"id": "b", "op": "bought", "key": "sf-1|en|any", "purchase": buy | {"note": "Telegram 7:100"}},  # two taps
+           {"id": "c", "op": "bought", "key": "sf-new|en|any", "purchase": buy | {"price_eur": "9", "note": "Telegram 7:101"}}]
+    _, results = mycards.apply_edits(mycards.write_csv(wishes), ops, cards, {}, purchases=purchases)
+    assert [r["message"].split(":")[-1].strip() for r in results] == [
+        "bought Elvish Archdruid, off the want-list", "already recorded", "bought Elvish Archdruid, off the want-list"]
+    assert [p["note"] for p in purchases] == ["Telegram 7:100", "Telegram 7:101"]
+    # A note typed on the site can repeat: it never marks a purchase as recorded.
+    typed = [{"scryfall_id": "sf-1", "price_eur": "1.00", "market": "other", "date": "2026-01-01", "note": "gift"}]
+    assert mycards._recorded(typed, buy | {"scryfall_id": "sf-new", "note": "gift"}) is None
