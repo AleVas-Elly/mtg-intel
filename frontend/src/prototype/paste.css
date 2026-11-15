@@ -397,8 +397,8 @@ button.add-crumb { border: 0; background: none; padding: 0; font: inherit; font-
 .search-bar .seg.scope.grow button.s-mine[aria-pressed="true"] { background: var(--wants); color: var(--wants-ink); }
 .search-bar .seg.scope.grow button.s-coll[aria-pressed="true"] { background: var(--coll); color: var(--coll-ink); }
 .search-bar .seg.scope.grow button.s-all[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
-.search-bar .seg.scope.grow button[aria-pressed="true"] svg { animation: scope-pop 520ms var(--spring); }
-@keyframes scope-pop { 0% { transform: scale(0.7) rotate(-8deg); } 60% { transform: scale(1.12); } }
+.search-bar .seg.scope.grow button[aria-pressed="true"] svg { animation: scope-pop 420ms var(--out); }
+@keyframes scope-pop { from { transform: scale(0.72); opacity: 0.4; } }
 @media (prefers-reduced-motion: reduce) { .search-bar .seg.scope.grow button, .search-bar .seg.scope.grow button .lbl { transition: none; } .search-bar .seg.scope.grow button svg { animation: none; } }
 
 /* soft buttons: a stronger edge, easier to see */
