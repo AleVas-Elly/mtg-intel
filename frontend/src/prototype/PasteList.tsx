@@ -566,7 +566,7 @@ function DeckPick({ onPick }: { onPick: (d: DeckRef) => void }) {
 // ---- live card search, with pictures ----------------------------------------------------------
 /** Type a name, see matching cards with their pictures as you type (Scryfall search, most played first).
  *  `row`: picture tiles in a row (a line that needs a look); otherwise the app's list with an add button per card. */
-function CardSearch({ onPick, initial, row, autofocus, placeholder, added }: { onPick: (c: Card) => void; initial?: string; row?: boolean; autofocus?: boolean; placeholder?: string; added?: (c: Card) => number }) {
+function CardSearch({ onPick, onLess, initial, row, autofocus, placeholder, added }: { onPick: (c: Card) => void; onLess?: (c: Card) => void; initial?: string; row?: boolean; autofocus?: boolean; placeholder?: string; added?: (c: Card) => number }) {
   const [q, setQ] = useState(initial ?? "");
   const [res, setRes] = useState<Card[] | null>(null);
   const [hi, setHi] = useState(0);
@@ -614,9 +614,15 @@ function CardSearch({ onPick, initial, row, autofocus, placeholder, added }: { o
                     <div class="r-name"><span>{c.name}</span><ManaCost cost={c.mana_cost ?? c.card_faces?.[0]?.mana_cost} front /></div>
                     <div class="r-line"><span>{c.type_line}</span></div>
                   </div>
-                  <button type="button" class={`icon-btn pl-add${n ? " on" : ""}`} aria-label={`Add ${c.name}`} onClick={(e) => { e.stopPropagation(); onPick(c); }}>
-                    {n ? <b>{n}</b> : <IconPlus />}
-                  </button>
+                  {n && onLess ? (
+                    <span class="pl-step" onClick={(e) => e.stopPropagation()}>
+                      <button type="button" class="icon-btn" aria-label={`One fewer ${c.name}`} onClick={() => onLess(c)}><IconMinus /></button>
+                      <b aria-live="polite">{n}</b>
+                      <button type="button" class="icon-btn" aria-label={`One more ${c.name}`} onClick={() => onPick(c)}><IconPlus /></button>
+                    </span>
+                  ) : (
+                    <button type="button" class="icon-btn pl-add" aria-label={`Add ${c.name}`} onClick={(e) => { e.stopPropagation(); onPick(c); }}><IconPlus /></button>
+                  )}
                 </div>
               );
             })}
@@ -680,7 +686,8 @@ export function AddPage({ target }: { target: Target }) {
   const [deck, setDeck] = useState<DeckRef | null>(null);
   const [fileName, setFileName] = useState("");
   const [open, setOpen] = useState<number | null>(null);
-  const [done, setDone] = useState(false);
+  const [stage, setStage] = useState<"find" | "tune" | "done">("find");
+  const done = stage === "done";
   const back = target === "wants" ? "/wants" : "/collection";
   const where = target === "wants" ? "want-list" : "collection";
   const upd: Upd = (id, p) => setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -727,6 +734,14 @@ export function AddPage({ target }: { target: Target }) {
     const it = fresh(0, { raw: card.name, qty: 1, name: card.name }, card, "ok");
     add([{ ...it, finish: defaultFinish(target, it, card) }]);
   };
+  const sameCard = (x: Item, c: Card) => x.status === "ok" && (x.card?.oracle_id === c.oracle_id || x.card?.name === c.name);
+  /** One copy fewer of a card from the search: the last one added goes first; at none it leaves the list. */
+  const less = (c: Card) => {
+    const it = [...items].reverse().find((x) => sameCard(x, c));
+    if (!it) return;
+    if (it.qty > 1) upd(it.id, { qty: it.qty - 1 }); else setItems((xs) => xs.filter((x) => x.id !== it.id));
+  };
+  const go = (s: typeof stage) => { setOpen(null); setStage(s); scrollTo(0, 0); };
   const pickDeck = async (d: DeckRef) => {
     setBusy(true); setDeck(d);
     add(await deckItems(d).catch(() => []));
@@ -759,12 +774,19 @@ export function AddPage({ target }: { target: Target }) {
     <div class="page wide add-page">
       <header class="head sec-band">
         <div>
-          <a class="add-crumb" href={back} onClick={link(back)}><IconBack />{target === "wants" ? "Want-list" : "Collection"}</a>
-          <h1 class="title">Add cards</h1>
-          <p class="sub">{items.length ? `${total} ${total === 1 ? "card" : "cards"} ready${unclear.length ? `, ${unclear.length} to check` : ""}` : `Search, paste or import; everything lands in one list to check before adding`}</p>
+          {stage === "tune"
+            ? <button type="button" class="add-crumb" onClick={() => go("find")}><IconBack />Find more cards</button>
+            : <a class="add-crumb" href={back} onClick={link(back)}><IconBack />{target === "wants" ? "Want-list" : "Collection"}</a>}
+          <h1 class="title">{stage === "tune" ? "Fine-tune" : "Add cards"}</h1>
+          <ol class="add-steps" aria-label="Steps">
+            <li aria-current={stage === "find" ? "step" : undefined}>Find cards</li>
+            <li aria-current={stage === "tune" ? "step" : undefined}>Versions and settings</li>
+            <li>Add</li>
+          </ol>
         </div>
       </header>
 
+      {stage === "find" && <>
       <div class="seg add-ways" role="tablist" aria-label="How to add">
         {WAYS.filter((w) => !w.only || w.only === target).map((w) => (
           <button type="button" role="tab" aria-selected={way === w.id} aria-pressed={way === w.id} onClick={() => setWay(w.id)}>{w.label}</button>
@@ -772,7 +794,7 @@ export function AddPage({ target }: { target: Target }) {
       </div>
 
       <section class="add-input">
-        {way === "search" && <CardSearch onPick={addCard} autofocus placeholder="Type a card name, e.g. bolt" added={(c) => live.filter((x) => x.card?.oracle_id === c.oracle_id || x.card?.name === c.name).reduce((t, x) => t + x.qty, 0)} />}
+        {way === "search" && <CardSearch onPick={addCard} autofocus placeholder="Type a card name, e.g. bolt" onLess={less} added={(c) => live.filter((x) => sameCard(x, c)).reduce((t, x) => t + x.qty, 0)} />}
         {way === "list" && (
           <div class="add-paste">
             <textarea rows={6} value={text} placeholder={"4 Lightning Bolt\nSol Ring (CMR) 472\nThe One Ring *F*"} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
@@ -839,26 +861,44 @@ export function AddPage({ target }: { target: Target }) {
         </div>
       </>}
 
-      {deck && live.length > 0 && (
+      {live.length > 0 && <>
+        <div class="list-head">Found<span>{total} {total === 1 ? "card" : "cards"}</span></div>
+        <div class="add-found">
+          {live.map((x) => (
+            <span class="add-found-card" title={`${x.card?.name}, ${versionLine(x.card)}`}>
+              <CardImage src={img(x.card, "small")} alt={x.card?.name ?? ""} foil={false} />
+              {x.qty > 1 && <b>{x.qty}</b>}
+              <button type="button" aria-label={`Remove ${x.card?.name}`} onClick={() => setItems((xs) => xs.filter((y) => y.id !== x.id))}><IconClose /></button>
+            </span>
+          ))}
+        </div>
+      </>}
+      {!items.length && <div class="empty add-empty"><p>Search, paste or import. Then fine-tune each card's version and settings before adding.</p></div>}
+      </>}
+
+      {stage === "tune" && deck && live.length > 0 && (
         <div class="pl-deckhead">
           <div><b>{deck.name}</b><small>exact versions from the deck list</small></div>
           <label>Paid for the deck <span class="money"><span>€</span><input inputMode="decimal" placeholder="optional" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span></label>
         </div>
       )}
 
-      {live.length > 0 ? <>
-        <div class="list-head">To add<span>{total} {total === 1 ? "card" : "cards"}</span></div>
+      {stage === "tune" && <>
+        <p class="add-lead">Each card starts on its newest regular version and your usual settings. Change any of them here, tick several to change them together, or open a card for all its versions.</p>
         <AddList items={live} upd={upd} target={target} setAll={setAll} each={each} deck={!!deck} lot={lot} setLot={setLot} spread={spread} open={open} setOpen={setOpen} />
-      </> : !unclear.length && <div class="empty add-empty"><p>Cards you find appear here, ready to check before they're added.</p></div>}
+      </>}
 
-      {items.length > 0 && (
+      {items.length > 0 && (stage === "find" ? (
         <div class="add-bar">
-          <span>{unclear.length ? `${unclear.length} to check first` : `${total} ${total === 1 ? "card" : "cards"}`}</span>
-          <button class="btn primary" type="button" disabled={!live.length || unclear.length > 0} onClick={() => { setOpen(null); setDone(true); scrollTo(0, 0); }}>
-            Add to the {where}
-          </button>
+          <span>{unclear.length ? `${unclear.length} to check first` : `${total} ${total === 1 ? "card" : "cards"} found`}</span>
+          <button class="btn primary" type="button" disabled={!live.length || unclear.length > 0} onClick={() => go("tune")}>Next: versions and settings</button>
         </div>
-      )}
+      ) : (
+        <div class="add-bar">
+          <span>{total} {total === 1 ? "card" : "cards"}</span>
+          <button class="btn primary" type="button" disabled={!live.length} onClick={() => go("done")}>Add to the {where}</button>
+        </div>
+      ))}
 
       {openIt && shell && createPortal(
         <AddPane key={openIt.id} it={openIt} upd={upd} target={target} share={spread.get(openIt.id)} place={`${openAt + 1} of ${live.length}`}

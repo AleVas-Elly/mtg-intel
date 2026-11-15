@@ -66,7 +66,7 @@ const EXAMPLES = ["art:cat", "t:legendary c:u", "is:showcase mv<=3", "o:\"draw a
 
 export function Search({ data }: { data: AppData }) {
   const [q, setQ] = useState(() => sessionStorage.getItem("search-q") || "");
-  const [scope, setScope] = useState<"mine" | "all">(() => (sessionStorage.getItem("search-scope") as "mine" | "all") || "mine");
+  const [scope, setScope] = useState<"mine" | "all">(() => (sessionStorage.getItem("search-scope") as "mine" | "all") || "all");  // PROTOTYPE (issue 6): All cards by default
   const [cards, setCards] = useState<ScryCard[]>([]);
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
