@@ -1,9 +1,12 @@
 // PROTOTYPE, throwaway (mtg-intel-docs issue 6): paste a list of card names into the Want-list or the
 // Collection, check the lines that weren't clear, then pick each card's exact version and settings.
-// Step 1 (paste) and 2 (check) are shared; step 3 (pick) has three variants, switched with ?variant=A|B|C
-// or the bar at the bottom. Cards and pictures are real (Scryfall); nothing is saved: the last screen
+// Round 2: the user picked the table (A); variants B (one by one) and C (wall of cards) are in this
+// branch's history (3984d90). Each card starts from defaults; the rarer settings fold under "More options",
+// per card and for every card at once. Cards and pictures are real (Scryfall); nothing is saved: the last screen
 // shows what would be sent. Local copy only. Never merge to main.
 import { useEffect, useMemo, useState } from "preact/hooks";
+import { peek } from "../api";
+import type { WantsDoc } from "../types";
 import { CardImage } from "../ui/CardImage";
 import { IconClose, IconMinus, IconPlus } from "../ui/icons";
 import { preview, printings, type ScryCard } from "../scry";
@@ -16,6 +19,8 @@ interface Line { raw: string; qty: number; name: string; set?: string; number?: 
 interface Item {
   id: number; line: Line; status: "ok" | "guess" | "unknown" | "dropped"; card: Card | null; options: string[];
   prints: Card[] | null; chosen: boolean; qty: number; lang: string; cond: string; finish: string; price: string;
+  // more options: want-list (target, deal level, lists, Zero only) and collection (date)
+  target: string; deal: string; lists: string[]; zero: boolean; date: string;
 }
 
 // The member's usual language and condition (D94's welcome), here fixed.
@@ -90,7 +95,8 @@ async function match(lines: Line[]): Promise<Item[]> {
 }
 
 function fresh(id: number, line: Line, card: Card | null, status: Item["status"], options: string[] = []): Item {
-  return { id, line, status, card, options, prints: null, chosen: !!line.number, qty: line.qty, lang: USUAL.lang, cond: USUAL.cond, finish: "", price: "" };
+  return { id, line, status, card, options, prints: null, chosen: !!line.number, qty: line.qty, lang: USUAL.lang, cond: USUAL.cond, finish: "", price: "",
+    target: "", deal: "", lists: [], zero: false, date: "" };
 }
 
 const plain = (c: Card) => !c.promo && !preview(c).tags.length && c.set !== "plst";
@@ -163,7 +169,7 @@ function Stepper({ value, onChange }: { value: number; onChange: (n: number) => 
 }
 
 /** Language, condition, finish, copies and (collection) price paid for one card. `row` = compact selects. */
-function Fields({ it, upd, target, row }: { it: Item; upd: Upd; target: Target; row?: boolean }) {
+function Fields({ it, upd, target, row, share }: { it: Item; upd: Upd; target: Target; row?: boolean; share?: number }) {
   const fins = [...(target === "wants" ? ["any"] : []), ...finishes(it.card)];
   const condLabel = target === "wants" ? "Worst condition" : "Condition";
   if (row) return (
@@ -178,7 +184,7 @@ function Fields({ it, upd, target, row }: { it: Item; upd: Upd; target: Target; 
       <select class="select sm" value={it.finish} onChange={(e) => upd(it.id, { finish: (e.target as HTMLSelectElement).value })} aria-label="Finish">
         {fins.map((f) => <option value={f}>{finishName(f)}</option>)}
       </select>
-      {target === "collection" && <span class="money"><span>€</span><input inputMode="decimal" placeholder="paid" value={it.price}
+      {target === "collection" && <span class="money"><span>€</span><input inputMode="decimal" placeholder={share ? `≈${share.toFixed(2)}` : "paid"} value={it.price}
         onInput={(e) => upd(it.id, { price: (e.target as HTMLInputElement).value })} aria-label="Price paid each" /></span>}
     </>
   );
@@ -206,17 +212,13 @@ function Fields({ it, upd, target, row }: { it: Item; upd: Upd; target: Target; 
   );
 }
 
-function Summary({ it, target }: { it: Item; target: Target }) {
-  return <>{it.qty}× · {it.lang.toUpperCase()} · {it.cond}{target === "wants" ? "+" : ""} · {finishName(it.finish)}{it.price ? ` · €${it.price}` : ""}</>;
-}
-
 // ---- the three ways to pick ---------------------------------------------------------------------
 /** A: every card a row, settings inline, "set all" bar on top; the picture opens its versions. */
-function PickTable({ items, upd, target, setAll }: PickProps) {
+function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProps) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <div class="pl-table">
-      <BulkBar target={target} setAll={setAll} items={items} />
+      <BulkBar target={target} setAll={setAll} items={items} lot={lot} setLot={setLot} />
       {items.map((it) => (
         <div class={`pl-row${open === it.id ? " open" : ""}`}>
           <button type="button" class="pl-thumb" onClick={() => setOpen(open === it.id ? null : it.id)} aria-expanded={open === it.id} aria-label={`Versions of ${it.card?.name}`}>
@@ -225,115 +227,160 @@ function PickTable({ items, upd, target, setAll }: PickProps) {
           <div class="pl-name">
             <b>{it.card?.name}</b>
             <button type="button" class="pl-link" onClick={() => setOpen(open === it.id ? null : it.id)}>
-              {it.card?.set_name} · {it.card?.collector_number} {it.chosen ? "" : <em>· newest regular, change</em>}
+              {it.card?.set_name} · {it.card?.collector_number}{it.chosen ? "" : " · newest regular"} <em>{open === it.id ? "close" : "change, more options"}</em>
             </button>
+            {extras(it, target) && <small class="pl-extras">{extras(it, target)}</small>}
           </div>
-          <div class="pl-fields"><Fields it={it} upd={upd} target={target} row /></div>
-          {open === it.id && <div class="pl-under"><VersionStrip it={it} upd={upd} target={target} /></div>}
+          <div class="pl-fields"><Fields it={it} upd={upd} target={target} row share={spread.get(it.id)} /></div>
+          {open === it.id && <div class="pl-under"><VersionStrip it={it} upd={upd} target={target} /><More it={it} upd={upd} target={target} /></div>}
         </div>
       ))}
     </div>
   );
 }
 
-/** B: one card at a time, big picture, versions and settings; the next card starts with the same settings. */
-function PickOne({ items, upd, target }: PickProps) {
-  const [at, setAt] = useState(0);
-  const it = items[Math.min(at, items.length - 1)];
-  const next = () => {
-    const n = items[at + 1];
-    // the next card starts with the settings just used, unless it was changed already
-    if (n && !n.chosen) upd(n.id, { lang: it.lang, cond: it.cond, ...(target === "wants" || finishes(n.card).includes(it.finish) ? { finish: it.finish } : {}) });
-    setAt(at + 1);
-  };
-  if (at >= items.length) return (
-    <div class="pl-recap">
-      <h3>All {items.length} cards</h3>
-      {items.map((x, i) => (
-        <button type="button" class="pl-recap-row" onClick={() => setAt(i)}>
-          <CardImage src={img(x.card, "small")} alt="" foil={x.finish === "foil"} />
-          <span><b>{x.card?.name}</b><small>{x.card?.set.toUpperCase()} {x.card?.collector_number} · <Summary it={x} target={target} /></small></span>
-        </button>
-      ))}
-    </div>
-  );
-  return (
-    <div class="pl-one">
-      <div class="pl-big"><CardImage src={img(it.card, "normal")} alt={it.card?.name ?? ""} foil={it.finish === "foil"} eager /></div>
-      <div class="pl-side">
-        <div class="pl-count">{at + 1} of {items.length} · from “{it.line.raw}”</div>
-        <h3>{it.card?.name}</h3>
-        <p class="pl-sub">{it.card?.set_name} · {it.card?.collector_number}{!it.chosen && " · newest regular, picked for you"}</p>
-        <div class="group-title">Version</div>
-        <VersionStrip it={it} upd={upd} target={target} />
-        <div class="group-title">Settings</div>
-        <Fields it={it} upd={upd} target={target} />
-        <div class="pl-one-nav">
-          <button class="btn" type="button" disabled={at === 0} onClick={() => setAt(at - 1)}>Back</button>
-          <button class="btn" type="button" onClick={() => setAt(items.length)}>Same for the rest</button>
-          <button class="btn primary" type="button" onClick={next}>{at === items.length - 1 ? "Review all" : "Next card"}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** C: a wall of the cards as picked; tap one (or tick several) to change them in the side panel. */
-function PickWall({ items, upd, target, setAll }: PickProps) {
-  const [sel, setSel] = useState<number[]>([]);
-  const picked = items.filter((x) => sel.includes(x.id));
-  const one = picked.length === 1 ? picked[0] : null;
-  const toggle = (id: number, multi: boolean) => setSel(multi ? (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]) : sel[0] === id && sel.length === 1 ? [] : [id]);
-  return (
-    <div class={`pl-wallwrap${picked.length ? " editing" : ""}`}>
-      <div>
-        <p class="pl-hint">Each card is set to its newest regular version, {langName(USUAL.lang)}, {USUAL.cond}. Tap a card to change it; tick several to change them together.</p>
-        <div class="pl-wall">
-          {items.map((it) => (
-            <div class={`pl-tile${sel.includes(it.id) ? " on" : ""}`}>
-              <button type="button" class="pl-tile-card" onClick={() => toggle(it.id, false)}>
-                <CardImage src={img(it.card, "normal")} alt={it.card?.name ?? ""} foil={it.finish === "foil"} />
-                <span class="pl-badge">{it.qty}×</span>
-              </button>
-              <label class="pl-tick"><input type="checkbox" checked={sel.includes(it.id)} onChange={() => toggle(it.id, true)} aria-label={`Select ${it.card?.name}`} /></label>
-              <small><b>{it.card?.set.toUpperCase()} {it.card?.collector_number}</b> · {it.lang.toUpperCase()} · {it.cond} · {finishName(it.finish)}{it.price ? ` · €${it.price}` : ""}</small>
-            </div>
-          ))}
-        </div>
-      </div>
-      {picked.length > 0 && (
-        <aside class="pl-panel">
-          <header><b>{one ? one.card?.name : `${picked.length} cards`}</b><button class="icon-btn" type="button" onClick={() => setSel([])} aria-label="Close"><IconClose /></button></header>
-          {one ? <><VersionStrip it={one} upd={upd} target={target} /><Fields it={one} upd={upd} target={target} /></>
-            : <BulkBar target={target} items={picked} setAll={(p) => setAll(p, sel)} stacked />}
-        </aside>
-      )}
-    </div>
-  );
-}
-
-/** Set language, condition, finish (and price) on many cards at once. */
-function BulkBar({ target, setAll, items, stacked }: { target: Target; setAll: (p: Partial<Item>) => void; items: Item[]; stacked?: boolean }) {
+/** Set language, condition, finish on every card; "More options" sets the rarer ones for every card. */
+function BulkBar({ target, setAll, items, lot, setLot }: { target: Target; setAll: (p: Partial<Item>) => void; items: Item[]; lot: string; setLot: (v: string) => void }) {
+  const [more, setMore] = useState(false);
   const same = (k: "lang" | "cond" | "finish") => (items.every((x) => x[k] === items[0]?.[k]) ? items[0]?.[k] : "");
   return (
-    <div class={`pl-bulk${stacked ? " stacked" : ""}`}>
-      <span>{stacked ? "Set for all of them" : "Every card"}</span>
-      <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language for every card">
-        <option value="" disabled>Language…</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-      </select>
-      <select class="select sm" value={same("cond")} onChange={(e) => setAll({ cond: (e.target as HTMLSelectElement).value })} aria-label="Condition for every card">
-        <option value="" disabled>Condition…</option>{CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
-      </select>
-      <select class="select sm" value={same("finish")} onChange={(e) => setAll({ finish: (e.target as HTMLSelectElement).value })} aria-label="Finish for every card">
-        <option value="" disabled>Finish…</option>
-        {(target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]).map((f) => <option value={f}>{finishName(f)}</option>)}
-      </select>
+    <div class="pl-bulk">
+      <div class="pl-bulk-main">
+        <span>Every card</span>
+        <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language for every card">
+          <option value="" disabled>Language…</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
+        </select>
+        <select class="select sm" value={same("cond")} onChange={(e) => setAll({ cond: (e.target as HTMLSelectElement).value })} aria-label="Condition for every card">
+          <option value="" disabled>Condition…</option>{CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
+        </select>
+        <select class="select sm" value={same("finish")} onChange={(e) => setAll({ finish: (e.target as HTMLSelectElement).value })} aria-label="Finish for every card">
+          <option value="" disabled>Finish…</option>
+          {(target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]).map((f) => <option value={f}>{finishName(f)}</option>)}
+        </select>
+        <button type="button" class="pl-link" aria-expanded={more} onClick={() => setMore(!more)}><em>{more ? "Fewer options" : "More options"}</em></button>
+      </div>
+      {more && (target === "wants" ? (
+        <div class="pl-bulk-more">
+          <label>Deal from <span class="money"><input inputMode="numeric" placeholder="20" onChange={(e) => setAll({ deal: (e.target as HTMLInputElement).value })} /><span>%</span></span></label>
+          <label>Add every card to <ListPick value={same2(items, "lists")} onChange={(lists) => setAll({ lists })} /></label>
+          <label>CardTrader Zero only <input type="checkbox" class="switch" onChange={(e) => setAll({ zero: (e.target as HTMLInputElement).checked })} /></label>
+        </div>
+      ) : (
+        <div class="pl-bulk-more">
+          <label>Paid for the whole lot <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span></label>
+          <small>{lot ? "Shared out across the cards without their own price, by Cardmarket price. A price typed on a card wins." : "Bought several cards for one price? It's shared out by Cardmarket price."}</small>
+          <label>Date bought <span class="money text-in"><input type="date" onChange={(e) => setAll({ date: (e.target as HTMLInputElement).value })} /></span></label>
+        </div>
+      ))}
+    </div>
+  );
+}
+const same2 = (items: Item[], k: "lists") => (items.every((x) => x[k].join() === items[0]?.[k].join()) ? items[0]?.[k] ?? [] : []);
+
+/** The lists on the want-list, as chips, plus a new one. */
+function ListPick({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const known = [...new Set([...(peek<WantsDoc>("wants")?.wishes ?? []).flatMap((w) => w.lists), ...value])].sort();
+  return (
+    <span class="chips">
+      {known.map((l) => <button type="button" class="chip toggle" aria-pressed={value.includes(l)} onClick={() => onChange(value.includes(l) ? value.filter((x) => x !== l) : [...value, l])}>{l}</button>)}
+      <input class="chip-input" placeholder="New list" onKeyDown={(e) => { const v = (e.target as HTMLInputElement).value.trim(); if (e.key === "Enter" && v) { e.preventDefault(); onChange([...value, v]); (e.target as HTMLInputElement).value = ""; } }} />
+    </span>
+  );
+}
+
+/** One card's rarer settings, folded under the row. */
+function More({ it, upd, target }: { it: Item; upd: Upd; target: Target }) {
+  if (target === "collection") return (
+    <div class="group form pl-more">
+      <label class="f-row"><span>Date bought<small>Optional</small></span>
+        <span class="money text-in"><input type="date" value={it.date} onInput={(e) => upd(it.id, { date: (e.target as HTMLInputElement).value })} /></span>
+      </label>
+    </div>
+  );
+  return (
+    <div class="group form pl-more">
+      <label class="f-row"><span>Target price<small>Alert at or under this</small></span>
+        <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={it.target} onInput={(e) => upd(it.id, { target: (e.target as HTMLInputElement).value })} /></span>
+      </label>
+      <label class="f-row"><span>Deal from<small>How far under the market counts as a deal</small></span>
+        <span class="money"><input inputMode="numeric" placeholder="20" value={it.deal} onInput={(e) => upd(it.id, { deal: (e.target as HTMLInputElement).value })} /><span>%</span></span>
+      </label>
+      <div class="f-row stack"><span>Lists</span><ListPick value={it.lists} onChange={(lists) => upd(it.id, { lists })} /></div>
+      <label class="f-row"><span>CardTrader Zero only</span>
+        <input type="checkbox" class="switch" checked={it.zero} onChange={(e) => upd(it.id, { zero: (e.target as HTMLInputElement).checked })} />
+      </label>
     </div>
   );
 }
 
-interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>, only?: number[]) => void }
-const VARIANTS: [string, string, (p: PickProps) => preact.JSX.Element][] = [["A", "Table", PickTable], ["B", "One by one", PickOne], ["C", "Wall of cards", PickWall]];
+/** What a card has beyond the defaults, for its row. */
+function extras(it: Item, target: Target): string {
+  return (target === "wants"
+    ? [it.target && `target €${it.target}`, it.deal && `deal from ${it.deal}%`, ...it.lists, it.zero && "Zero only"]
+    : [it.date]).filter(Boolean).join(" · ");
+}
+
+/** The lot's price shared across cards without their own price, by Cardmarket price (each copy). */
+function spreadLot(items: Item[], lot: string): Map<number, number> {
+  const out = new Map<number, number>();
+  const total = Number(lot.replace(",", "."));
+  if (!(total > 0)) return out;
+  const own = items.reduce((t, x) => t + (Number(x.price.replace(",", ".")) || 0) * x.qty, 0);
+  const open = items.filter((x) => !x.price);
+  const market = (x: Item) => Number(x.card ? priceOf(x.card, x.finish === "foil" || x.finish === "etched") : 0) || 0;
+  const known = open.filter((x) => market(x) > 0);
+  const avg = known.length ? known.reduce((t, x) => t + market(x), 0) / known.length : 1;
+  const weight = (x: Item) => market(x) || avg;  // no Cardmarket price: counts as an average card
+  const sum = open.reduce((t, x) => t + weight(x) * x.qty, 0);
+  const left = Math.max(0, total - own);
+  for (const x of open) out.set(x.id, sum ? (left * weight(x)) / sum : 0);
+  return out;
+}
+
+interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>) => void; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
+
+// ---- a precon deck (collection only): MTGJSON's deck lists name every card's exact printing ----
+interface DeckRef { name: string; fileName: string; releaseDate: string; type: string; code: string }
+let deckList: Promise<DeckRef[]> | null = null;
+const decks = () => (deckList ??= fetch("https://mtgjson.com/api/v5/DeckList.json").then((r) => r.json())
+  .then((b: { data: DeckRef[] }) => b.data.filter((d) => /commander/i.test(d.type)).sort((a, b) => b.releaseDate.localeCompare(a.releaseDate))));
+interface DeckCard { name: string; setCode: string; number: string; count: number; isFoil?: boolean; identifiers: { scryfallId?: string } }
+
+async function deckItems(d: DeckRef): Promise<Item[]> {
+  const body = (await (await fetch(`https://mtgjson.com/api/v5/decks/${d.fileName}.json`)).json()) as { data: Record<string, DeckCard[]> };
+  const cards = [...body.data.commander ?? [], ...body.data.mainBoard ?? [], ...body.data.sideBoard ?? []].filter((c) => c.identifiers.scryfallId);
+  const found = new Map<string, Card>();
+  for (let i = 0; i < cards.length; i += 75) {
+    const r = await paced("https://api.scryfall.com/cards/collection", { method: "POST", body: JSON.stringify({ identifiers: cards.slice(i, i + 75).map((c) => ({ id: c.identifiers.scryfallId })) }) });
+    for (const c of ((await r.json()) as { data: Card[] }).data) found.set(c.id, c);
+  }
+  return cards.map((c, i) => {
+    const card = found.get(c.identifiers.scryfallId!) ?? null;
+    const line: Line = { raw: `${c.count} ${c.name} (${c.setCode}) ${c.number}`, qty: c.count, name: c.name, set: c.setCode.toLowerCase(), number: c.number, foil: !!c.isFoil };
+    const it = fresh(i, line, card, card ? "ok" : "dropped");
+    return { ...it, finish: c.isFoil ? "foil" : defaultFinish("collection", it, card) };
+  });
+}
+
+function DeckPick({ onPick }: { onPick: (d: DeckRef) => void }) {
+  const [all, setAll] = useState<DeckRef[] | null>(null);
+  const [q, setQ] = useState("");
+  useEffect(() => { decks().then(setAll); }, []);
+  const shown = (all ?? []).filter((d) => `${d.name} ${d.code}`.toLowerCase().includes(q.toLowerCase())).slice(0, 40);
+  return (
+    <div class="pl-paste">
+      <p>Every card of the deck comes in at its exact version, foils included. You can still change anything before adding.</p>
+      <input class="pl-search" type="search" placeholder="Deck name or set, e.g. Klingon, Eldrazi, PIP" value={q} onInput={(e) => setQ((e.target as HTMLInputElement).value)} autofocus />
+      <div class="pl-decks">
+        {all === null ? <p>Loading the decks…</p> : shown.map((d) => (
+          <button type="button" class="pl-deck" onClick={() => onPick(d)}>
+            <b>{d.name}</b><small>{d.code} · {d.releaseDate.slice(0, 4)}</small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ---- the flow -----------------------------------------------------------------------------------
 function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
@@ -341,7 +388,14 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
   const [text, setText] = useState(() => (new URLSearchParams(location.search).has("example") ? EXAMPLE : ""));
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
-  const variant = useVariant();
+  const [lot, setLot] = useState("");
+  const [mode, setMode] = useState<"list" | "deck">("list");
+  const [deck, setDeck] = useState<DeckRef | null>(null);
+  const pickDeck = async (d: DeckRef) => {
+    setBusy(true); setDeck(d);
+    setItems(await deckItems(d).catch(() => []));
+    setBusy(false); setStep("pick");
+  };
   const upd: Upd = (id, p) => setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...p } : x)));
   const live = items.filter((x) => x.status !== "dropped" && x.card);
   const unclear = items.filter((x) => x.status === "guess" || x.status === "unknown");
@@ -380,19 +434,18 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
     const r = await paced(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`);
     if (r.ok) { const card = (await r.json()) as Card; upd(it.id, { card, status: "ok", prints: null, finish: defaultFinish(target, it, card) }); }
   };
-  const setAll = (p: Partial<Item>, only?: number[]) => setItems((xs) => xs.map((x) => {
-    if (only && !only.includes(x.id)) return x;
+  const setAll = (p: Partial<Item>) => setItems((xs) => xs.map((x) => {
     if (p.finish && p.finish !== "any" && !finishes(x.card).includes(p.finish)) return x;  // a finish the card doesn't have is skipped
     return { ...x, ...p };
   }));
-  const Pick = (VARIANTS.find((v) => v[0] === variant) ?? VARIANTS[0])[2];
+  const spread = useMemo(() => spreadLot(live, lot), [live, lot]);
   const total = live.reduce((t, x) => t + x.qty, 0);
 
   return (
     <div class="pl" role="dialog" aria-modal="true" aria-label={`Paste a list into your ${where}`}>
       <header class="pl-head">
         <div>
-          <h2>Paste a list</h2>
+          <h2>{target === "collection" ? "Add cards" : "Paste a list"}</h2>
           <ol class="pl-steps">
             {[["paste", "Paste"], ["check", "Check names"], ["pick", "Versions and settings"], ["done", "Added"]].map(([k, l]) => <li aria-current={step === k ? "step" : undefined}>{l}</li>)}
           </ol>
@@ -402,7 +455,14 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
       </header>
 
       <div class="pl-body">
-        {step === "paste" && (
+        {step === "paste" && target === "collection" && (
+          <div class="seg pl-mode" role="group" aria-label="What to add">
+            <button type="button" aria-pressed={mode === "list"} onClick={() => setMode("list")}>A list of cards</button>
+            <button type="button" aria-pressed={mode === "deck"} onClick={() => setMode("deck")}>A precon deck</button>
+          </div>
+        )}
+        {step === "paste" && mode === "deck" && (busy ? <p class="pl-ok">Getting {deck?.name}…</p> : <DeckPick onPick={pickDeck} />)}
+        {step === "paste" && mode === "list" && (
           <div class="pl-paste">
             <p>One card per line, as written in a chat or exported from another app. Numbers in front are copies; a set and number in brackets pick that exact version.</p>
             <textarea rows={14} value={text} placeholder={"4 Lightning Bolt\n1x Sol Ring (CMR) 472\nCounterspell"} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} autofocus />
@@ -444,66 +504,38 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
           </div>
         )}
 
-        {step === "pick" && <Pick items={live} upd={upd} target={target} setAll={setAll} />}
+        {step === "pick" && deck && (
+          <div class="pl-deckhead">
+            <div><b>{deck.name}</b><small>{total} cards · exact versions from the deck list</small></div>
+            <label>What did you pay for the deck? <span class="money"><span>€</span><input inputMode="decimal" placeholder="optional" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span></label>
+            <small>{lot ? "Shared out across the cards by Cardmarket price; each card shows its share." : "Leave it empty to price cards later."}</small>
+          </div>
+        )}
+        {step === "pick" && <PickTable items={live} upd={upd} target={target} setAll={setAll} lot={lot} setLot={setLot} spread={spread} />}
 
         {step === "done" && (
           <div class="pl-done">
             <h3>{total} cards added to your {where}</h3>
             <p>Prototype: nothing was saved. This is what would be sent, one edit per line:</p>
             <pre>{live.map((x) => target === "wants"
-              ? `add   ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  copies ${x.qty} · ${x.lang} · ${x.cond} or better · foil ${x.finish}`
-              : `owned ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  ×${x.qty} · ${x.lang} · ${x.cond} · ${x.finish}${x.price ? ` · paid €${x.price} each` : " · no price"}`).join("\n")}</pre>
+              ? `add   ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  copies ${x.qty} · ${x.lang} · ${x.cond} or better · foil ${x.finish}${x.target ? ` · target €${x.target}` : ""} · deal from ${x.deal || 20}%${x.lists.length ? ` · lists ${x.lists.join("; ")}` : ""}${x.zero ? " · Zero only" : ""}`
+              : `owned ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  ×${x.qty} · ${x.lang} · ${x.cond} · ${x.finish}${x.price ? ` · paid €${x.price} each` : spread.has(x.id) ? ` · paid €${spread.get(x.id)!.toFixed(2)} each (share of the lot)` : " · no price"}${x.date ? ` · ${x.date}` : ""}`).join("\n")}</pre>
           </div>
         )}
       </div>
 
       <footer class="pl-foot">
-        {step === "paste" && <button class="btn primary" type="button" disabled={busy || !parse(text).length} onClick={find}>{busy ? "Finding cards…" : "Find cards"}</button>}
+        {step === "paste" && mode === "list" && <button class="btn primary" type="button" disabled={busy || !parse(text).length} onClick={find}>{busy ? "Finding cards…" : "Find cards"}</button>}
         {step === "check" && <>
           <button class="btn" type="button" onClick={() => setStep("paste")}>Back to the list</button>
           <button class="btn primary" type="button" disabled={unclear.length > 0} onClick={() => setStep("pick")}>{unclear.length ? `${unclear.length} left to check` : `Next: versions for ${live.length} cards`}</button>
         </>}
         {step === "pick" && <>
-          <button class="btn" type="button" onClick={() => setStep("check")}>Back</button>
+          <button class="btn" type="button" onClick={() => setStep(deck ? "paste" : "check")}>Back</button>
           <button class="btn primary" type="button" onClick={() => setStep("done")}>Add {total} {total === 1 ? "card" : "cards"} to {target === "wants" ? "the want-list" : "the collection"}</button>
         </>}
         {step === "done" && <button class="btn primary" type="button" onClick={onClose}>Done</button>}
       </footer>
-      {step === "pick" && <Switcher />}
-    </div>
-  );
-}
-
-// ---- variant switcher (prototype only) ---------------------------------------------------------
-function useVariant(): string {
-  const [v, setV] = useState(() => new URLSearchParams(location.search).get("variant") ?? "A");
-  useEffect(() => { const f = () => setV(new URLSearchParams(location.search).get("variant") ?? "A"); addEventListener("pl-variant", f); return () => removeEventListener("pl-variant", f); }, []);
-  return v;
-}
-function goVariant(step: number) {
-  const keys = VARIANTS.map((x) => x[0]);
-  const cur = keys.indexOf(new URLSearchParams(location.search).get("variant") ?? "A");
-  const u = new URL(location.href);
-  u.searchParams.set("variant", keys[(cur + step + keys.length) % keys.length]);
-  history.replaceState(history.state, "", u);
-  dispatchEvent(new Event("pl-variant"));
-}
-function Switcher() {
-  const v = useVariant();
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement).closest("input, textarea, select, [contenteditable]")) return;
-      if (e.key === "ArrowLeft") goVariant(-1); else if (e.key === "ArrowRight") goVariant(1);
-    };
-    addEventListener("keydown", k);
-    return () => removeEventListener("keydown", k);
-  }, []);
-  const name = VARIANTS.find((x) => x[0] === v)?.[1];
-  return (
-    <div class="proto-switch" role="group" aria-label="Prototype variant">
-      <button type="button" onClick={() => goVariant(-1)} aria-label="Previous variant">←</button>
-      <span>{v} · {name}</span>
-      <button type="button" onClick={() => goVariant(1)} aria-label="Next variant">→</button>
     </div>
   );
 }
@@ -514,7 +546,7 @@ export function PasteButton({ to }: { to: Target }) {
   const key = useMemo(() => Math.random(), [open]);
   return (
     <>
-      <button class="btn sm" type="button" onClick={() => setOpen(true)}>Paste a list</button>
+      <button class="btn sm" type="button" onClick={() => setOpen(true)}>{to === "collection" ? "Add a list or deck" : "Paste a list"}</button>
       {open && <Flow key={key} target={to} onClose={() => setOpen(false)} />}
     </>
   );
