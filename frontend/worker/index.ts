@@ -445,7 +445,7 @@ function permsFrom(body: Record<string, any>): { perms: Account["perms"]; preset
 
 const PERM_NAMES: Record<Perm, string> = {
   wants: "want-list", collection: "collection", money: "money", deals: "live deals", details: "deal details",
-  suggest: "suggest cards", edit: "edit want-list", bought: "mark bought",
+  suggest: "suggest cards", edit: "edit want-list", bought: "mark bought", notify: "notifications",
 };
 
 /** GET people, POST people (invite someone new), PUT people/<id>, DELETE people/<id>,
@@ -524,6 +524,7 @@ async function people(request: Request, env: Env, path: string, body: Record<str
       ...creds.map((c) => env.DB.prepare("DELETE FROM seen WHERE cred = ?").bind(c.id)),
       env.DB.prepare("DELETE FROM passkeys WHERE account = ?").bind(a.id),
       env.DB.prepare("DELETE FROM suggestions WHERE account = ?").bind(a.id),
+      env.DB.prepare("DELETE FROM push_devices WHERE account = ?").bind(a.id),
       env.DB.prepare("DELETE FROM accounts WHERE id = ?").bind(a.id),
       logged(env, a.id, `Removed: ${a.name}`),
     ]);
@@ -713,8 +714,8 @@ async function suggestions(request: Request, env: Env, rest: string, ctx: Execut
 /** A document for the signed-in browser. Its version is kept in D1 (D67), so the usual answer to
  *  a refresh, "not changed", costs no KV read; only a changed document is read from KV. */
 /** App notifications (D88): this account's devices, turning them on and off, and a test ping.
- *  Only the owner for now; People gets a switch for everyone else (D88). */
-const mayNotify = (a: Account) => isOwner(a);
+ *  Me always; anyone else only while their "Notifications" switch is on in People (it needs live deals). */
+const mayNotify = (a: Account) => can(a, "notify") && can(a, "deals");
 
 interface PushDevice { sub: Subscription; device: string; browser: string; created: string; rings?: RingSettings }
 
@@ -824,10 +825,17 @@ async function saveAlert(env: Env, a: AlertIn): Promise<{ id: string; sent: numb
   }
   const rank = (Math.max(0, Math.min(3, Math.round(a.rank ?? 0)))) as Rank;
   const at = new Date();
-  const r = await pingAll(env, env.SITE_URL, [OWNER], {
-    // one notification per card: a newer alert for the same card replaces the older one (D88)
-    title: a.title, body: a.body ?? "", url: `/alerts?a=${encodeURIComponent(id)}`, tag: a.tag ?? a.card ?? id, silent: a.silent, badge: await unread(env),
-  }, undefined, (d) => rings(cleanRings(d.rings), a.section as Kind, rank, at));
+  // one notification per card: a newer alert for the same card replaces the older one (D88)
+  const msg = { title: a.title, body: a.body ?? "", url: `/alerts?a=${encodeURIComponent(id)}`, tag: a.tag ?? a.card ?? id, silent: a.silent };
+  const wants = (d: PushDevice) => rings(cleanRings(d.rings), a.section as Kind, rank, at);
+  const r = await pingAll(env, env.SITE_URL, [OWNER], { ...msg, badge: await unread(env) }, undefined, wants);
+  // friends with the switch on get deal alerts only (their unread count isn't kept, so no badge)
+  const friends = a.section === "deals" ? (await accounts(env)).filter((x) => !isOwner(x) && !ended(x) && mayNotify(x)).map((x) => x.id) : [];
+  if (friends.length) {
+    const f = await pingAll(env, env.SITE_URL, friends, msg, undefined, wants);
+    r.sent += f.sent;
+    r.failed.push(...f.failed);
+  }
   return { id, ...r };
 }
 
@@ -841,7 +849,19 @@ async function alertsApi(request: Request, env: Env, rest: string, ctx: Executio
   const w = await who(request, env);
   if (!w) return json({ error: "Sign in first." }, 401);
   const me = w.account;
-  if (!isOwner(me)) return json({ alerts: [], unread: 0 }); // only mine for now (D88)
+  if (!isOwner(me)) {
+    // someone with the Notifications switch: the deal alerts their pings open, without my cart's Pay
+    // button, and without the copy's seller unless they may see deal details (D78, D88)
+    if (!mayNotify(me) || request.method !== "GET" || rest) return json({ alerts: [], unread: 0 });
+    const rows = (await env.DB.prepare("SELECT id, section, at, updated, doc FROM alerts WHERE section = 'deals' ORDER BY at DESC LIMIT 100")
+      .all<{ id: string; section: string; at: string; updated: string; doc: string }>()).results;
+    return json({ unread: 0, alerts: rows.map((r) => {
+      const d = JSON.parse(r.doc) as AlertIn;
+      const buttons = (d.buttons ?? []).map((line) => line.filter((b) => b.url && !b.url.includes("/cart"))).filter((line) => line.length);
+      return { id: r.id, section: r.section, at: r.at, updated: r.updated, read: true, title: d.title, body: d.body, picture: d.picture,
+        done: d.done, buttons, ...(can(me, "details") ? { html: d.html } : {}) };
+    }) });
+  }
   const list = async () => {
     const rows = (await env.DB.prepare("SELECT id, section, at, updated, read, doc FROM alerts ORDER BY at DESC LIMIT 300")
       .all<{ id: string; section: string; at: string; updated: string; read: number; doc: string }>()).results;

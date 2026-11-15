@@ -8,7 +8,7 @@ import { setLabOpen } from "../labstate";
 import { Confirm } from "../ui/Confirm";
 import { IconBack } from "../ui/icons";
 import { toast } from "../toast";
-import { useMe } from "../access";
+import { notifies, useMe } from "../access";
 import { type Device, join, MyAccess, PeopleSection, where } from "./People";
 import { NotificationsSection } from "./Notifications";
 
@@ -79,7 +79,7 @@ export function Settings({ data }: { data: AppData }) {
         <button class="btn sm" type="button" onClick={() => setLabOpen(true)}>Open</button>
       </div>
 
-      {me.owner && <NotificationsSection />}
+      {notifies(me) && <NotificationsSection owner={me.owner} />}
 
       {me.owner ? <PeopleSection refreshKey={peopleKey} onRemoveDevice={setRemoving} /> : <MyAccess name={me.name} expires={me.expires} perms={me.perms} />}
 

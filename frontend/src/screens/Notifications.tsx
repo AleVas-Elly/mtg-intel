@@ -36,7 +36,7 @@ const RING_CHOICES: { rank: RingSettings["ring"]; label: string }[] = [
 ];
 
 /** What rings on this device (D88). Everything still lands on the Alerts page; this only decides the ping. */
-function RingSettingsView({ value, onChange, busy }: { value: RingSettings; onChange: (r: RingSettings) => void; busy: boolean }) {
+function RingSettingsView({ value, onChange, busy, owner }: { value: RingSettings; onChange: (r: RingSettings) => void; busy: boolean; owner: boolean }) {
   const set = (patch: Partial<RingSettings>) => onChange({ ...value, ...patch });
   const kind = (k: keyof RingSettings["kinds"], label: string) => (
     <button type="button" class="chip toggle" aria-pressed={value.kinds[k]} disabled={busy} onClick={() => set({ kinds: { ...value.kinds, [k]: !value.kinds[k] } })}>{label}</button>
@@ -49,7 +49,7 @@ function RingSettingsView({ value, onChange, busy }: { value: RingSettings; onCh
   );
   return (
     <div class="rings">
-      <div class="ring-row"><span>Rings for</span><div class="ring-opts">{kind("deals", "Deals")}{kind("digest", "Digest")}{kind("system", "Problems")}</div></div>
+      <div class="ring-row"><span>Rings for</span><div class="ring-opts">{kind("deals", "Deals")}{owner && kind("digest", "Digest")}{owner && kind("system", "Problems")}</div></div>
       {value.kinds.deals && (
         <div class="ring-row"><span>Smallest deal that rings</span>
           <div class="seg" role="group" aria-label="Smallest deal that rings">
@@ -73,7 +73,7 @@ function RingSettingsView({ value, onChange, busy }: { value: RingSettings; onCh
   );
 }
 
-export function NotificationsSection() {
+export function NotificationsSection({ owner }: { owner: boolean }) {
   const [state, setState] = useState<PushState | null>(null);
   const [devices, setDevices] = useState<PushDevice[]>([]);
   const [here, setHere] = useState<string | null>(null);
@@ -113,9 +113,9 @@ export function NotificationsSection() {
             <button class="btn sm" type="button" disabled={busy} onClick={() => act(turnOff, "Notifications are off on this device.")}>Turn off</button>
           </dd></div>
         )}
-        {state === "on" && mine && <RingSettingsView value={mine.rings} onChange={changeRings} busy={false} />}
+        {state === "on" && mine && <RingSettingsView value={mine.rings} onChange={changeRings} busy={false} owner={owner} />}
         {state === "off" && (
-          <div class="kv"><dt>This device<br /><small class="hint" style={{ margin: 0 }}>Deals, the digest and problems with the bot</small></dt><dd>
+          <div class="kv"><dt>This device<br /><small class="hint" style={{ margin: 0 }}>{owner ? "Deals, the digest and problems with the bot" : "Deal alerts"}</small></dt><dd>
             <button class="btn sm" type="button" disabled={busy} onClick={() => act(turnOn, "Notifications are on. Send a test to check.")}>Turn on</button>
           </dd></div>
         )}

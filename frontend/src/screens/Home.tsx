@@ -1,6 +1,6 @@
 // Home (D57): the first screen after sign-in. Today's best deal as a big drop in its own colour,
 // the other deals beside it, the countdown to the next check, the counts, and what went today.
-import { can, currentMe } from "../access";
+import { can, currentMe, notifies } from "../access";
 import { Inbox } from "./Wants";
 import type { AppData } from "../data";
 import { dealGap, dealRatio, wishCount } from "../data";
@@ -93,7 +93,7 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
           <h1 class="title">{today()}</h1>
           {seesDeals && <Pulse data={data} />}
           <span class="phone-only head-btns">
-            {me.owner && <a class="icon-btn bell" href="/alerts" onClick={link("/alerts")} aria-label={unread ? `Alerts, ${unread} unread` : "Alerts"}><IconBell />{unread > 0 && <span class="dot">{unread > 9 ? "9+" : unread}</span>}</a>}
+            {notifies(me) && <a class="icon-btn bell" href="/alerts" onClick={link("/alerts")} aria-label={unread ? `Alerts, ${unread} unread` : "Alerts"}><IconBell />{unread > 0 && <span class="dot">{unread > 9 ? "9+" : unread}</span>}</a>}
             <a class="icon-btn" href="/dashboards" onClick={link("/dashboards")} aria-label="Dashboards"><IconChart /></a>
             <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
           </span>

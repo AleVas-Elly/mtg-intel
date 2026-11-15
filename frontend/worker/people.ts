@@ -2,7 +2,7 @@
 // account; my own passkeys are the account `owner`, which always has everything and alone manages
 // people. Every switch is checked here on the server, not only hidden in the app.
 
-export const PERMS = ["wants", "collection", "money", "deals", "details", "suggest", "edit", "bought"] as const;
+export const PERMS = ["wants", "collection", "money", "deals", "details", "suggest", "edit", "bought", "notify"] as const;
 export type Perm = (typeof PERMS)[number];
 export type Perms = Partial<Record<Perm, boolean>>;
 
@@ -10,7 +10,7 @@ export const PRESETS: Record<string, Perm[]> = {
   viewer: ["wants", "collection"],
   friend: ["wants", "collection", "suggest"],
   helper: ["wants", "collection", "suggest", "edit", "bought"],
-  coowner: [...PERMS],
+  coowner: PERMS.filter((p) => p !== "notify"), // notifications are always my own choice, person by person (D88)
 };
 
 export interface Account {
@@ -33,7 +33,7 @@ export function tidy(perms: Perms): Perms {
   const out: Perms = {};
   for (const p of PERMS) if (perms[p]) out[p] = true;
   if (!out.wants) { delete out.edit; delete out.bought; }
-  if (!out.deals) delete out.details;
+  if (!out.deals) { delete out.details; delete out.notify; } // their pings are deal alerts
   if (!out.wants && !out.collection) delete out.money;
   return out;
 }

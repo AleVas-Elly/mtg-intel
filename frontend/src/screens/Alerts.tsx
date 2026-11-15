@@ -111,7 +111,7 @@ function SnoozePanel({ a, z, onSnooze, onClose }: { a: Alert; z?: Snooze; onSnoo
 }
 
 function AlertCard({ a, focus, z, onAction, onSnooze }: { a: Alert; focus: boolean; z?: Snooze; onAction: (a: Alert, action: string) => void;
-  onSnooze: (a: Alert, body: { days?: number; below?: number } | null) => void }) {
+  onSnooze?: (a: Alert, body: { days?: number; below?: number } | null) => void }) {
   const [snoozing, setSnoozing] = useState(false);
   return (
     <article id={`al-${a.id}`} class={`al${a.read ? "" : " unread"}${a.done ? " done" : ""}${focus ? " focus" : ""}`}>
@@ -125,21 +125,21 @@ function AlertCard({ a, focus, z, onAction, onSnooze }: { a: Alert; focus: boole
             {(a.buttons ?? []).flat().map((b) => b.url
               ? <a class="btn sm" href={b.url} target={b.url.startsWith("/") ? undefined : "_blank"} rel="noopener">{b.text}{!b.url.startsWith("/") && <IconOut />}</a>
               : <button class="btn sm" type="button" disabled={b.done || !b.action} onClick={() => b.action && onAction(a, b.action)}>{b.text}</button>)}
-            {a.card && <button class="btn sm" type="button" aria-expanded={snoozing} onClick={() => setSnoozing(!snoozing)}>{z ? "Snoozed" : "Snooze"}</button>}
+            {a.card && onSnooze && <button class="btn sm" type="button" aria-expanded={snoozing} onClick={() => setSnoozing(!snoozing)}>{z ? "Snoozed" : "Snooze"}</button>}
           </div>
         )}
-        {snoozing && a.card && <SnoozePanel a={a} z={z} onClose={() => setSnoozing(false)} onSnooze={(body) => { setSnoozing(false); onSnooze(a, body); }} />}
+        {snoozing && a.card && onSnooze && <SnoozePanel a={a} z={z} onClose={() => setSnoozing(false)} onSnooze={(body) => { setSnoozing(false); onSnooze(a, body); }} />}
       </div>
     </article>
   );
 }
 
-export function Alerts({ system }: { system: boolean }) {
+export function Alerts({ owner }: { owner: boolean }) {
   const asked = new URLSearchParams(location.search).get("a");
   const [doc, setDoc] = useState<AlertsDoc | null>(null);
   const [section, setSection] = useState<Section>(() => (asked?.split(":")[0] as Section) || "deals");
   const [error, setError] = useState<string | null>(null);
-  const shown = SECTIONS.filter((s) => system || s.id !== "system");
+  const shown = SECTIONS.filter((s) => owner || s.id === "deals"); // friends get deal alerts only
   const load = () => send<AlertsDoc>("GET", "/api/alerts").then((d) => { setDoc(d); setUnread(d.unread); setError(null); })
     .catch((e) => setError((e as Error).message));
   useEffect(() => {
@@ -193,7 +193,7 @@ export function Alerts({ system }: { system: boolean }) {
       {error && <p class="err">{error}</p>}
       {doc && !list.length && <p class="hint al-empty">{SECTIONS.find((s) => s.id === section)!.empty}</p>}
       <div class="al-list">
-        {list.map((a) => <AlertCard key={a.id} a={a} focus={a.id === asked} z={doc?.snoozes?.find((z) => z.card === a.card)} onAction={act} onSnooze={snooze} />)}
+        {list.map((a) => <AlertCard key={a.id} a={a} focus={a.id === asked} z={doc?.snoozes?.find((z) => z.card === a.card)} onAction={act} onSnooze={owner ? snooze : undefined} />)}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "preact/hooks";
 import { whenSignedOut } from "./api";
-import { type Perm, useMe } from "./access";
+import { notifies, type Perm, useMe } from "./access";
 import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
 import { IconBell, IconChart, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconStack, IconWants } from "./ui/icons";
@@ -75,7 +75,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
     path === "/search" ? <Search data={data} /> :
     path === "/check" ? <Check data={data} /> :
     path === "/settings" ? <Settings data={data} /> :
-    path === "/alerts" && me.owner ? <Alerts system={me.owner} /> :
+    path === "/alerts" && notifies(me) ? <Alerts owner={me.owner} /> :
     path === "/deals" ? <Deals data={data} card={card} /> :
     <Home data={data} card={card} />;
   const counts: Record<string, number | undefined> = { "/deals": dealCount || undefined, "/check": flagged || undefined, "/wants": data.wants ? wishCount(data.wants.wishes) : undefined };
@@ -89,7 +89,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
           </a>
         ))}
         <div class="grow" />
-        {me.owner && <a href="/alerts" onClick={link("/alerts")} aria-current={path === "/alerts" ? "page" : undefined}><IconBell />Alerts{unread > 0 && <span class="count">{unread}</span>}</a>}
+        {notifies(me) && <a href="/alerts" onClick={link("/alerts")} aria-current={path === "/alerts" ? "page" : undefined}><IconBell />Alerts{unread > 0 && <span class="count">{unread}</span>}</a>}
         {(may("wants") || may("collection")) && <a href="/dashboards" onClick={link("/dashboards")} aria-current={path === "/dashboards" ? "page" : undefined}><IconChart />Dashboards</a>}
         <a href="/settings" onClick={link("/settings")} aria-current={path === "/settings" ? "page" : undefined}><IconSettings />Settings</a>
       </nav>

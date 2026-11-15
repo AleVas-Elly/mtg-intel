@@ -2,11 +2,11 @@
 // app only hides what someone can't use. Kept in localStorage so the right screens paint at once.
 import { useEffect, useState } from "preact/hooks";
 
-export type Perm = "wants" | "collection" | "money" | "deals" | "details" | "suggest" | "edit" | "bought";
+export type Perm = "wants" | "collection" | "money" | "deals" | "details" | "suggest" | "edit" | "bought" | "notify";
 
 export interface Me { id: string; name: string; owner: boolean; expires: string | null; perms: Record<Perm, boolean> }
 
-const ALL: Record<Perm, boolean> = { wants: true, collection: true, money: true, deals: true, details: true, suggest: true, edit: true, bought: true };
+const ALL: Record<Perm, boolean> = { wants: true, collection: true, money: true, deals: true, details: true, suggest: true, edit: true, bought: true, notify: true };
 const OWNER: Me = { id: "owner", name: "You", owner: true, expires: null, perms: ALL };
 
 let me: Me = (() => {
@@ -27,6 +27,8 @@ export function setMe(next: Me | null) {
 /** The signed-in person, outside components. */
 export const currentMe = () => me;
 export const can = (p: Perm) => me.owner || !!me.perms[p];
+/** Notifications and the Alerts page (D88): me, or someone whose "Notifications" switch is on. */
+export const notifies = (m: Me) => m.owner || (m.perms.notify && m.perms.deals);
 
 export function useMe(): Me {
   const [, tick] = useState(0);
@@ -47,13 +49,14 @@ export const PERM_INFO: { id: Perm; label: string; hint: string; needs?: Perm }[
   { id: "suggest", label: "Suggest cards", hint: "Their picks wait in your inbox for Add or Dismiss" },
   { id: "edit", label: "Edit want-list", hint: "Add, change and remove wishes and targets", needs: "wants" },
   { id: "bought", label: "Mark bought", hint: "Record purchases and take cards out of the collection", needs: "wants" },
+  { id: "notify", label: "Notifications", hint: "Deal alerts on their phone and an Alerts page with them", needs: "deals" },
 ];
 
 export const PRESETS: { id: string; label: string; hint: string; perms: Perm[] }[] = [
   { id: "viewer", label: "Viewer", hint: "Sees the want-list and collection", perms: ["wants", "collection"] },
   { id: "friend", label: "Friend", hint: "Viewer, and can suggest cards", perms: ["wants", "collection", "suggest"] },
   { id: "helper", label: "Helper", hint: "Friend, and can edit the want-list and mark bought", perms: ["wants", "collection", "suggest", "edit", "bought"] },
-  { id: "coowner", label: "Co-owner", hint: "Everything except managing people", perms: ["wants", "collection", "money", "deals", "details", "suggest", "edit", "bought"] },
+  { id: "coowner", label: "Co-owner", hint: "Everything except managing people and notifications", perms: ["wants", "collection", "money", "deals", "details", "suggest", "edit", "bought"] },
 ];
 
 // Access can change while the app is open (I edit someone's switches): the sign-in check runs again
