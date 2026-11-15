@@ -354,41 +354,42 @@ function AddList({ items, upd, target, setAll, each, lot, setLot, spread, deck, 
   const flip = (id: number) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const apply = (p: Partial<Item>) => setAll(p, sel);
   const change: Change = (f) => each(f, sel);
+  const wants = target === "wants";
   return (
     <>
-      <div class={`pl-top${picked.length ? " active" : ""}`}>
-        <div class="pl-toolbar">
-          <label class="pl-all">
-            <input type="checkbox" class="pl-check-box" checked={picked.length === items.length} ref={(el) => { if (el) el.indeterminate = picked.length > 0 && picked.length < items.length; }}
-              onChange={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))} aria-label="Select every card" />
-            <span>{picked.length ? `${picked.length} of ${items.length} selected` : "Select all"}</span>
-          </label>
-          {picked.length ? (
-            <span class="pl-toolbar-acts">
-              <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>
-              <button type="button" class="btn sm danger-soft" onClick={() => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); }}>Remove</button>
-            </span>
-          ) : <span class="pl-hint">Tick cards to set them together</span>}
-        </div>
-        {picked.length > 0 && (
-          <div class="pl-bulk-line">
-            {target === "wants" && <ListPop items={picked} change={change} bulk />}
-            {target === "wants" ? <LangPick value={sameOf(picked, "lang")} onChange={(lang) => apply({ lang })} /> : <LangOne value={sameOf(picked, "lang")} onChange={(lang) => apply({ lang })} />}
-            <CondPop value={sameOf(picked, "cond")} onChange={(cond) => apply({ cond })} target={target} />
-            <FinishPop value={sameOf(picked, "finish")} onChange={(finish) => apply({ finish })} fins={target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]} target={target} />
-            <Pop label="More settings" text="More settings">
-              <MoreForm items={picked} apply={apply} change={change} target={target} bulk />
-            </Pop>
-          </div>
-        )}
-      </div>
-      {target === "collection" && !deck && !picked.length && (
+      {target === "collection" && !deck && (
         <label class="pl-lotline">Paid one price for all of these?
           <span class="money"><span>€</span><input inputMode="decimal" placeholder="optional" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span>
           <small>Shared out by Cardmarket price; a price typed on a card wins.</small>
         </label>
       )}
-      <div class="list add-list">
+      {/* one grid for the head and every row: each settings column is as wide as its widest entry, all gaps equal */}
+      <div class={`list add-list${wants ? "" : " money"}`}>
+        <div class={`add-gridhead${picked.length ? " active" : ""}`}>
+          <input type="checkbox" class="pl-check-box" checked={picked.length === items.length} ref={(el) => { if (el) el.indeterminate = picked.length > 0 && picked.length < items.length; }}
+            onChange={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))} aria-label="Select every card" />
+          <span class="add-gh-who">
+            <b>{picked.length ? `${picked.length} selected` : "Select all"}</b>
+            {picked.length > 0 && <>
+              <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>
+              <Pop label="More settings" text="More" ghost><MoreForm items={picked} apply={apply} change={change} target={target} bulk /></Pop>
+              <button type="button" class="pl-text-btn bad" onClick={() => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); }}>Remove</button>
+            </>}
+          </span>
+          {picked.length ? <>
+            <span class="add-gh-label">Copies</span>
+            {wants ? <LangPick value={sameOf(picked, "lang")} onChange={(lang) => apply({ lang })} /> : <LangOne value={sameOf(picked, "lang")} onChange={(lang) => apply({ lang })} />}
+            <CondPop value={sameOf(picked, "cond")} onChange={(cond) => apply({ cond })} target={target} />
+            <FinishPop value={sameOf(picked, "finish")} onChange={(finish) => apply({ finish })} fins={wants ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]} target={target} />
+            {wants ? <ListPop items={picked} change={change} bulk /> : <span class="add-gh-label">Paid each</span>}
+          </> : <>
+            <span class="add-gh-label">Copies</span>
+            <span class="add-gh-label">Language</span>
+            <span class="add-gh-label">{wants ? "Worst condition" : "Condition"}</span>
+            <span class="add-gh-label">Finish</span>
+            <span class="add-gh-label">{wants ? "Lists" : "Paid each"}</span>
+          </>}
+        </div>
         {items.map((it) => {
           const extras = extrasLine(it, target);
           return (
