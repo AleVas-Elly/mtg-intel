@@ -20,6 +20,7 @@ import { Lab } from "./ui/Lab";
 import { dismissToast, useToast } from "./toast";
 
 import { LOCAL } from "./env";
+import { ProtoHomeSlot, WelcomeTourPrototype } from "./prototype/WelcomeTour";  // PROTOTYPE (issue 5)
 import { setLabOpen, useLabOpen } from "./labstate";
 
 const TABS: { path: string; label: string; Icon: typeof IconHome; needs?: Perm }[] = [
@@ -95,11 +96,13 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
       </nav>
       <main class="main">
         {LOCAL && <div class="local-copy">Local test copy on Claude's machine: made-up prices, not your real deals.</div>}
+        {path === "/" && <ProtoHomeSlot />}
         {screen}
       </main>
       {card && (card.startsWith("sf:") ? <CardPane data={data} id={card.slice(3)} /> : <Detail data={data} wishKey={card} />)}
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <ToastView />
+      <WelcomeTourPrototype />
       <nav class="tabbar" aria-label="Main">
         {phoneTabs.map(({ path: p, label, Icon }) => (
           <a class={`tab${SEC[p] ? ` sec-${SEC[p]}` : ""}`} href={p} onClick={link(p)} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
