@@ -138,9 +138,9 @@ export function Search({ data }: { data: AppData }) {
       <header class="head"><div><h1 class="title">Search</h1><p class="sub">Scryfall search syntax, joined with my lists and Cardmarket prices</p></div></header>
       <form class="toolbar search-bar" onSubmit={search} role="search">
         <div class="seg scope grow" role="group" aria-label="Where to search" data-scope={scope}>
+          <button type="button" class="s-all" aria-pressed={scope === "all"} aria-label="All cards" title="All cards" onClick={() => setScope("all")}><IconSearch /><span class="lbl">All cards</span></button>
           <button type="button" class="s-mine" aria-pressed={scope === "mine"} aria-label="My want-list" title="My want-list" onClick={() => setScope("mine")}><IconWants /><span class="lbl">My want-list</span></button>
           {can("collection") && <button type="button" class="s-coll" aria-pressed={scope === "coll"} aria-label="My collection" title="My collection" onClick={() => setScope("coll")}><IconStack /><span class="lbl">My collection</span></button>}
-          <button type="button" class="s-all" aria-pressed={scope === "all"} aria-label="All cards" title="All cards" onClick={() => setScope("all")}><IconSearch /><span class="lbl">All cards</span></button>
         </div>
         <label class="field"><IconSearch /><span class="sr">Search</span>
           <input ref={input} type="search" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellcheck={false}

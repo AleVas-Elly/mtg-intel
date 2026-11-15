@@ -408,3 +408,7 @@ button.add-crumb { border: 0; background: none; padding: 0; font: inherit; font-
 :root[data-btn="soft"] :is(.drop, .hero, .d-stage) .btn.primary { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, #c6ff3d 70%, transparent); }
 /* the + on Search's card tiles: soft too, opaque so it reads over the card art */
 :root[data-btn="soft"] .add-btn { background: color-mix(in srgb, var(--live) 18%, var(--btn-bg)); color: var(--live); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--live) 65%, transparent), 0 6px 16px -6px rgba(0, 0, 0, 0.5); }
+/* hovering a place that isn't chosen shows its colour */
+.search-bar .seg.scope.grow button.s-mine:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--wants) 32%, transparent); color: var(--wants-text); }
+.search-bar .seg.scope.grow button.s-coll:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--coll) 34%, transparent); color: var(--coll-text); }
+.search-bar .seg.scope.grow button.s-all:not([aria-pressed="true"]):hover { background: var(--fill-strong); color: var(--ink); }
