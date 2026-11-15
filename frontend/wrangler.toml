@@ -30,6 +30,7 @@ enabled = true
 # App notifications (D88): the VAPID public key. Its private half is the VAPID_PRIVATE secret (JWK);
 # a new pair means every device turns notifications on again.
 [vars]
+SITE_URL = "https://mtg-intel.mtgintel-096633.workers.dev"
 VAPID_PUBLIC = "BFexzLDHf8IrqAosdGAd8Tmq3MTg3ky3PObp4tskNkdzrNQHCJl-BoSe9JDTgyhsAI9L_B0JYa4us12cr4Ypvpw"
 
 # Secrets (wrangler secret put): VAPID_PRIVATE, SESSION_SECRET (signs sign-in cookies), INGEST_TOKEN (lets the

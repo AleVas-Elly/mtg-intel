@@ -96,6 +96,7 @@ async function watchdog(env) {
 }
 
 async function telegram(env, text) {
+  await toApp(env, text);
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
   try {
     await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
@@ -105,6 +106,17 @@ async function telegram(env, text) {
     });
   } catch {
     // nothing else to tell
+  }
+}
+
+/** A system alert on the Alerts page, ringing my devices (D88): first line the title, the rest the body. */
+export async function toApp(env, text) {
+  if (!env.SITE) return;
+  const [title, ...rest] = text.split("\n");
+  try {
+    await env.SITE.alert({ section: "system", title: title.slice(0, 200), body: rest.join("\n").trim(), ping: true });
+  } catch (e) {
+    console.log(`alert to the site failed: ${e}`);
   }
 }
 

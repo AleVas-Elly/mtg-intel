@@ -1,7 +1,7 @@
-"""Phone alerts (D43): Telegram when a bot is configured, ntfy otherwise.
-
-Telegram needs TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID; ntfy needs only NTFY_TOPIC
-(https://ntfy.sh, no account: the topic name is the address).
+"""Phone alerts. The app (D88): every alert goes to the site's Alerts page, which rings my devices;
+needs SITE_URL and SITE_INGEST_TOKEN. Telegram (D43) runs alongside until it is switched off; needs
+TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID. ntfy is the backup for system alerts when the site can't
+take them (or no other channel is set up); needs only NTFY_TOPIC (https://ntfy.sh, no account).
 """
 
 from __future__ import annotations
@@ -30,15 +30,67 @@ class Rich:
     links: list[dict[str, str]] = field(default_factory=list)  # the marketplace and site buttons
     silent: bool = False  # arrives without ringing
     tip: str = ""  # one line on timing: buy now, could drop (D55)
+    picture: str | None = None  # the photo's URL on the site, for the Alerts page (D88)
 
 NTFY_URL = "https://ntfy.sh"
 TELEGRAM_API = "https://api.telegram.org"
 
 
-def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None = None) -> bool:
-    """Send to whichever channel is configured. Never raises. Telegram gets the richer version when
-    there is one (the photo, else the HTML text), the plain text if Telegram refuses both; ntfy
-    gets title and message."""
+SECTIONS = ("deals", "digest", "system")
+
+
+def app_buttons(rows: list[list[dict[str, str]]] | None) -> list[list[dict[str, str]]]:
+    """Telegram's buttons for the Alerts page: links stay links, a callback becomes an action."""
+    return [[{"text": b["text"], "url": b["url"]} if b.get("url") else {"text": b["text"], "action": b.get("callback_data", "")}
+             for b in row] for row in rows or []]
+
+
+def to_app(client: httpx.Client, section: str, title: str, body: str = "", *, html: str | None = None,
+           id: str | None = None, picture: str | None = None, buttons: list[list[dict[str, str]]] | None = None,
+           done: bool | None = None, ping: bool = True) -> bool:
+    """Store an alert on the site's Alerts page (or update the one with this id) and, with `ping`,
+    ring my devices. Whether the site took it. Never raises."""
+    url, token = os.environ.get("SITE_URL"), os.environ.get("SITE_INGEST_TOKEN")
+    if not url or not token:
+        return False
+    assert section in SECTIONS, section
+    doc = {"section": section, "title": title[:200], "body": body[:3000], "ping": ping,
+           **{k: v for k, v in {"id": id, "html": html, "picture": picture, "buttons": buttons, "done": done}.items()
+              if v is not None}}
+    try:
+        response = client.post(f"{url.rstrip('/')}/api/ingest/alert", json=doc, timeout=20,
+                               headers={"Authorization": f"Bearer {token}", "User-Agent": "mtg-intel"})
+        response.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        return False
+
+
+def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None = None, section: str = "system",
+          app_id: str | None = None, ping: bool = True) -> bool:
+    """Send to every configured channel. Never raises. The app gets the alert in its section (the
+    rich version's text, picture and buttons when there is one). Telegram gets the photo, else the
+    HTML text, the plain text if it refuses both. ntfy gets title and message when nothing else
+    took the alert, or the site didn't take a system alert (the backup when the site is down)."""
+    rich = telegram
+    to_page = to_app(client, section, title, _plain(rich.head) if rich and rich.head else message,
+                     html=(rich.caption or rich.html) if rich else None, id=app_id,
+                     picture=rich.picture if rich else None, buttons=app_buttons(rich.buttons) if rich else None,
+                     ping=ping and not (rich and rich.silent))  # a quiet alert waits on the page (night: only Steals ring)
+    sent = _telegram(client, title, message, rich)
+    if (section == "system" and not to_page) or not (to_page or sent):
+        sent = send_alert(client, os.environ.get("NTFY_TOPIC"), title, message) or sent
+    return to_page or sent
+
+
+def _plain(html_text: str) -> str:
+    import html
+    import re
+
+    return html.unescape(re.sub(r"<[^>]+>", "", html_text))
+
+
+def _telegram(client: httpx.Client, title: str, message: str, telegram: Rich | None) -> bool:
     token, chat_id = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if token and chat_id:
         if telegram and telegram.photo:
@@ -59,7 +111,7 @@ def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None 
                 telegram.message_id = sent.get("message_id")
                 return True
         return send_telegram(client, token, chat_id, f"{title}\n\n{message}")
-    return send_alert(client, os.environ.get("NTFY_TOPIC"), title, message)
+    return False
 
 
 def send_telegram(client: httpx.Client, token: str, chat_id: str, text: str, html: bool = False,

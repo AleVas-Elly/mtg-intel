@@ -325,11 +325,80 @@ def test_telegram_is_used_when_configured(monkeypatch):
         posted.append(request)
         return httpx.Response(200, json={"ok": True})
 
-    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "title", "body") is True
+    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "title", "body", section="digest") is True
     [request] = posted
     assert str(request.url) == "https://api.telegram.org/bot123:abc/sendMessage"
     assert json.loads(request.content) == {"chat_id": "42", "text": "title\n\nbody",
                                            "link_preview_options": {"is_disabled": True}}
+
+
+def _site(monkeypatch, telegram=False):
+    monkeypatch.setenv("SITE_URL", "https://site.test")
+    monkeypatch.setenv("SITE_INGEST_TOKEN", "tok")
+    monkeypatch.setenv("NTFY_TOPIC", "my-topic")
+    if telegram:
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+        monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
+    else:
+        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+
+
+def test_the_app_gets_every_alert_in_its_section_and_telegram_too(monkeypatch):
+    from mtg_intel.archive.notify import alert
+
+    _site(monkeypatch, telegram=True)
+    posted: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        posted.append(request)
+        return httpx.Response(200, json={"ok": True, "result": {}})
+
+    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "grab needs a look", "stale source")
+    app, tg = posted
+    assert str(app.url) == "https://site.test/api/ingest/alert" and app.headers["Authorization"] == "Bearer tok"
+    assert json.loads(app.content) == {"section": "system", "title": "grab needs a look", "body": "stale source", "ping": True}
+    assert "api.telegram.org" in str(tg.url)  # side by side until Telegram is switched off; ntfy not needed
+
+
+def test_ntfy_backs_up_a_system_alert_the_site_did_not_take(monkeypatch):
+    from mtg_intel.archive.notify import alert
+
+    _site(monkeypatch)
+    urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        urls.append(str(request.url))
+        return httpx.Response(503 if "site.test" in str(request.url) else 200)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert alert(client, "grab crashed", "boom") is True
+    assert urls == ["https://site.test/api/ingest/alert", "https://ntfy.sh/my-topic"]
+    urls.clear()
+    ok = httpx.Client(transport=httpx.MockTransport(lambda r: (urls.append(str(r.url)), httpx.Response(200))[1]))
+    assert alert(ok, "grab crashed", "boom") is True  # the site took it: no ntfy
+    assert urls == ["https://site.test/api/ingest/alert"]
+
+
+def test_a_rich_deal_reaches_the_page_with_picture_and_buttons_and_a_quiet_one_does_not_ring(monkeypatch):
+    from mtg_intel.archive.notify import Rich, alert
+
+    _site(monkeypatch)
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200)
+
+    rich = Rich("<b>x</b>", [[{"text": "🧾 Pay", "url": "https://ct.test/cart"}], [{"text": "Set €3", "callback_data": "t|a|en|n|300"}]],
+                caption="🔥 Steal · <b>Sheoldred</b> · €18.40\nNear Mint", head="🔥 Steal · <b>Sheoldred</b> · €18.40",
+                picture="https://site.test/img/a.jpg", silent=True)
+    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "Steal: Sheoldred", "text", telegram=rich,
+                 section="deals", app_id="deal:7")
+    [doc] = sent
+    assert doc["id"] == "deal:7" and doc["section"] == "deals" and doc["body"] == "🔥 Steal · Sheoldred · €18.40"
+    assert doc["html"].startswith("🔥 Steal") and doc["picture"] == "https://site.test/img/a.jpg"
+    assert doc["buttons"] == [[{"text": "🧾 Pay", "url": "https://ct.test/cart"}], [{"text": "Set €3", "action": "t|a|en|n|300"}]]
+    assert doc["ping"] is False  # quiet at night: on the page, no ring
 
 
 def test_telegram_gets_the_rich_version_and_falls_back_to_plain_text(monkeypatch):

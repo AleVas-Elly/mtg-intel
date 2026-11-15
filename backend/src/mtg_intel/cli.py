@@ -537,7 +537,7 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
 
     tg_token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not tg_token or not chat:  # no bot: the old plain alerts
-        return [alert(client, *deals.message(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
+        return [alert(client, *deals.message(d), section="deals") for d in result.new[:MAX_DEAL_MESSAGES]]
     account = lifecycle.Account(client, token)
     telegram = lifecycle.Telegram(client, tg_token, chat)
     alerts: dict[str, dict] = state.setdefault("alerts", {})
@@ -613,7 +613,8 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
         out.html = out.caption
         out.buttons = lifecycle.keyboard(record, done=False)
         out.silent = not lifecycle.rings(d, now)
-        ok = alert(client, *deals.message(d), telegram=out)
+        record["app_id"] = f"deal:{d.listing.id}"
+        ok = alert(client, *deals.message(d), telegram=out, section="deals", app_id=record["app_id"])
         sent.append(ok)
         if ok and out.message_id:
             alerts[str(out.message_id)] = record | {"message_id": out.message_id, "line": line}
@@ -636,7 +637,7 @@ def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: 
     import pyarrow.parquet as pq
 
     from mtg_intel import targets
-    from mtg_intel.archive.notify import telegram_call
+    from mtg_intel.archive.notify import app_buttons, telegram_call, to_app
     from mtg_intel.site import Site
 
     if watch is None:
@@ -665,6 +666,8 @@ def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: 
     if site_store:
         site_store.put("targets", targets.site_doc(found_targets, now.isoformat()))
     note = targets.weekly_note(found_targets, os.environ.get("SITE_URL"))
+    if send and note:
+        print(f"target note on the Alerts page: {to_app(client, 'digest', 'Target prices to set', html=note[0], buttons=app_buttons(note[1]), ping=False)}")
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if send and note and token and chat:
         sent = telegram_call(client, token, "sendMessage", {
@@ -679,7 +682,7 @@ def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: b
     import pyarrow.parquet as pq
 
     from mtg_intel import trends
-    from mtg_intel.archive.notify import telegram_call
+    from mtg_intel.archive.notify import telegram_call, to_app
 
     if watch is None:
         watch = pq.read_table(store.fetch("my/watch.parquet")).to_pylist()
@@ -697,6 +700,8 @@ def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: b
         import re
 
         print(html.unescape(re.sub(r"<[^>]+>", "", note)))
+    if send and note:
+        print(f"trend note on the Alerts page: {to_app(client, 'digest', 'This week on the want-list', html=note, ping=False)}")
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if send and note and token and chat:
         sent = telegram_call(client, token, "sendMessage", {
@@ -848,6 +853,11 @@ def check_deals(args: argparse.Namespace) -> int:
                       deals.price_trend(ct, None, "📉 CardTrader, cheapest copy", min_days=5)]
             out = deals.telegram(d, site_url, preview(d), image, trends)
             out.stamps = done
+            if image and site_store:  # the picture itself, for the Alerts page (D88)
+                try:
+                    out.picture = site_store.put_image(secrets.token_urlsafe(16), image)
+                except httpx.HTTPError as e:
+                    print(f"WARNING  alert picture not stored: {e}", file=sys.stderr)
             out.tip = deals.buy_tip(d.listing.price, deals.with_shipping(cm), ct)  # what buying costs (D78)
             return out
 
@@ -874,13 +884,13 @@ def check_deals(args: argparse.Namespace) -> int:
         if args.dry_run:
             return 0
         sent = live_deal_alerts(client, token, state, result, watch, now, rich, site_store)
-        sent += [alert(client, title, text) for title, text, _ in messages]
+        sent += [alert(client, title, text, section="deals") for title, text, _ in messages]
         if sent:
             print(f"alerts sent: {sum(sent)} of {len(sent)}")
         deals.record_check(state, now, len(result.failed_blueprints), sum(sent))
         note = deals.digest(state, result, watch, now, os.environ.get("SITE_URL"))
         if note:
-            print(f"daily digest sent: {alert(client, *note)}")
+            print(f"daily digest sent: {alert(client, *note, section='digest', ping=False)}")
         local = now.astimezone(ZoneInfo("Europe/Amsterdam"))
         if local.weekday() == TARGETS_WEEKDAY and local.hour >= TARGETS_HOUR and state.get("targets_on") != local.date().isoformat():
             state["targets_on"] = local.date().isoformat()

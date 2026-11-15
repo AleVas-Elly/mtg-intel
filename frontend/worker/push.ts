@@ -52,7 +52,7 @@ export async function vapid(endpoint: string, publicKey: string, privateJwk: str
   return `vapid t=${head}.${body}.${b64url(sig)}, k=${publicKey}`;
 }
 
-export interface Ping { title: string; body: string; url?: string; tag?: string; silent?: boolean }
+export interface Ping { title: string; body: string; url?: string; tag?: string; silent?: boolean; badge?: number }
 
 /** Send one ping. "gone" means the device unsubscribed or the site was removed: forget it. */
 export async function push(sub: Subscription, ping: Ping, env: { VAPID_PUBLIC: string; VAPID_PRIVATE: string; SITE_URL: string }): Promise<"ok" | "gone" | string> {

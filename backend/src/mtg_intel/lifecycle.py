@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from mtg_intel import deals
-from mtg_intel.archive.notify import TELEGRAM_API
+from mtg_intel.archive.notify import TELEGRAM_API, app_buttons, to_app
 
 API = "https://api.cardtrader.com/api/v2"
 CART_URL = "https://www.cardtrader.com/cart/edit"  # opens in my own language (/en-EU/…, /it-IT/…)
@@ -364,7 +364,10 @@ class Telegram:
             pass
         return None
 
-    def update(self, alert: dict[str, Any], text: str, buttons: list, picture: str | None = None) -> bool:
+    def update(self, alert: dict[str, Any], text: str, buttons: list, picture: str | None = None, done: bool = False) -> bool:
+        if alert.get("app_id"):  # the same change on the Alerts page (D88), without a ring
+            to_app(self.client, "deals", alert["name"], html=text, id=alert["app_id"], picture=picture,
+                   buttons=app_buttons(buttons), done=done, ping=False)
         target = {"chat_id": self.chat_id, "message_id": alert["message_id"], "reply_markup": {"inline_keyboard": buttons}}
         if alert.get("photo") and picture:
             body = target | {"media": {"type": "photo", "media": picture, "caption": text[:1024], "parse_mode": "HTML"}}
@@ -385,7 +388,7 @@ def finish(alert: dict[str, Any], v: Verdict, telegram: Telegram, account: Accou
         account.remove(int(alert["product_id"]))
     alert.update(state=v.state, line=v.line, closed=now.isoformat())
     picture = (alert.get("stamps") or {}).get(DONE_PICTURE.get(v.state, "ended"))
-    telegram.update(alert, caption(alert, v.line, done=True), keyboard(alert, done=True), picture)
+    telegram.update(alert, caption(alert, v.line, done=True), keyboard(alert, done=True), picture, done=True)
 
 
 def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict[str, Any]], cart: dict | None,

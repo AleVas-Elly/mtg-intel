@@ -37,6 +37,8 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_INGEST_TOKEN: ${{ secrets.SITE_INGEST_TOKEN }}
       - run: uv run mtg-intel grab
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
@@ -44,6 +46,8 @@ jobs:
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          SITE_INGEST_TOKEN: ${{ secrets.SITE_INGEST_TOKEN }}
           # CardTrader sources report "disabled" until both are set; APPROVED only after
           # CardTrader OKs market API access (spec D30).
           CARDTRADER_TOKEN: ${{ secrets.CARDTRADER_TOKEN }}

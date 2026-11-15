@@ -10,6 +10,7 @@ import {
   verifyRegistrationResponse,
   type AuthenticatorTransportFuture,
 } from "@simplewebauthn/server";
+import { WorkerEntrypoint } from "cloudflare:workers";
 import { b64url, fromB64url, randomToken, sameSecret, sha256Hex, sign, verify } from "./crypto";
 import { type Ping, push, type Subscription } from "./push";
 import {
@@ -26,6 +27,7 @@ interface Env {
   TRIGGER?: Fetcher; // the timer Worker (service binding): starts the GitHub workflow that applies edits
   VAPID_PUBLIC?: string; // app notifications (D88): the public key (a var), the private key as JWK (a secret)
   VAPID_PRIVATE?: string;
+  SITE_URL: string; // this site's address, for pings sent without a request (from the timer Worker)
 }
 
 interface Place { city?: string; country?: string }
@@ -127,6 +129,9 @@ const logged = (env: Env, who: string, what: string) =>
 
 /** A quiet Telegram note to me through the timer Worker, which holds the bot token (D78). */
 function notify(env: Env, ctx: ExecutionContext | null, text: string) {
+  // also on the Alerts page's Digest (D88), without a ring: these were quiet Telegram notes
+  const saved = saveAlert(env, { section: "digest", title: text.slice(0, 120), body: text }).catch(() => undefined);
+  if (ctx) ctx.waitUntil(saved);
   if (!env.TRIGGER) return;
   const job = env.TRIGGER.fetch("https://trigger/notify", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
@@ -764,6 +769,97 @@ async function notifications(request: Request, env: Env, rest: string, url: URL)
   return json({ error: "Not found" }, 404);
 }
 
+// --- The Alerts page (D88) ---------------------------------------------------------------------
+
+const SECTIONS = ["deals", "digest", "system"] as const;
+const ALERT_DAYS = 30;
+
+interface AlertButton { text: string; url?: string; action?: string; done?: boolean }
+/** What the bot sends: a new alert, or (same id) a change to one. `ping` rings the devices. */
+interface AlertIn {
+  id?: string; section: (typeof SECTIONS)[number]; title: string; body?: string; html?: string;
+  picture?: string | null; buttons?: AlertButton[][]; done?: boolean; ping?: boolean; silent?: boolean; tag?: string;
+}
+
+function validAlert(a: unknown): a is AlertIn {
+  const x = a as AlertIn | null;
+  return !!x && SECTIONS.includes(x.section) && typeof x.title === "string" && x.title.length > 0
+    && (x.id === undefined || /^[A-Za-z0-9:_|.-]{1,120}$/.test(x.id)) && JSON.stringify(x).length < 20000;
+}
+
+const unread = async (env: Env) => (await env.DB.prepare("SELECT COUNT(*) AS n FROM alerts WHERE read = 0").first<{ n: number }>())?.n ?? 0;
+
+/** Store an alert (or update it in place) and ring my devices if asked. */
+async function saveAlert(env: Env, a: AlertIn): Promise<{ id: string; sent: number; failed: string[] }> {
+  const now = new Date().toISOString();
+  const id = a.id ?? `${a.section}:${randomToken(9)}`;
+  const { ping, ...doc } = a;
+  const old = await env.DB.prepare("SELECT doc FROM alerts WHERE id = ?").bind(id).first<{ doc: string }>();
+  const merged = { ...(old ? JSON.parse(old.doc) : {}), ...doc, id };
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO alerts (id, section, at, updated, read, doc) VALUES (?, ?, ?, ?, 0, ?)
+      ON CONFLICT (id) DO UPDATE SET updated = excluded.updated, doc = excluded.doc${ping ? ", read = 0" : ""}`)
+      .bind(id, a.section, now, now, JSON.stringify(merged)),
+    env.DB.prepare("DELETE FROM alerts WHERE updated < ?").bind(new Date(Date.now() - ALERT_DAYS * 864e5).toISOString()),
+  ]);
+  if (!ping) return { id, sent: 0, failed: [] };
+  const r = await pingAll(env, env.SITE_URL, [OWNER], {
+    title: a.title, body: a.body ?? "", url: `/alerts?a=${encodeURIComponent(id)}`, tag: a.tag ?? id, silent: a.silent, badge: await unread(env),
+  });
+  return { id, ...r };
+}
+
+/** The wish key from a target button: Scryfall IDs travel without dashes (Telegram's 64 bytes). */
+function wishKey(card: string, language: string, foil: string): string {
+  const id = /^[0-9a-f]{32}$/.test(card) ? card.replace(/^(.{8})(.{4})(.{4})(.{4})/, "$1-$2-$3-$4-") : card;
+  return `${id}|${language}|${foil}`;
+}
+
+async function alertsApi(request: Request, env: Env, rest: string, ctx: ExecutionContext): Promise<Response> {
+  const w = await who(request, env);
+  if (!w) return json({ error: "Sign in first." }, 401);
+  const me = w.account;
+  if (!isOwner(me)) return json({ alerts: [], unread: 0 }); // only mine for now (D88)
+  const list = async () => {
+    const rows = (await env.DB.prepare("SELECT id, section, at, updated, read, doc FROM alerts ORDER BY at DESC LIMIT 300")
+      .all<{ id: string; section: string; at: string; updated: string; read: number; doc: string }>()).results;
+    return { alerts: rows.map((r) => ({ ...JSON.parse(r.doc), id: r.id, section: r.section, at: r.at, updated: r.updated, read: !!r.read })),
+      unread: rows.filter((r) => !r.read).length };
+  };
+  if (!rest && request.method === "GET") return json(await list());
+  const body = (await request.json().catch(() => ({}))) as { ids?: string[]; action?: string };
+  if (rest === "read" && request.method === "POST") {
+    const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string").slice(0, 300) : null;
+    await (ids ? env.DB.prepare(`UPDATE alerts SET read = 1 WHERE id IN (${ids.map(() => "?").join() || "''"})`).bind(...ids)
+      : env.DB.prepare("UPDATE alerts SET read = 1")).run();
+    return json(await list());
+  }
+  const m = /^(.+)\/action$/.exec(rest);
+  if (m && request.method === "POST") {
+    // A target button from the weekly note (D55): set that wish's price, as the Telegram button did.
+    const t = /^t\|([^|]{1,40})\|([a-z]{2,4})\|([a-z]{1,10})\|(\d{1,7})$/.exec(String(body.action));
+    const row = await env.DB.prepare("SELECT doc FROM alerts WHERE id = ?").bind(decodeURIComponent(m[1])).first<{ doc: string }>();
+    if (!t || !row) return json({ error: "This button no longer works." }, 400);
+    const target = (Number(t[4]) / 100).toFixed(2);
+    const doc = JSON.parse(row.doc) as AlertIn;
+    doc.buttons = (doc.buttons ?? []).map((line) => line.map((b) => b.action === body.action ? { text: `✓ ${b.text.replace(/^Set /, "")}`, done: true } : b));
+    const edit: Edit = { id: randomToken(12), at: new Date().toISOString(), op: "update", key: wishKey(t[1], t[2], t[3]),
+      settings: { max_price_eur: target }, by: me.id } as Edit;
+    await env.DB.batch([queueEdit(env, edit), env.DB.prepare("UPDATE alerts SET doc = ? WHERE id = ?").bind(JSON.stringify(doc), decodeURIComponent(m[1]))]);
+    if (env.TRIGGER) ctx.waitUntil(env.TRIGGER.fetch("https://trigger/wantlist", { method: "POST" }).catch(() => undefined));
+    return json({ ...(await list()), message: `Target set to €${target}. The want-list updates in a few minutes.` });
+  }
+  return json({ error: "Not found" }, 404);
+}
+
+/** The timer Worker sends its alerts here, through its service binding (no public URL, no token). */
+export class Notify extends WorkerEntrypoint<Env> {
+  async alert(a: AlertIn) {
+    if (!validAlert(a)) throw new Error("Not a valid alert");
+    return saveAlert(this.env, a);
+  }
+}
+
 async function data(request: Request, env: Env, key: string): Promise<Response> {
   const w = await who(request, env);
   if (key === "edits") {
@@ -806,6 +902,11 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
   if (!env.INGEST_TOKEN || !sameSecret(header, `Bearer ${env.INGEST_TOKEN}`)) return json({ error: "Forbidden" }, 403);
   if (path === "invite" && request.method === "POST") return json(await invite(env, url.origin));
   if (path === "edits" && request.method === "GET") return json(await editsDoc(env));
+  if (path === "alert" && request.method === "POST") {
+    const a = await request.json().catch(() => null);
+    if (!validAlert(a)) return json({ error: "Not a valid alert" }, 400);
+    return json(await saveAlert(env, a));
+  }
   if (path === "edits-add" && request.method === "POST") {
     // Purchases the deal check found in my CardTrader orders (D54): queued like edits made on the
     // site, and the run that applies them starts at once.
@@ -953,6 +1054,7 @@ export default {
       if (path === "/api/suggestions" || path.startsWith("/api/suggestions/")) return await suggestions(request, env, path.slice(17), ctx);
       if (path.startsWith("/api/data/")) return await data(request, env, path.slice(10));
       if (path.startsWith("/api/push/")) return await notifications(request, env, path.slice(10), url);
+      if (path === "/api/alerts" || path.startsWith("/api/alerts/")) return await alertsApi(request, env, path.slice(12), ctx);
       if (path.startsWith("/api/ingest/")) return await ingest(request, env, path.slice(12), url);
       if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
       if (path.startsWith("/api/ct/")) return await ctCopies(request, env, path.slice(8), ctx);

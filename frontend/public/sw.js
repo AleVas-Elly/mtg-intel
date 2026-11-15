@@ -7,6 +7,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 self.addEventListener("push", (event) => {
   let ping = {};
   try { ping = event.data ? event.data.json() : {}; } catch { ping = { body: event.data ? event.data.text() : "" }; }
+  if (typeof ping.badge === "number" && self.navigator.setAppBadge) self.navigator.setAppBadge(ping.badge).catch(() => {});
   // iPhone requires every push to show a notification, so there is always a title.
   event.waitUntil(self.registration.showNotification(ping.title || "mtg-intel", {
     body: ping.body || "",

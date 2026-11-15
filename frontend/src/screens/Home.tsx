@@ -9,7 +9,8 @@ import { collectorLine, eur } from "../format";
 import { link, openCard } from "../router";
 import type { Deal, Wish } from "../types";
 import { Art, DropCard, GoneItem, Pulse, Roll, TierPill, usualOf } from "../ui/Drop";
-import { IconChart, IconOut, IconSettings, IconWarn } from "../ui/icons";
+import { IconBell, IconChart, IconOut, IconSettings, IconWarn } from "../ui/icons";
+import { useUnread } from "./Alerts";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 
 const today = () => new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
@@ -77,6 +78,7 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
   const wishes = data.wants?.wishes ?? [];
   const flagged = wishes.filter((w) => data.flagsOf(w).length).length;
   const me = currentMe();
+  const unread = useUnread();
   const seesDeals = can("deals");
   const loading = (seesDeals && data.live === undefined) || (can("wants") && data.wants === undefined);
   const best = deals[0];
@@ -91,6 +93,7 @@ export function Home({ data, card }: { data: AppData; card: string | null }) {
           <h1 class="title">{today()}</h1>
           {seesDeals && <Pulse data={data} />}
           <span class="phone-only head-btns">
+            {me.owner && <a class="icon-btn bell" href="/alerts" onClick={link("/alerts")} aria-label={unread ? `Alerts, ${unread} unread` : "Alerts"}><IconBell />{unread > 0 && <span class="dot">{unread > 9 ? "9+" : unread}</span>}</a>}
             <a class="icon-btn" href="/dashboards" onClick={link("/dashboards")} aria-label="Dashboards"><IconChart /></a>
             <a class="icon-btn" href="/settings" onClick={link("/settings")} aria-label="Settings"><IconSettings /></a>
           </span>

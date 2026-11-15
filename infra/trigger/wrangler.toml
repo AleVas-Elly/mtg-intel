@@ -19,6 +19,13 @@ binding = "DB"
 database_name = "mtg-intel"
 database_id = "223f438f-678c-48cf-8fa9-d6679a7668da"
 
+# The website Worker's Notify entrypoint (D88): alerts for the Alerts page and the phone pings.
+# RPC through this binding only, never a public URL.
+[[services]]
+binding = "SITE"
+service = "mtg-intel"
+entrypoint = "Notify"
+
 [observability]
 enabled = true
 

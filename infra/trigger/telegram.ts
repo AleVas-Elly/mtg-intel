@@ -32,6 +32,7 @@ export interface TelegramEnv {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
   CARDTRADER_TOKEN?: string; // Skip, Check now and the fast lane (D58)
+  SITE?: { alert(a: { section: string; title: string; body?: string; ping?: boolean }): Promise<unknown> }; // the site's Notify entrypoint (D88)
 }
 
 const HOLD_MINUTES = 5;
@@ -287,6 +288,8 @@ export async function ctTokenAnswer(env: TelegramEnv, status: number): Promise<v
 }
 
 async function notifyMe(env: TelegramEnv, text: string): Promise<void> {
+  const [title, ...rest] = text.split(". "); // the Alerts page and a ping too (D88), as a system alert
+  await env.SITE?.alert({ section: "system", title, body: rest.join(". "), ping: true }).catch((e) => console.log(`alert to the site failed: ${e}`));
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
   await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }),

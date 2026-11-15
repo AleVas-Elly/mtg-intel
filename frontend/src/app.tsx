@@ -3,7 +3,7 @@ import { whenSignedOut } from "./api";
 import { type Perm, useMe } from "./access";
 import { useAppData, wishCount } from "./data";
 import { link, useRoute } from "./router";
-import { IconChart, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconStack, IconWants } from "./ui/icons";
+import { IconBell, IconChart, IconCheck, IconDeals, IconHome, IconSearch, IconSettings, IconStack, IconWants } from "./ui/icons";
 import { Gate, useAuth } from "./screens/Gate";
 import { Deals } from "./screens/Deals";
 import { Home } from "./screens/Home";
@@ -13,6 +13,7 @@ import { Collection } from "./screens/Collection";
 import { Dashboards } from "./screens/Dashboards";
 import { Check } from "./screens/Check";
 import { Settings } from "./screens/Settings";
+import { Alerts, useUnread } from "./screens/Alerts";
 import { Detail } from "./screens/Detail";
 import { CardPane } from "./screens/CardPane";
 import { Lab } from "./ui/Lab";
@@ -59,6 +60,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
   const phoneTabs = tabs.filter((t) => t.path !== "/check");
   // Dashboards sets its own section, by the tab that is open
   useEffect(() => { if (path !== "/dashboards") document.documentElement.dataset.section = sectionOf(path); }, [path]);
+  const unread = useUnread();
   const dealCount = data.live?.deals.filter((d) => data.byKey.has(d.key)).length ?? 0;  // a removed wish's deal drops out
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
   const screen =
@@ -68,6 +70,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
     path === "/search" ? <Search data={data} /> :
     path === "/check" ? <Check data={data} /> :
     path === "/settings" ? <Settings data={data} /> :
+    path === "/alerts" && me.owner ? <Alerts system={me.owner} /> :
     path === "/deals" ? <Deals data={data} card={card} /> :
     <Home data={data} card={card} />;
   const counts: Record<string, number | undefined> = { "/deals": dealCount || undefined, "/check": flagged || undefined, "/wants": data.wants ? wishCount(data.wants.wishes) : undefined };
@@ -81,6 +84,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
           </a>
         ))}
         <div class="grow" />
+        {me.owner && <a href="/alerts" onClick={link("/alerts")} aria-current={path === "/alerts" ? "page" : undefined}><IconBell />Alerts{unread > 0 && <span class="count">{unread}</span>}</a>}
         {(may("wants") || may("collection")) && <a href="/dashboards" onClick={link("/dashboards")} aria-current={path === "/dashboards" ? "page" : undefined}><IconChart />Dashboards</a>}
         <a href="/settings" onClick={link("/settings")} aria-current={path === "/settings" ? "page" : undefined}><IconSettings />Settings</a>
       </nav>
