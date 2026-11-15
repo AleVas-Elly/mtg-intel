@@ -126,7 +126,7 @@
 .pl-row-main { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
 .pl-row-main .thumb { width: 44px; }
 .pl-row-extra { font-size: 12.5px; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-row-ctrls { display: grid; grid-auto-flow: column; grid-template-columns: 52px 136px 118px 100px; align-items: center; gap: 2px; }
+.pl-row-ctrls { display: grid; grid-auto-flow: column; grid-template-columns: 52px 136px 118px 100px 124px; align-items: center; gap: 2px; }
 .pl-row-ctrls.money { grid-template-columns: 52px 112px 64px 96px 84px; }
 .pl-row-ctrls > .pl-pop, .pl-row-ctrls .pl-ghost { min-width: 0; max-width: 100%; }
 .pl-row-ctrls .pl-ghost { width: max-content; max-width: 100%; }
@@ -192,3 +192,59 @@
   .pl-hint { display: none; }
   .pl-toolbar { padding-left: 12px; }
 }
+
+/* ---- round 10 ---- */
+.btn.xs { height: 30px; padding: 0 12px; font-size: 13px; }
+
+/* how to add: a list of ways, not a grid of cards */
+.pl-ways { max-width: 640px; background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+.pl-way { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px 18px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; transition: background var(--t-small) var(--ease); }
+.pl-way + .pl-way { box-shadow: inset 0 1px 0 var(--line); }
+.pl-way:hover { background: var(--fill); }
+.pl-way > span { flex: 1; display: grid; gap: 3px; }
+.pl-way b { font-size: 17px; font-weight: 800; font-stretch: 108%; letter-spacing: -0.01em; }
+.pl-way small { font-size: 14px; color: var(--ink-2); }
+.pl-way svg { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+
+/* the paste step's worked example */
+.pl-example { display: grid; gap: 6px; margin-bottom: 14px; }
+.pl-example div { display: grid; grid-template-columns: minmax(150px, 190px) 1fr; gap: 14px; align-items: baseline; font-size: 14px; }
+.pl-example b { font-weight: 700; }
+.pl-example span { color: var(--ink-3); }
+
+/* live card search */
+.pl-cs { display: grid; gap: 10px; }
+.pl-cs-res { display: grid; gap: 2px; background: var(--surface); border-radius: var(--radius-s); padding: 6px; }
+.pl-cs-card { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; padding: 6px 8px; border: 0; border-radius: 10px; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.pl-cs-card .thumb { width: 40px; }
+.pl-cs-card[aria-selected="true"] { background: var(--fill-strong); }
+.pl-cs-card span { display: grid; gap: 2px; min-width: 0; }
+.pl-cs-card b { font-size: 15px; font-weight: 800; font-stretch: 106%; }
+.pl-cs-card small { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-cs-none { padding: 10px; color: var(--ink-3); font-size: 13.5px; }
+.pl-cs.pl-cs-row .pl-search { height: 38px; max-width: 360px; }
+.pl-cs.pl-cs-row .pl-cs-res { display: flex; gap: 10px; overflow-x: auto; background: none; padding: 2px 2px 4px; }
+.pl-cs.pl-cs-row .pl-cs-card { display: grid; grid-template-columns: none; grid-template-rows: auto auto; width: 112px; flex: none; gap: 6px; padding: 6px; align-items: start; }
+.pl-cs.pl-cs-row .pl-cs-card .thumb { width: 100px; }
+.pl-cs.pl-cs-row .pl-cs-card b { font-size: 12.5px; line-height: 1.2; white-space: normal; }
+.pl-cs.pl-cs-row .pl-cs-card small { display: none; }
+.pl-chosen { display: grid; gap: 6px; margin-top: 18px; }
+.pl-chosen > small { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.pl-chosen-card { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; padding: 6px 6px 6px 10px; background: var(--surface); border-radius: var(--radius-s); }
+.pl-chosen-card .thumb { width: 36px; }
+.pl-chosen-card b { font-weight: 800; font-stretch: 106%; }
+
+/* check step */
+.pl-guess.stack { display: grid; gap: 10px; }
+.pl-guess-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+/* a file */
+.pl-drop { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 40px 24px; border-radius: var(--radius); background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); cursor: pointer; transition: background var(--t-small) var(--ease); }
+.pl-drop:hover { background: var(--fill); }
+.pl-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.pl-drop b { font-size: 17px; font-weight: 800; font-stretch: 106%; }
+.pl-drop small { max-width: 52ch; color: var(--ink-2); font-size: 13.5px; line-height: 1.45; }
+.pl-drop:focus-within { box-shadow: inset 0 0 0 2px var(--focus); }
+
+/* searching inside a list */
+.pl-pop-search { position: sticky; top: -6px; z-index: 1; height: 36px; margin: -6px -6px 6px; padding: 0 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: var(--radius-s) var(--radius-s) 0 0; background: var(--surface-2, var(--surface)); font: inherit; font-size: 14px; color: var(--ink); outline: none; }
