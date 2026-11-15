@@ -8,7 +8,7 @@ import { createPortal } from "preact/compat";
 import { peek } from "../api";
 import type { WantsDoc } from "../types";
 import { CardImage } from "../ui/CardImage";
-import { IconBack, IconClose, IconMinus, IconPlus, IconSearch } from "../ui/icons";
+import { IconBack, IconChart, IconClose, IconMinus, IconPlus, IconSearch } from "../ui/icons";
 import { BigCard } from "../ui/CardImage";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { fieldStyle } from "../drop";
@@ -931,16 +931,22 @@ export function AddPage({ target }: { target: Target }) {
   );
 }
 
-/** The "Add cards" button for a page header: opens Add cards, a page of its own. */
+/** The page header's actions on the Want-list and the Collection: Add cards, in the page's own colour, and
+ *  Dashboards as an icon. */
 export function PasteButton({ to }: { to: Target }) {
   const path = to === "wants" ? "/wants/add" : "/collection/add";
-  return <a class="btn sm primary" href={path} onClick={link(path)}><IconPlus />Add cards</a>;
+  return (
+    <span class="head-acts">
+      <a class="btn sm sec-soft" href={path} onClick={link(path)}><IconPlus />Add cards</a>
+      <a class="icon-btn head-icon" href="/dashboards" onClick={link("/dashboards")} aria-label="Dashboards" title="Dashboards"><IconChart /></a>
+    </span>
+  );
 }
 
 
 /** PREVIEW only (local copy): flips every lime button in the app between solid and soft, to compare. */
 export function ButtonStylePreview() {
-  const [soft, setSoft] = useState(() => { try { return localStorage.getItem("btn-preview") === "soft"; } catch { return false; } });
+  const [soft, setSoft] = useState(() => { try { return localStorage.getItem("btn-preview") !== "solid"; } catch { return true; } });
   useEffect(() => {
     if (soft) document.documentElement.dataset.btn = "soft"; else delete document.documentElement.dataset.btn;
     try { localStorage.setItem("btn-preview", soft ? "soft" : "solid"); } catch { /* fine */ }

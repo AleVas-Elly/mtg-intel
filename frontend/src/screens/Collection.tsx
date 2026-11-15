@@ -8,7 +8,7 @@ import { gainOf, moves, myPurchases, ownedCards, series, soldSummary, valueOf, t
 import type { AppData } from "../data";
 import { EMPTY, activeCount, applyFilters, costColours, optionCounts, type FilterState, type Group, type Option } from "../filters";
 import { day, eur, langName, langShort, tagName } from "../format";
-import { link, openCard } from "../router";
+import { openCard } from "../router";
 import { CardImage, preloadImage } from "../ui/CardImage";
 import { FilterPanel, FilterSheet } from "../ui/Filters";
 import { goneText } from "../ui/RemoveSheet";
@@ -199,8 +199,7 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
           <h1 class="title">Collection</h1>
           <p class="sub">{doc === undefined ? "Loading…" : qtyOf(owned) ? <>{qtyOf(owned)} {qtyOf(owned) === 1 ? "card" : "cards"}, worth {eur(owned.reduce((t, o) => t + (valueOf(o) ?? 0), 0))} at Cardmarket's trend</> : "Your cards, with what they're worth"}</p>
         </div>
-        <span class="pl-headbtns"><PasteButton to="collection" />
-        <a class="btn sm" href="/dashboards" onClick={link("/dashboards")}>Dashboard</a></span>
+        <PasteButton to="collection" />
       </header>
       {doc === undefined && !owned.length ? <RowSkeleton /> : !owned.length && !left.length ? (
         <div class="empty">
