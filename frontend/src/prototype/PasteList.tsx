@@ -825,7 +825,7 @@ export function AddPage({ target }: { target: Target }) {
       </section>
 
       {unclear.length > 0 && <>
-        <div class="list-head">Needs a look<span>{unclear.length} {unclear.length === 1 ? "line" : "lines"}</span></div>
+        <div class="list-head add-head bad"><span class="add-dot" />Needs a look<span>{unclear.length} {unclear.length === 1 ? "line" : "lines"}</span></div>
         <div class="list add-unclear">
           {unclear.map((it) => (
             <div class={`add-check ${it.status}`}>
@@ -862,7 +862,7 @@ export function AddPage({ target }: { target: Target }) {
       </>}
 
       {live.length > 0 && <>
-        <div class="list-head">Found<span>{total} {total === 1 ? "card" : "cards"}</span></div>
+        <div class="list-head add-head good"><span class="add-dot" />Found<span>{total} {total === 1 ? "card" : "cards"}</span></div>
         <div class="add-found">
           {live.map((x) => (
             <span class="add-found-card" title={`${x.card?.name}, ${versionLine(x.card)}`}>

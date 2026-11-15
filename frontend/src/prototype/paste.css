@@ -276,3 +276,16 @@ button.add-crumb { border: 0; background: none; padding: 0; font: inherit; font-
 .add-found-card button svg { width: 12px; height: 12px; }
 @media (hover: none) { .add-found-card button { opacity: 1; } }
 .add-bar { background: var(--surface-2, var(--surface)); box-shadow: inset 0 0 0 1px var(--line), 0 2px 6px rgba(0, 0, 0, 0.06), 0 28px 56px -22px rgba(0, 0, 0, 0.5); }
+
+/* ---- round 13: Needs a look in red, Found in green (the app's status colours, as washes) ---- */
+.add-head { justify-content: flex-start; align-items: center; gap: 8px; }
+.add-head > span:last-child { margin-left: auto; }
+.add-head.bad { color: var(--bad); }
+.add-head.good { color: var(--good); }
+.add-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+.add-unclear { background: color-mix(in srgb, var(--bad) 9%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 28%, transparent); }
+.add-unclear .add-check + .add-check { box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bad) 22%, transparent); }
+.add-found { padding: 14px 16px; border-radius: var(--radius); background: color-mix(in srgb, var(--good) 9%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--good) 28%, transparent); }
+.add-found-card button { box-shadow: 0 0 0 2px color-mix(in srgb, var(--good) 9%, var(--surface)); }
+.add-head.bad .add-dot { background: var(--bad); }
+.add-head.good .add-dot { background: var(--good); }
