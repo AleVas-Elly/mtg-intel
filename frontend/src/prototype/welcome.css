@@ -119,3 +119,4 @@
 @keyframes pw-glow { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 30%, transparent); } }
 
 @media (prefers-reduced-motion: reduce) { .pw-a-body, .pw-b, .pw-callout, .pw-tip, .pw-coach, .pw-c-body { animation: none; } .pw-dot, .pw-pulse { animation: none; } }
+.pw-settings-wrap { padding-top: 0; padding-bottom: 120px; }
