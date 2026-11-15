@@ -344,3 +344,31 @@ button.add-crumb { border: 0; background: none; padding: 0; font: inherit; font-
 /* the list must not clip an open dropdown (beats the app's .list { overflow: hidden }) */
 .list.add-list, .list.add-unclear { overflow: visible; }
 .pl-pop.up > .pl-pop-list { top: auto; bottom: calc(100% + 6px); }
+
+/* ---- PREVIEW (issue 6 follow-up): soft primary buttons, the same build as .btn.danger-soft ----
+   A wash of the live colour, a thin ring of it, and the colour as text. --live is acid in dark and moss in light,
+   because acid text on warm white can't be read. Switched on with the Buttons: Soft preview switch. */
+:root[data-btn="soft"] .btn.primary {
+  background: color-mix(in srgb, var(--live) 14%, var(--btn-bg)); color: var(--live);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--live) 45%, transparent);
+}
+:root[data-btn="soft"] .btn.primary:hover { background: color-mix(in srgb, var(--live) 24%, var(--btn-bg)); opacity: 1; }
+:root[data-btn="soft"] .btn.primary[disabled] { opacity: 0.45; }
+/* on a card's colour field (drops, the hero) the button stays acid in both themes, over the field */
+:root[data-btn="soft"] :is(.drop, .hero, .d-stage) .btn.primary {
+  background: color-mix(in srgb, #c6ff3d 18%, transparent); color: #c6ff3d; box-shadow: inset 0 0 0 1px color-mix(in srgb, #c6ff3d 55%, transparent);
+}
+
+.btn-preview { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 12px; border-radius: 999px; background: #ff2fa0; color: #fff; font: 700 13px/1 system-ui, sans-serif; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35); }
+.btn-preview button { border: 0; border-radius: 999px; padding: 7px 12px; background: rgba(255, 255, 255, 0.16); color: #fff; font: inherit; cursor: pointer; }
+.btn-preview button[aria-pressed="true"] { background: #fff; color: #ff2fa0; }
+@media (max-width: 899px) { .btn-preview { bottom: calc(150px + env(safe-area-inset-bottom)); } }
+/* tick boxes: a bit smaller, with clear space before the card */
+.pl-check-box { width: 16px; height: 16px; }
+@media (min-width: 761px) {
+  .add-list { grid-template-columns: max-content minmax(220px, 1fr) repeat(5, max-content); }  /* max-content: the rows' padding sits in the edge tracks */
+  .add-list > .add-gridhead, .add-list > .row.add-row { column-gap: 18px; }
+}
+@media (max-width: 760px) {
+  .add-list .row.add-row { grid-template-columns: 16px minmax(0, 1fr); column-gap: 14px; }
+}

@@ -21,7 +21,7 @@ import { dismissToast, useToast } from "./toast";
 
 import { LOCAL } from "./env";
 import { setLabOpen, useLabOpen } from "./labstate";
-import { AddPage } from "./prototype/PasteList";  // PROTOTYPE (issue 6)
+import { AddPage, ButtonStylePreview } from "./prototype/PasteList";  // PROTOTYPE (issue 6)
 
 const TABS: { path: string; label: string; Icon: typeof IconHome; needs?: Perm }[] = [
   { path: "/", label: "Home", Icon: IconHome },
@@ -103,6 +103,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
       {card && (card.startsWith("sf:") ? <CardPane data={data} id={card.slice(3)} /> : <Detail data={data} wishKey={card} />)}
       {useLabOpen() && <Lab onClose={() => setLabOpen(false)} />}
       <ToastView />
+      <ButtonStylePreview />
       <nav class="tabbar" aria-label="Main">
         {phoneTabs.map(({ path: p, label, Icon }) => (
           <a class={`tab${SEC[p] ? ` sec-${SEC[p]}` : ""}`} href={p} onClick={link(p)} aria-current={path === p || path === `${p}/add` || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>

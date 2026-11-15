@@ -936,3 +936,21 @@ export function PasteButton({ to }: { to: Target }) {
   const path = to === "wants" ? "/wants/add" : "/collection/add";
   return <a class="btn sm primary" href={path} onClick={link(path)}><IconPlus />Add cards</a>;
 }
+
+
+/** PREVIEW only (local copy): flips every lime button in the app between solid and soft, to compare. */
+export function ButtonStylePreview() {
+  const [soft, setSoft] = useState(() => { try { return localStorage.getItem("btn-preview") === "soft"; } catch { return false; } });
+  useEffect(() => {
+    if (soft) document.documentElement.dataset.btn = "soft"; else delete document.documentElement.dataset.btn;
+    try { localStorage.setItem("btn-preview", soft ? "soft" : "solid"); } catch { /* fine */ }
+  }, [soft]);
+  if (!["localhost", "127.0.0.1"].includes(location.hostname)) return null;
+  return (
+    <div class="btn-preview" role="group" aria-label="Button style preview">
+      <span>Buttons</span>
+      <button type="button" aria-pressed={!soft} onClick={() => setSoft(false)}>Solid</button>
+      <button type="button" aria-pressed={soft} onClick={() => setSoft(true)}>Soft</button>
+    </div>
+  );
+}
