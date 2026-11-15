@@ -14,7 +14,7 @@ import { condName, langName, versionText } from "../format";
 import "./paste.css";
 
 type Target = "wants" | "collection";
-type Card = ScryCard & { promo?: boolean; prices?: { eur?: string | null; eur_foil?: string | null } };
+type Card = ScryCard & { promo?: boolean; layout?: string; booster?: boolean; prices?: { eur?: string | null; eur_foil?: string | null } };
 interface Line { raw: string; qty: number; name: string; set?: string; number?: string; foil?: boolean }
 interface Item {
   id: number; line: Line; status: "ok" | "guess" | "unknown" | "dropped"; card: Card | null; options: string[];
@@ -76,6 +76,8 @@ async function match(lines: Line[]): Promise<Item[]> {
     const missing = new Set(body.not_found.map((x) => JSON.stringify(x)));
     let k = 0;
     for (const id of chunk) found.push(missing.has(JSON.stringify(id)) ? null : body.data[k++]);
+    // a name can be a token's too ("Ragavan", "Jace"): a token is never what a pasted line means
+    found.forEach((c, j) => { if (c && notCard(c)) found[j] = null; });
   }
   const out: Item[] = [];
   for (const [i, line] of lines.entries()) {
@@ -83,7 +85,8 @@ async function match(lines: Line[]): Promise<Item[]> {
     if (card && line.number && !card.name.toLowerCase().startsWith(line.name.toLowerCase())) status = "guess";  // set + number is another card
     if (!card) {
       const r = await paced(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(line.name)}`);
-      if (r.ok) { card = (await r.json()) as Card; status = "guess"; }
+      const fuzzy = r.ok ? ((await r.json()) as Card) : null;
+      if (fuzzy && !notCard(fuzzy)) { card = fuzzy; status = "guess"; }
       else {
         const a = await paced(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(line.name)}`);
         options = a.ok ? ((await a.json()) as { data: string[] }).data.slice(0, 6) : [];
@@ -99,10 +102,13 @@ function fresh(id: number, line: Line, card: Card | null, status: Item["status"]
     target: "", deal: "", lists: [], zero: false, date: "" };
 }
 
+const notCard = (c: Card) => /token|emblem|art_series/.test(c.layout ?? "") || ["token", "memorabilia"].includes(c.set_type ?? "");
+const NOT_REGULAR_SETS = new Set(["plst", "mb1", "mb2", "fmb1"]);  // The List and Mystery Boosters: reprints with odd frames or stamps
 const plain = (c: Card) => !c.promo && !preview(c).tags.length && c.set !== "plst";
 const isRegular = (c: Card) => plain(c) && (MAIN_SETS.has(c.set_type ?? "") || SIDE_SETS.has(c.set_type ?? ""));
 /** Newest plain printing from a main set, else from a Commander or starter set, else the newest. */
-const newestRegular = (ps: Card[]) => ps.find((c) => plain(c) && MAIN_SETS.has(c.set_type ?? "")) ?? ps.find(isRegular) ?? ps[0];
+const newestRegular = (ps: Card[]) => ps.find((c) => plain(c) && c.booster && !NOT_REGULAR_SETS.has(c.set) && MAIN_SETS.has(c.set_type ?? ""))
+  ?? ps.find((c) => isRegular(c) && !NOT_REGULAR_SETS.has(c.set)) ?? ps[0];
 const img = (c: Card | null, size: "small" | "normal") => (c ? c.image_uris?.[size] ?? c.card_faces?.[0]?.image_uris?.[size] ?? null : null);
 const finishes = (c: Card | null) => (c?.finishes.length ? c.finishes : ["nonfoil", "foil"]);
 function defaultFinish(target: Target, it: Item, c: Card | null): string {
@@ -434,6 +440,10 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
     const r = await paced(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`);
     if (r.ok) { const card = (await r.json()) as Card; upd(it.id, { card, status: "ok", prints: null, finish: defaultFinish(target, it, card) }); }
   };
+  const another = async (it: Item) => {
+    const a = await paced(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(it.line.name)}`);
+    upd(it.id, { status: "unknown", card: null, options: a.ok ? ((await a.json()) as { data: string[] }).data.filter((n) => n !== it.card?.name).slice(0, 6) : [] });
+  };
   const setAll = (p: Partial<Item>) => setItems((xs) => xs.map((x) => {
     if (p.finish && p.finish !== "any" && !finishes(x.card).includes(p.finish)) return x;  // a finish the card doesn't have is skipped
     return { ...x, ...p };
@@ -484,7 +494,7 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
                     <CardImage src={img(it.card, "small")} alt="" foil={false} />
                     <span>Did you mean <b>{it.card?.name}</b>?</span>
                     <button class="btn sm primary" type="button" onClick={() => upd(it.id, { status: "ok" })}>Yes</button>
-                    <button class="btn sm" type="button" onClick={() => upd(it.id, { status: "unknown", card: null })}>No, another</button>
+                    <button class="btn sm" type="button" onClick={() => another(it)}>No, another</button>
                     <button class="btn sm" type="button" onClick={() => upd(it.id, { status: "dropped" })}>Leave out</button>
                   </div>
                 ) : (
