@@ -412,3 +412,33 @@ button.add-crumb { border: 0; background: none; padding: 0; font: inherit; font-
 .search-bar .seg.scope.grow button.s-mine:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--wants) 32%, transparent); color: var(--wants-text); }
 .search-bar .seg.scope.grow button.s-coll:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--coll) 34%, transparent); color: var(--coll-text); }
 .search-bar .seg.scope.grow button.s-all:not([aria-pressed="true"]):hover { background: var(--fill-strong); color: var(--ink); }
+
+/* ---- round 19: the search codes glossary ---- */
+.head .sub .codes { position: relative; display: inline; }
+.codes-word { border: 0; background: none; padding: 0; font: inherit; color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
+.codes.open .codes-word, .codes-word:hover { text-decoration-style: solid; }
+.codes-pop { position: absolute; z-index: 30; top: calc(100% + 10px); left: 0; width: min(560px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 14px 14px 12px; border-radius: var(--radius-s); background: var(--surface-2, var(--surface)); color: var(--ink); text-align: left; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06), 0 28px 56px -22px rgba(0, 0, 0, 0.45); animation: pl-open var(--t-small) var(--out); }
+.codes-pop::before { content: ""; position: absolute; top: -12px; left: 0; right: 0; height: 12px; }  /* keeps the hover alive on the way down */
+.codes-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.codes-head b { font-size: 15px; font-weight: 800; font-stretch: 106%; }
+.codes-head small { font-size: 12.5px; color: var(--ink-3); }
+.codes-list { display: grid; max-height: min(420px, 60vh); overflow-y: auto; }
+.codes-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 6px 0; font-size: 13.5px; }
+.codes-row + .codes-row { border-top: 1px solid var(--line); }
+.codes-row code, .codes-foot code { font-size: 12.5px; padding: 2px 6px; border-radius: 6px; background: var(--fill); color: var(--ink); }
+.codes-row > span { color: var(--ink-2); }
+.codes-row button { border: 0; border-radius: 999px; padding: 4px 10px; background: var(--fill); font: inherit; font-size: 12.5px; font-family: ui-monospace, "SF Mono", Menlo, monospace; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.codes-row button:hover { background: var(--fill-strong); }
+.codes-foot { font-size: 12.5px; line-height: 1.7; color: var(--ink-3); }
+@media (max-width: 640px) { .codes-pop { position: fixed; left: 16px; right: 16px; top: auto; bottom: calc(96px + env(safe-area-inset-bottom)); width: auto; } .codes-row { grid-template-columns: 70px 1fr; } .codes-row button { grid-column: 2; justify-self: start; } }
+/* the glossary opens under the header at full width, not from the word (which sits far right) */
+.head:has(.codes) { position: relative; }
+.head .sub .codes { position: static; }
+.head .codes-pop { top: calc(100% + 2px); left: 0; width: min(600px, 100%); }
+.head .codes-pop::before { top: -40px; height: 40px; }
+.head .sub:has(.codes) { display: block; }
+@media (max-width: 640px) {
+  .head .codes-pop { position: fixed; top: auto; left: 12px; right: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); width: auto; z-index: 80; }
+  .head .codes-pop .codes-list { max-height: 52vh; }
+  .head .codes-pop::before { display: none; }
+}

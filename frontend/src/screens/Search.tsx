@@ -135,7 +135,7 @@ export function Search({ data }: { data: AppData }) {
 
   return (
     <div class="page">
-      <header class="head"><div><h1 class="title">Search</h1><p class="sub">Every card, your want-list or your collection, with Cardmarket prices</p></div></header>
+      <header class="head"><div><h1 class="title">Search</h1><p class="sub">Every card, your want-list or your collection. Type a name, or use <SearchCodes onPick={(ex) => { setQ(ex); setTimeout(() => input.current?.form?.requestSubmit(), 0); }} /></p></div></header>
       <form class="toolbar search-bar" onSubmit={search} role="search">
         <div class="seg scope grow" role="group" aria-label="Where to search" data-scope={scope}>
           <button type="button" class="s-all" aria-pressed={scope === "all"} aria-label="All cards" title="All cards" onClick={() => setScope("all")}><IconSearch /><span class="lbl">All cards</span></button>
@@ -192,5 +192,46 @@ export function Search({ data }: { data: AppData }) {
       </div>
       {state === "busy" && <div class="cards" style={{ marginTop: "18px" }}>{Array.from({ length: 6 }, () => <div class="thumb skeleton" />)}</div>}
     </div>
+  );
+}
+
+// PROTOTYPE (issue 6): a glossary of the most used search codes, on hover (or tap) of "search codes".
+const CODES: [string, string, string][] = [
+  ["t:", "Card type or subtype", "t:legendary t:creature"],
+  ["c:", "Colour: w u b r g, or c for colourless", "c:ug"],
+  ["id:", "Colour identity, for Commander", "id:esper"],
+  ["mv", "Mana value, with = < > <= >=", "mv<=2"],
+  ["o:", "Words in the rules text", "o:\"draw a card\""],
+  ["r:", "Rarity: common, uncommon, rare, mythic", "r:mythic"],
+  ["s:", "Set, by its code", "s:mh3"],
+  ["a:", "Artist", "a:\"Rebecca Guay\""],
+  ["is:", "Special versions: showcase, borderless, fullart, extendedart, etched", "is:showcase"],
+  ["pow tou", "Power and toughness", "pow>=4 tou<=3"],
+  ["year", "Year it was printed", "year>=2023"],
+  ["eur", "Price in euro", "eur<2"],
+  ["art:", "What the art shows (community tags, not complete)", "art:cat"],
+  ["function:", "What the card does (community tags, not complete)", "function:removal"],
+];
+function SearchCodes({ onPick }: { onPick: (example: string) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span class={`codes${open ? " open" : ""}`} onMouseLeave={() => setOpen(false)}>
+      <button type="button" class="codes-word" aria-expanded={open} onClick={() => setOpen(!open)} onMouseEnter={() => setOpen(true)}>search codes</button>
+      {open && (
+        <span class="codes-pop" role="dialog" aria-label="Search codes">
+          <span class="codes-head"><b>Search codes</b><small>Tap an example to try it</small></span>
+          <span class="codes-list">
+            {CODES.map(([code, what, ex]) => (
+              <span class="codes-row">
+                <code>{code}</code>
+                <span>{what}</span>
+                <button type="button" onClick={() => { onPick(ex); setOpen(false); }}>{ex}</button>
+              </span>
+            ))}
+          </span>
+          <span class="codes-foot">Mix them: <code>t:creature c:g mv&lt;=3</code>. Use <code>or</code> for either, and <code>-</code> in front to leave out: <code>-t:land</code>.</span>
+        </span>
+      )}
+    </span>
   );
 }
