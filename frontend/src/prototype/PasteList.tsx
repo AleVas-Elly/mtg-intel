@@ -13,6 +13,7 @@ import { BigCard } from "../ui/CardImage";
 import { ManaCost, SetSymbol } from "../ui/symbols";
 import { fieldStyle } from "../drop";
 import { link } from "../router";
+import { Confirm } from "../ui/Confirm";
 import { preview, printings, type ScryCard } from "../scry";
 import { condName, langName, versionText } from "../format";
 import "./paste.css";
@@ -204,6 +205,15 @@ function ListPop({ items, change, bulk, ghost }: { items: Item[]; change: Change
   );
 }
 
+/** Open the list upwards when there isn't room for it below (the floating Add bar and the phone's tab bar count as taken). */
+function flipIfNeeded(d: HTMLDetailsElement) {
+  d.classList.remove("up");
+  const list = d.querySelector<HTMLElement>(".pl-pop-list");
+  if (!list) return;
+  const box = d.getBoundingClientRect();
+  const below = innerHeight - box.bottom - (innerWidth < 900 ? 170 : 96);
+  if (list.offsetHeight > below && box.top - 80 > below) d.classList.add("up");
+}
 const closePop = (e: Event) => { ((e.currentTarget as Element).closest("details") as HTMLDetailsElement).open = false; };
 // a tap outside an open list closes it
 document.addEventListener("pointerdown", (e) => {
@@ -214,7 +224,7 @@ document.addEventListener("pointerdown", (e) => {
 /** One look for every list that opens from a pill: our own panel, not the browser's. `ghost` = quiet, for rows. */
 function Pop({ label, text, children, ghost, on, narrow }: { label: string; text: string; children: preact.ComponentChildren; ghost?: boolean; on?: boolean; narrow?: boolean }) {
   return (
-    <details class={`pl-pop${narrow ? " narrow" : ""}`} onToggle={(e) => { const me = e.currentTarget as HTMLDetailsElement; if (me.open) { document.querySelectorAll<HTMLDetailsElement>(".pl-pop[open]").forEach((d) => d !== me && (d.open = false)); me.querySelector<HTMLInputElement>(".pl-pop-search")?.focus(); } }}>
+    <details class={`pl-pop${narrow ? " narrow" : ""}`} onToggle={(e) => { const me = e.currentTarget as HTMLDetailsElement; if (me.open) { document.querySelectorAll<HTMLDetailsElement>(".pl-pop[open]").forEach((d) => d !== me && (d.open = false)); me.querySelector<HTMLInputElement>(".pl-pop-search")?.focus(); flipIfNeeded(me); } }}>
       <summary class={ghost ? `pl-ghost${on ? " on" : ""}` : `select${on ? " on" : ""}`} aria-label={`${label}: ${text}`}><span>{text}</span></summary>
       <div class="pl-pop-list" role="listbox" aria-label={label}>{children}</div>
     </details>
@@ -348,7 +358,7 @@ const versionLine = (c: Card | null) => (c ? `${versionText(preview(c)) || "Regu
 
 /** The cards to add, as the app's list: rows like the Want-list's, their main settings as quiet dropdowns on the right.
  *  Tapping a card opens it in the side pane. Ticked rows get one line of settings on top. */
-function AddList({ items, upd, target, setAll, each, lot, setLot, spread, deck, open, setOpen }: PickProps & { open: number | null; setOpen: (id: number | null) => void }) {
+function AddList({ ask, items, upd, target, setAll, each, lot, setLot, spread, deck, open, setOpen }: PickProps & { open: number | null; setOpen: (id: number | null) => void }) {
   const [sel, setSel] = useState<number[]>([]);
   const picked = items.filter((x) => sel.includes(x.id));
   const flip = (id: number) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -371,12 +381,19 @@ function AddList({ items, upd, target, setAll, each, lot, setLot, spread, deck, 
           <span class="add-gh-who">
             <b>{picked.length ? `${picked.length} selected` : "Select all"}</b>
             {picked.length > 0 && <>
-              <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>
-              <Pop label="More settings" text="More" ghost><MoreForm items={picked} apply={apply} change={change} target={target} bulk /></Pop>
-              <button type="button" class="pl-text-btn bad" onClick={() => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); }}>Remove</button>
+              <Pop label="More settings" text="More settings" ghost><MoreForm items={picked} apply={apply} change={change} target={target} bulk /></Pop>
+              <span class="add-gh-acts">
+                <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>
+                <button type="button" class="btn sm danger-soft" onClick={() => ask({
+                  title: `Remove ${picked.length === 1 ? picked[0].card?.name : `${picked.length} cards`}?`,
+                  text: `${picked.length === 1 ? "It won't" : "They won't"} be added to your ${target === "wants" ? "want-list" : "collection"}. You can find ${picked.length === 1 ? "it" : "them"} again from Find cards.`,
+                  action: "Remove", run: () => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); },
+                })}>Remove</button>
+              </span>
             </>}
           </span>
           {picked.length ? <>
+            <span class="add-gh-set">Set for the ticked cards</span>
             <span class="add-gh-label">Copies</span>
             {wants ? <LangPick value={sameOf(picked, "lang")} onChange={(lang) => apply({ lang })} /> : <LangOne value={sameOf(picked, "lang")} onChange={(lang) => apply({ lang })} />}
             <CondPop value={sameOf(picked, "cond")} onChange={(cond) => apply({ cond })} target={target} />
@@ -519,7 +536,8 @@ function spreadLot(items: Item[], lot: string): Map<number, number> {
   return out;
 }
 
-interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>, only?: number[]) => void; each: (f: (x: Item) => Partial<Item>, only?: number[]) => void; deck: boolean; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
+type Ask = (q: { title: string; text: string; action: string; run: () => void }) => void;
+interface PickProps { ask: Ask; items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>, only?: number[]) => void; each: (f: (x: Item) => Partial<Item>, only?: number[]) => void; deck: boolean; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
 
 // ---- a precon deck (collection only): MTGJSON's deck lists name every card's exact printing ----
 interface DeckRef { name: string; fileName: string; releaseDate: string; type: string; code: string }
@@ -688,6 +706,8 @@ export function AddPage({ target }: { target: Target }) {
   const [fileName, setFileName] = useState("");
   const [open, setOpen] = useState<number | null>(null);
   const [stage, setStage] = useState<"find" | "tune" | "done">("find");
+  const [question, setQuestion] = useState<Parameters<Ask>[0] | null>(null);
+  const ask: Ask = (q) => setQuestion(q);
   const done = stage === "done";
   const back = target === "wants" ? "/wants" : "/collection";
   const where = target === "wants" ? "want-list" : "collection";
@@ -740,7 +760,8 @@ export function AddPage({ target }: { target: Target }) {
   const less = (c: Card) => {
     const it = [...items].reverse().find((x) => sameCard(x, c));
     if (!it) return;
-    if (it.qty > 1) upd(it.id, { qty: it.qty - 1 }); else setItems((xs) => xs.filter((x) => x.id !== it.id));
+    if (it.qty > 1) return upd(it.id, { qty: it.qty - 1 });
+    ask({ title: `Remove ${c.name}?`, text: "It won't be added. You can add it again from the search.", action: "Remove", run: () => setItems((xs) => xs.filter((x) => x.id !== it.id)) });
   };
   const go = (s: typeof stage) => { setOpen(null); setStage(s); scrollTo(0, 0); };
   const pickDeck = async (d: DeckRef) => {
@@ -840,7 +861,7 @@ export function AddPage({ target }: { target: Target }) {
                   <span class="add-check-acts">
                     <button class="btn xs primary" type="button" onClick={() => upd(it.id, { status: "ok" })}>Yes</button>
                     <button class="btn xs" type="button" onClick={() => upd(it.id, { status: "unknown", card: null })}>No</button>
-                    <button class="btn xs danger-soft" type="button" onClick={() => upd(it.id, { status: "dropped" })}>Leave out</button>
+                    <button class="btn xs danger-soft" type="button" onClick={() => ask({ title: `Leave out “${it.line.raw}”?`, text: "That line won't be added.", action: "Leave out", run: () => upd(it.id, { status: "dropped" }) })}>Leave out</button>
                   </span>
                 </div>
               ) : (
@@ -851,7 +872,7 @@ export function AddPage({ target }: { target: Target }) {
                       <div class="r-name"><span>“{it.line.raw}”</span></div>
                       <div class="r-line"><span>Not recognised. Which card is it?</span></div>
                     </div>
-                    <span class="add-check-acts"><button class="btn xs danger-soft" type="button" onClick={() => upd(it.id, { status: "dropped" })}>Leave out</button></span>
+                    <span class="add-check-acts"><button class="btn xs danger-soft" type="button" onClick={() => ask({ title: `Leave out “${it.line.raw}”?`, text: "That line won't be added.", action: "Leave out", run: () => upd(it.id, { status: "dropped" }) })}>Leave out</button></span>
                   </div>
                   <CardSearch row initial={it.line.name} placeholder="Type the name"
                     onPick={(card) => upd(it.id, { card, status: "ok", prints: null, chosen: false, finish: defaultFinish(target, it, card) })} />
@@ -869,7 +890,7 @@ export function AddPage({ target }: { target: Target }) {
             <span class="add-found-card" title={`${x.card?.name}, ${versionLine(x.card)}`}>
               <CardImage src={img(x.card, "small")} alt={x.card?.name ?? ""} foil={false} />
               {x.qty > 1 && <b>{x.qty}</b>}
-              <button type="button" aria-label={`Remove ${x.card?.name}`} onClick={() => setItems((xs) => xs.filter((y) => y.id !== x.id))}><IconClose /></button>
+              <button type="button" aria-label={`Remove ${x.card?.name}`} onClick={() => ask({ title: `Remove ${x.card?.name}?`, text: `${x.qty > 1 ? `All ${x.qty} copies` : "It"} won't be added. You can find it again.`, action: "Remove", run: () => setItems((xs) => xs.filter((y) => y.id !== x.id)) })}><IconClose /></button>
             </span>
           ))}
         </div>
@@ -886,7 +907,7 @@ export function AddPage({ target }: { target: Target }) {
 
       {stage === "tune" && <>
         <p class="add-lead">Each card starts on its newest regular version and your usual settings. Change any of them here, tick several to change them together, or open a card for all its versions.</p>
-        <AddList items={live} upd={upd} target={target} setAll={setAll} each={each} deck={!!deck} lot={lot} setLot={setLot} spread={spread} open={open} setOpen={setOpen} />
+        <AddList ask={ask} items={live} upd={upd} target={target} setAll={setAll} each={each} deck={!!deck} lot={lot} setLot={setLot} spread={spread} open={open} setOpen={setOpen} />
       </>}
 
       {items.length > 0 && (stage === "find" ? (
@@ -901,6 +922,8 @@ export function AddPage({ target }: { target: Target }) {
         </div>
       ))}
 
+      {question && <Confirm title={question.title} text={question.text} action={question.action}
+        onCancel={() => setQuestion(null)} onConfirm={() => { question.run(); setQuestion(null); }} />}
       {openIt && shell && createPortal(
         <AddPane key={openIt.id} it={openIt} upd={upd} target={target} share={spread.get(openIt.id)} place={`${openAt + 1} of ${live.length}`}
           onClose={() => setOpen(null)} onNext={openAt < live.length - 1 ? () => setOpen(live[openAt + 1].id) : undefined} />, shell)}
