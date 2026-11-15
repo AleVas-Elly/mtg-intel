@@ -379,7 +379,7 @@ def test_ntfy_backs_up_a_system_alert_the_site_did_not_take(monkeypatch):
     assert urls == ["https://site.test/api/ingest/alert"]
 
 
-def test_a_rich_deal_reaches_the_page_with_picture_and_buttons_and_a_quiet_one_does_not_ring(monkeypatch):
+def test_a_rich_deal_reaches_the_page_with_picture_buttons_and_what_its_ring_depends_on(monkeypatch):
     from mtg_intel.archive.notify import Rich, alert
 
     _site(monkeypatch)
@@ -393,12 +393,13 @@ def test_a_rich_deal_reaches_the_page_with_picture_and_buttons_and_a_quiet_one_d
                 caption="🔥 Steal · <b>Sheoldred</b> · €18.40\nNear Mint", head="🔥 Steal · <b>Sheoldred</b> · €18.40",
                 picture="https://site.test/img/a.jpg", silent=True)
     assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "Steal: Sheoldred", "text", telegram=rich,
-                 section="deals", app_id="deal:7")
+                 section="deals", app_id="deal:7", deal={"rank": 3, "card": "abc|en|no", "price": 18.4})
     [doc] = sent
     assert doc["id"] == "deal:7" and doc["section"] == "deals" and doc["body"] == "🔥 Steal · Sheoldred · €18.40"
     assert doc["html"].startswith("🔥 Steal") and doc["picture"] == "https://site.test/img/a.jpg"
     assert doc["buttons"] == [[{"text": "🧾 Pay", "url": "https://ct.test/cart"}], [{"text": "Set €3", "action": "t|a|en|n|300"}]]
-    assert doc["ping"] is False  # quiet at night: on the page, no ring
+    # quiet on Telegram, but the app always asks: each device's settings decide whether it rings (D88)
+    assert doc["ping"] is True and (doc["rank"], doc["card"], doc["price"]) == (3, "abc|en|no", 18.4)
 
 
 def test_telegram_gets_the_rich_version_and_falls_back_to_plain_text(monkeypatch):

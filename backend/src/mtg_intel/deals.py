@@ -351,6 +351,17 @@ def cardmarket_context(wish: dict[str, Any], foil: bool) -> str:
     return "Cardmarket: " + ", ".join(parts) if parts else "Cardmarket: no other prices"
 
 
+def rank(deal: Deal) -> int:
+    """The tier as a number for the app's ring settings (D88): 3 Steal, 2 Great, 1 Good, 0 target."""
+    name = deal.tier[1] if deal.tier else ""
+    return 3 if "Steal" in name else 2 if "Great" in name else 1 if "Good" in name else 0
+
+
+def app_deal(deal: Deal) -> dict:
+    """What the app needs to decide whether a deal rings: its tier, card and price (D88)."""
+    return {"rank": rank(deal), "card": deal.key, "price": round(deal.listing.price, 2)}
+
+
 def message(deal: Deal) -> tuple[str, str]:
     """Alert title and text: how strong the deal is, the card, the listing, what it was compared
     with, and both marketplaces' links."""

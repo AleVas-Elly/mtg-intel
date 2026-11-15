@@ -52,6 +52,11 @@ export async function vapid(endpoint: string, publicKey: string, privateJwk: str
   return `vapid t=${head}.${body}.${b64url(sig)}, k=${publicKey}`;
 }
 
+async function topic(tag: string): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(tag)));
+  return b64url(digest).slice(0, 32);
+}
+
 export interface Ping { title: string; body: string; url?: string; tag?: string; silent?: boolean; badge?: number }
 
 /** Send one ping. "gone" means the device unsubscribed or the site was removed: forget it. */
@@ -64,7 +69,8 @@ export async function push(sub: Subscription, ping: Ping, env: { VAPID_PUBLIC: s
       "Content-Type": "application/octet-stream",
       TTL: String(2 * 86400),
       Urgency: ping.silent ? "low" : "high",
-      ...(ping.tag ? { Topic: ping.tag.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32) } : {}),
+      // one waiting ping per tag: a newer one replaces it before it's delivered (Topic: 32 URL-safe characters)
+      ...(ping.tag ? { Topic: await topic(ping.tag) } : {}),
     },
     body: await encrypt(sub, JSON.stringify(ping)),
   });

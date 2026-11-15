@@ -537,7 +537,7 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
 
     tg_token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if not tg_token or not chat:  # no bot: the old plain alerts
-        return [alert(client, *deals.message(d), section="deals") for d in result.new[:MAX_DEAL_MESSAGES]]
+        return [alert(client, *deals.message(d), section="deals", deal=deals.app_deal(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
     account = lifecycle.Account(client, token)
     telegram = lifecycle.Telegram(client, tg_token, chat)
     alerts: dict[str, dict] = state.setdefault("alerts", {})
@@ -614,7 +614,7 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
         out.buttons = lifecycle.keyboard(record, done=False)
         out.silent = not lifecycle.rings(d, now)
         record["app_id"] = f"deal:{d.listing.id}"
-        ok = alert(client, *deals.message(d), telegram=out, section="deals", app_id=record["app_id"])
+        ok = alert(client, *deals.message(d), telegram=out, section="deals", app_id=record["app_id"], deal=deals.app_deal(d))
         sent.append(ok)
         if ok and out.message_id:
             alerts[str(out.message_id)] = record | {"message_id": out.message_id, "line": line}
@@ -667,7 +667,7 @@ def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: 
         site_store.put("targets", targets.site_doc(found_targets, now.isoformat()))
     note = targets.weekly_note(found_targets, os.environ.get("SITE_URL"))
     if send and note:
-        print(f"target note on the Alerts page: {to_app(client, 'digest', 'Target prices to set', html=note[0], buttons=app_buttons(note[1]), ping=False)}")
+        print(f"target note on the Alerts page: {to_app(client, 'digest', 'Target prices to set', html=note[0], buttons=app_buttons(note[1]))}")
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if send and note and token and chat:
         sent = telegram_call(client, token, "sendMessage", {
@@ -701,7 +701,7 @@ def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: b
 
         print(html.unescape(re.sub(r"<[^>]+>", "", note)))
     if send and note:
-        print(f"trend note on the Alerts page: {to_app(client, 'digest', 'This week on the want-list', html=note, ping=False)}")
+        print(f"trend note on the Alerts page: {to_app(client, 'digest', 'This week on the want-list', html=note)}")
     token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
     if send and note and token and chat:
         sent = telegram_call(client, token, "sendMessage", {
@@ -890,7 +890,7 @@ def check_deals(args: argparse.Namespace) -> int:
         deals.record_check(state, now, len(result.failed_blueprints), sum(sent))
         note = deals.digest(state, result, watch, now, os.environ.get("SITE_URL"))
         if note:
-            print(f"daily digest sent: {alert(client, *note, section='digest', ping=False)}")
+            print(f"daily digest sent: {alert(client, *note, section='digest')}")
         local = now.astimezone(ZoneInfo("Europe/Amsterdam"))
         if local.weekday() == TARGETS_WEEKDAY and local.hour >= TARGETS_HOUR and state.get("targets_on") != local.date().isoformat():
             state["targets_on"] = local.date().isoformat()

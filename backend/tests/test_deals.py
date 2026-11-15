@@ -440,3 +440,12 @@ def test_buy_tip_says_buy_now_at_the_low_and_could_drop_on_a_falling_trend():
 
 def test_cardmarket_shipping_follows_the_dutch_table():
     assert [deals.cm_shipping(p) for p in (4.0, 25.0, 25.01, 150.0, 300.0, 900.0, 9000.0)] == [1.7, 1.7, 6.2, 6.2, 13.55, 18.15, 18.15]
+
+
+def test_rank_numbers_the_tiers_for_the_app_ring_settings():
+    from types import SimpleNamespace
+
+    from mtg_intel.deals import TIERS, rank
+
+    assert [rank(SimpleNamespace(tier=t)) for t in TIERS] == [3, 2, 1]
+    assert rank(SimpleNamespace(tier=None)) == 0  # a target price

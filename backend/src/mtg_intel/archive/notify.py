@@ -47,16 +47,18 @@ def app_buttons(rows: list[list[dict[str, str]]] | None) -> list[list[dict[str, 
 
 def to_app(client: httpx.Client, section: str, title: str, body: str = "", *, html: str | None = None,
            id: str | None = None, picture: str | None = None, buttons: list[list[dict[str, str]]] | None = None,
-           done: bool | None = None, ping: bool = True) -> bool:
+           done: bool | None = None, ping: bool = True, deal: dict | None = None) -> bool:
     """Store an alert on the site's Alerts page (or update the one with this id) and, with `ping`,
-    ring my devices. Whether the site took it. Never raises."""
+    ring my devices (each device's settings decide whether it rings, D88). `deal`: a deal's `rank`
+    (3 Steal … 0 target), `card` (wish key) and `price`, for those settings and snoozes. Whether the
+    site took it. Never raises."""
     url, token = os.environ.get("SITE_URL"), os.environ.get("SITE_INGEST_TOKEN")
     if not url or not token:
         return False
     assert section in SECTIONS, section
     doc = {"section": section, "title": title[:200], "body": body[:3000], "ping": ping,
            **{k: v for k, v in {"id": id, "html": html, "picture": picture, "buttons": buttons, "done": done}.items()
-              if v is not None}}
+              if v is not None}, **(deal or {})}
     try:
         response = client.post(f"{url.rstrip('/')}/api/ingest/alert", json=doc, timeout=20,
                                headers={"Authorization": f"Bearer {token}", "User-Agent": "mtg-intel"})
@@ -67,7 +69,7 @@ def to_app(client: httpx.Client, section: str, title: str, body: str = "", *, ht
 
 
 def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None = None, section: str = "system",
-          app_id: str | None = None, ping: bool = True) -> bool:
+          app_id: str | None = None, ping: bool = True, deal: dict | None = None) -> bool:
     """Send to every configured channel. Never raises. The app gets the alert in its section (the
     rich version's text, picture and buttons when there is one). Telegram gets the photo, else the
     HTML text, the plain text if it refuses both. ntfy gets title and message when nothing else
@@ -76,7 +78,7 @@ def alert(client: httpx.Client, title: str, message: str, telegram: Rich | None 
     to_page = to_app(client, section, title, _plain(rich.head) if rich and rich.head else message,
                      html=(rich.caption or rich.html) if rich else None, id=app_id,
                      picture=rich.picture if rich else None, buttons=app_buttons(rich.buttons) if rich else None,
-                     ping=ping and not (rich and rich.silent))  # a quiet alert waits on the page (night: only Steals ring)
+                     ping=ping, deal=deal)  # whether it rings: each device's settings (night: only Steals, by default)
     sent = _telegram(client, title, message, rich)
     if (section == "system" and not to_page) or not (to_page or sent):
         sent = send_alert(client, os.environ.get("NTFY_TOPIC"), title, message) or sent

@@ -13,6 +13,7 @@ import {
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { b64url, fromB64url, randomToken, sameSecret, sha256Hex, sign, verify } from "./crypto";
 import { type Ping, push, type Subscription } from "./push";
+import { cleanRings, type Kind, type Rank, rings, type RingSettings, type Snooze, snoozed } from "./rings";
 import {
   type Account, can, docPerm, ended, isOwner, meOf, OWNER, type Perm, PERMS, PRESETS, presetOf, tidy,
   withoutDetails, withoutMoney,
@@ -129,8 +130,8 @@ const logged = (env: Env, who: string, what: string) =>
 
 /** A quiet Telegram note to me through the timer Worker, which holds the bot token (D78). */
 function notify(env: Env, ctx: ExecutionContext | null, text: string) {
-  // also on the Alerts page's Digest (D88), without a ring: these were quiet Telegram notes
-  const saved = saveAlert(env, { section: "digest", title: text.slice(0, 120), body: text }).catch(() => undefined);
+  // also on the Alerts page's Digest (D88); rings only where the device lets the digest ring
+  const saved = saveAlert(env, { section: "digest", title: text.slice(0, 120), body: text, ping: true }).catch(() => undefined);
   if (ctx) ctx.waitUntil(saved);
   if (!env.TRIGGER) return;
   const job = env.TRIGGER.fetch("https://trigger/notify", {
@@ -715,21 +716,24 @@ async function suggestions(request: Request, env: Env, rest: string, ctx: Execut
  *  Only the owner for now; People gets a switch for everyone else (D88). */
 const mayNotify = (a: Account) => isOwner(a);
 
-interface PushDevice { sub: Subscription; device: string; browser: string; created: string }
+interface PushDevice { sub: Subscription; device: string; browser: string; created: string; rings?: RingSettings }
 
 /** Send a ping to every device of these accounts; devices the push service calls gone are forgotten. */
-async function pingAll(env: Env, origin: string, accountIds: string[], ping: Ping, only?: string): Promise<{ sent: number; failed: string[] }> {
+async function pingAll(env: Env, origin: string, accountIds: string[], ping: Ping, only?: string,
+  wants: (d: PushDevice) => boolean = () => true): Promise<{ sent: number; failed: string[]; quiet?: number }> {
   if (!env.VAPID_PUBLIC || !env.VAPID_PRIVATE) return { sent: 0, failed: ["Notifications aren't set up on the server."] };
   const rows = (await env.DB.prepare(`SELECT endpoint, doc FROM push_devices WHERE account IN (${accountIds.map(() => "?").join()})`)
     .bind(...accountIds).all<{ endpoint: string; doc: string }>()).results.filter((r) => !only || r.endpoint === only);
   const keys = { VAPID_PUBLIC: env.VAPID_PUBLIC, VAPID_PRIVATE: env.VAPID_PRIVATE, SITE_URL: origin };
+  let quiet = 0;
   const out = await Promise.all(rows.map(async (r) => {
     const d = JSON.parse(r.doc) as PushDevice;
+    if (!wants(d)) { quiet++; return null; }
     const result = await push(d.sub, ping, keys).catch((e) => String(e));
     if (result === "gone") await env.DB.prepare("DELETE FROM push_devices WHERE endpoint = ?").bind(r.endpoint).run();
     return result === "ok" ? null : `${d.device}: ${result === "gone" ? "no longer subscribed" : result}`;
   }));
-  return { sent: out.filter((x) => x === null).length, failed: out.filter((x): x is string => x !== null) };
+  return { sent: out.filter((x) => x === null).length - quiet, failed: out.filter((x): x is string => x !== null), quiet };
 }
 
 async function notifications(request: Request, env: Env, rest: string, url: URL): Promise<Response> {
@@ -741,10 +745,10 @@ async function notifications(request: Request, env: Env, rest: string, url: URL)
   const list = async () => (await env.DB.prepare("SELECT endpoint, doc FROM push_devices WHERE account = ? ORDER BY created")
     .bind(me.id).all<{ endpoint: string; doc: string }>()).results.map((r) => {
     const d = JSON.parse(r.doc) as PushDevice;
-    return { endpoint: r.endpoint, device: d.device, browser: d.browser, created: d.created };
+    return { endpoint: r.endpoint, device: d.device, browser: d.browser, created: d.created, rings: cleanRings(d.rings) };
   });
   if (rest === "devices" && request.method === "GET") return json(await list());
-  const body = (await request.json().catch(() => null)) as { sub?: Subscription; endpoint?: string } | null;
+  const body = (await request.json().catch(() => null)) as { sub?: Subscription; endpoint?: string; tz?: string; rings?: unknown } | null;
   if (request.method !== "POST" || !body) return json({ error: "Not found" }, 404);
   if (rest === "devices") {
     const sub = body.sub;
@@ -752,9 +756,17 @@ async function notifications(request: Request, env: Env, rest: string, url: URL)
       && typeof sub.keys?.p256dh === "string" && sub.keys.p256dh.length < 200 && typeof sub.keys?.auth === "string" && sub.keys.auth.length < 100;
     if (!valid) return json({ error: "That subscription isn't valid." }, 400);
     const d: PushDevice = { sub: { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
-      device: deviceName(request), browser: browserName(request), created: new Date().toISOString() };
+      device: deviceName(request), browser: browserName(request), created: new Date().toISOString(),
+      rings: cleanRings({ tz: body.tz }) };
     await env.DB.prepare("INSERT OR REPLACE INTO push_devices (endpoint, account, created, doc) VALUES (?, ?, ?, ?)")
       .bind(sub.endpoint, me.id, d.created, JSON.stringify(d)).run();
+    return json(await list());
+  }
+  if (rest === "devices/settings") {
+    const row = await env.DB.prepare("SELECT doc FROM push_devices WHERE endpoint = ? AND account = ?").bind(String(body.endpoint), me.id).first<{ doc: string }>();
+    if (!row) return json({ error: "This device isn't subscribed any more. Turn notifications on again." }, 404);
+    const d = { ...(JSON.parse(row.doc) as PushDevice), rings: cleanRings(body.rings) };
+    await env.DB.prepare("UPDATE push_devices SET doc = ? WHERE endpoint = ?").bind(JSON.stringify(d), String(body.endpoint)).run();
     return json(await list());
   }
   if (rest === "devices/remove") {
@@ -779,7 +791,10 @@ interface AlertButton { text: string; url?: string; action?: string; done?: bool
 interface AlertIn {
   id?: string; section: (typeof SECTIONS)[number]; title: string; body?: string; html?: string;
   picture?: string | null; buttons?: AlertButton[][]; done?: boolean; ping?: boolean; silent?: boolean; tag?: string;
+  rank?: number; card?: string; price?: number; // a deal: its tier (3 Steal … 0 target), wish key and price
 }
+
+
 
 function validAlert(a: unknown): a is AlertIn {
   const x = a as AlertIn | null;
@@ -803,9 +818,16 @@ async function saveAlert(env: Env, a: AlertIn): Promise<{ id: string; sent: numb
     env.DB.prepare("DELETE FROM alerts WHERE updated < ?").bind(new Date(Date.now() - ALERT_DAYS * 864e5).toISOString()),
   ]);
   if (!ping) return { id, sent: 0, failed: [] };
+  if (a.card) {
+    const z = await env.DB.prepare("SELECT doc FROM snoozes WHERE card = ?").bind(a.card).first<{ doc: string }>();
+    if (snoozed(z ? JSON.parse(z.doc) : null, a.price)) return { id, sent: 0, failed: ["snoozed"] };
+  }
+  const rank = (Math.max(0, Math.min(3, Math.round(a.rank ?? 0)))) as Rank;
+  const at = new Date();
   const r = await pingAll(env, env.SITE_URL, [OWNER], {
-    title: a.title, body: a.body ?? "", url: `/alerts?a=${encodeURIComponent(id)}`, tag: a.tag ?? id, silent: a.silent, badge: await unread(env),
-  });
+    // one notification per card: a newer alert for the same card replaces the older one (D88)
+    title: a.title, body: a.body ?? "", url: `/alerts?a=${encodeURIComponent(id)}`, tag: a.tag ?? a.card ?? id, silent: a.silent, badge: await unread(env),
+  }, undefined, (d) => rings(cleanRings(d.rings), a.section as Kind, rank, at));
   return { id, ...r };
 }
 
@@ -823,11 +845,27 @@ async function alertsApi(request: Request, env: Env, rest: string, ctx: Executio
   const list = async () => {
     const rows = (await env.DB.prepare("SELECT id, section, at, updated, read, doc FROM alerts ORDER BY at DESC LIMIT 300")
       .all<{ id: string; section: string; at: string; updated: string; read: number; doc: string }>()).results;
+    const snoozes = (await env.DB.prepare("SELECT doc FROM snoozes").all<{ doc: string }>()).results.map((r) => JSON.parse(r.doc) as Snooze)
+      .filter((z) => !z.until || Date.parse(z.until) > Date.now());
     return { alerts: rows.map((r) => ({ ...JSON.parse(r.doc), id: r.id, section: r.section, at: r.at, updated: r.updated, read: !!r.read })),
-      unread: rows.filter((r) => !r.read).length };
+      unread: rows.filter((r) => !r.read).length, snoozes };
   };
   if (!rest && request.method === "GET") return json(await list());
-  const body = (await request.json().catch(() => ({}))) as { ids?: string[]; action?: string };
+  const body = (await request.json().catch(() => ({}))) as { ids?: string[]; action?: string; card?: string; name?: string; days?: number; below?: number };
+  if (rest === "snooze" && request.method === "POST") {
+    // a card's deal alerts stop ringing for some days, or ring only below a price (D88); they still show here
+    const days = Number(body.days), below = Number(body.below);
+    const card = String(body.card ?? "");
+    if (!/^[^\s]{3,120}$/.test(card) || (!(days > 0 && days <= 365) && !(below > 0 && below < 100000))) return json({ error: "That snooze isn't valid." }, 400);
+    const z: Snooze = { card, name: String(body.name ?? "").slice(0, 120), until: days > 0 ? new Date(Date.now() + days * 864e5).toISOString() : null,
+      below: below > 0 ? Math.round(below * 100) / 100 : null };
+    await env.DB.prepare("INSERT OR REPLACE INTO snoozes (card, until, below, doc) VALUES (?, ?, ?, ?)").bind(card, z.until, z.below, JSON.stringify(z)).run();
+    return json(await list());
+  }
+  if (rest === "snooze/remove" && request.method === "POST") {
+    await env.DB.prepare("DELETE FROM snoozes WHERE card = ?").bind(String(body.card ?? "")).run();
+    return json(await list());
+  }
   if (rest === "read" && request.method === "POST") {
     const ids = Array.isArray(body.ids) ? body.ids.filter((x) => typeof x === "string").slice(0, 300) : null;
     await (ids ? env.DB.prepare(`UPDATE alerts SET read = 1 WHERE id IN (${ids.map(() => "?").join() || "''"})`).bind(...ids)

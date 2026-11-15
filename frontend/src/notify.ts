@@ -10,7 +10,14 @@ export type PushState =
   | "off" // can be turned on with one tap
   | "on";
 
-export interface PushDevice { endpoint: string; device: string; browser: string; created: string }
+/** What rings on a device (D88; the Worker's rings.ts): 3 Steal, 2 Great, 1 Good, 0 target price. */
+export interface RingSettings {
+  kinds: { deals: boolean; digest: boolean; system: boolean };
+  ring: 0 | 1 | 2 | 3;
+  quiet: { on: boolean; from: number; to: number; steals: boolean };
+  tz: string;
+}
+export interface PushDevice { endpoint: string; device: string; browser: string; created: string; rings: RingSettings }
 
 export const isApple = () => /iPhone|iPad/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const standalone = () => matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true;
@@ -45,7 +52,7 @@ export async function turnOn(): Promise<PushDevice[]> {
   const reg = await navigator.serviceWorker.register("/sw.js");
   await navigator.serviceWorker.ready;
   const sub = (await reg.pushManager.getSubscription()) ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-  return send<PushDevice[]>("POST", "/api/push/devices", { sub: sub.toJSON() });
+  return send<PushDevice[]>("POST", "/api/push/devices", { sub: sub.toJSON(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone });
 }
 
 export async function turnOff(): Promise<PushDevice[]> {
@@ -57,3 +64,5 @@ export async function turnOff(): Promise<PushDevice[]> {
 
 export const sendTest = async () => send<{ ok: true }>("POST", "/api/push/test", { endpoint: await currentEndpoint() });
 export const pushDevices = () => send<PushDevice[]>("GET", "/api/push/devices");
+export const saveRings = async (rings: RingSettings) =>
+  send<PushDevice[]>("POST", "/api/push/devices/settings", { endpoint: await currentEndpoint(), rings });

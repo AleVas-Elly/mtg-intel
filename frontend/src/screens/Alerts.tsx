@@ -5,7 +5,7 @@ import type { ComponentChildren, VNode } from "preact";
 import { h } from "preact";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { send } from "../api";
-import { ago } from "../format";
+import { ago, eur } from "../format";
 import { go } from "../router";
 import { toast } from "../toast";
 import { IconOut } from "../ui/icons";
@@ -15,8 +15,10 @@ interface Button { text: string; url?: string; action?: string; done?: boolean }
 export interface Alert {
   id: string; section: Section; at: string; updated: string; read: boolean;
   title: string; body?: string; html?: string; picture?: string | null; buttons?: Button[][]; done?: boolean;
+  card?: string; price?: number; // deals: the wish key and price (for Snooze)
 }
-interface AlertsDoc { alerts: Alert[]; unread: number; message?: string }
+interface Snooze { card: string; name: string; until: string | null; below: number | null }
+interface AlertsDoc { alerts: Alert[]; unread: number; snoozes?: Snooze[]; message?: string }
 
 const SECTIONS: { id: Section; label: string; empty: string }[] = [
   { id: "deals", label: "Deals", empty: "No deal alerts in the last 30 days." },
@@ -80,20 +82,53 @@ export function RichText({ html }: { html: string }): VNode {
 
 // --- The page ----------------------------------------------------------------------------------
 
-function AlertCard({ a, focus, onAction }: { a: Alert; focus: boolean; onAction: (a: Alert, action: string) => void }) {
+const SNOOZE_DAYS: [number, string][] = [[1, "1 day"], [3, "3 days"], [7, "1 week"], [30, "1 month"]];
+const untilText = (iso: string) => new Date(iso).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+
+/** Snooze a card's deal alerts (D88): quiet for some days, or ring only below a price. They still show here. */
+function SnoozePanel({ a, z, onSnooze, onClose }: { a: Alert; z?: Snooze; onSnooze: (body: { days?: number; below?: number } | null) => void; onClose: () => void }) {
+  const [below, setBelow] = useState(a.price ? String(Math.max(0.5, Math.floor(a.price * 0.9 * 2) / 2).toFixed(2)) : "");
+  const price = Number(below.replace(",", "."));
+  return (
+    <div class="snooze">
+      <p class="snooze-what">This card's deals keep showing here; only the ping stops.</p>
+      <div class="ring-opts">
+        <span class="snooze-label">Quiet for</span>
+        {SNOOZE_DAYS.map(([d, label]) => <button type="button" class="chip toggle" onClick={() => onSnooze({ days: d })}>{label}</button>)}
+      </div>
+      <form class="ring-opts" onSubmit={(e) => { e.preventDefault(); if (price > 0) onSnooze({ below: price }); }}>
+        <span class="snooze-label">Ring only below</span>
+        <label class="field snooze-price"><span>€</span><input inputMode="decimal" value={below} aria-label="Price in euro"
+          onInput={(e) => setBelow((e.target as HTMLInputElement).value)} /></label>
+        <button class="btn sm" type="submit" disabled={!(price > 0)}>Set</button>
+      </form>
+      <div class="ring-opts">
+        {z && <button type="button" class="btn sm" onClick={() => onSnooze(null)}>Stop snoozing</button>}
+        <button type="button" class="btn sm" onClick={onClose}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function AlertCard({ a, focus, z, onAction, onSnooze }: { a: Alert; focus: boolean; z?: Snooze; onAction: (a: Alert, action: string) => void;
+  onSnooze: (a: Alert, body: { days?: number; below?: number } | null) => void }) {
+  const [snoozing, setSnoozing] = useState(false);
   return (
     <article id={`al-${a.id}`} class={`al${a.read ? "" : " unread"}${a.done ? " done" : ""}${focus ? " focus" : ""}`}>
       {a.picture && <img class="al-pic" src={a.picture} alt="" loading="lazy" />}
       <div class="al-body">
         <div class="al-meta"><time dateTime={a.at}>{ago(a.at)}</time>{a.updated !== a.at && a.section === "deals" && <span> · updated {ago(a.updated)}</span>}</div>
         {a.html ? <RichText html={a.html} /> : <><h3 class="al-title">{a.title}</h3>{a.body && <p class="al-plain">{a.body}</p>}</>}
-        {!!a.buttons?.length && (
+        {z && <p class="snoozed">🔕 {z.until ? `Quiet until ${untilText(z.until)}` : ""}{z.until && z.below != null ? " · " : ""}{z.below != null ? `rings only below ${eur(z.below)}` : ""}</p>}
+        {(!!a.buttons?.length || a.card) && (
           <div class="al-btns">
-            {a.buttons.flat().map((b) => b.url
+            {(a.buttons ?? []).flat().map((b) => b.url
               ? <a class="btn sm" href={b.url} target={b.url.startsWith("/") ? undefined : "_blank"} rel="noopener">{b.text}{!b.url.startsWith("/") && <IconOut />}</a>
               : <button class="btn sm" type="button" disabled={b.done || !b.action} onClick={() => b.action && onAction(a, b.action)}>{b.text}</button>)}
+            {a.card && <button class="btn sm" type="button" aria-expanded={snoozing} onClick={() => setSnoozing(!snoozing)}>{z ? "Snoozed" : "Snooze"}</button>}
           </div>
         )}
+        {snoozing && a.card && <SnoozePanel a={a} z={z} onClose={() => setSnoozing(false)} onSnooze={(body) => { setSnoozing(false); onSnooze(a, body); }} />}
       </div>
     </article>
   );
@@ -135,6 +170,14 @@ export function Alerts({ system }: { system: boolean }) {
       if (d.message) toast(d.message);
     } catch (e) { toast((e as Error).message); }
   };
+  const snooze = async (a: Alert, body: { days?: number; below?: number } | null) => {
+    try {
+      const d = body ? await send<AlertsDoc>("POST", "/api/alerts/snooze", { card: a.card, name: a.title, ...body })
+        : await send<AlertsDoc>("POST", "/api/alerts/snooze/remove", { card: a.card });
+      setDoc(d);
+      toast(!body ? "Snooze stopped: this card's deals ring again." : body.days ? `Quiet for ${SNOOZE_DAYS.find(([n]) => n === body.days)?.[1]}. Its deals still show here.` : `This card rings only below ${eur(body.below!)}.`);
+    } catch (e) { toast((e as Error).message); }
+  };
   const count = (s: Section) => doc?.alerts.filter((a) => a.section === s && !a.read).length ?? 0;
   return (
     <div class="page alerts">
@@ -150,7 +193,7 @@ export function Alerts({ system }: { system: boolean }) {
       {error && <p class="err">{error}</p>}
       {doc && !list.length && <p class="hint al-empty">{SECTIONS.find((s) => s.id === section)!.empty}</p>}
       <div class="al-list">
-        {list.map((a) => <AlertCard key={a.id} a={a} focus={a.id === asked} onAction={act} />)}
+        {list.map((a) => <AlertCard key={a.id} a={a} focus={a.id === asked} z={doc?.snoozes?.find((z) => z.card === a.card)} onAction={act} onSnooze={snooze} />)}
       </div>
     </div>
   );
