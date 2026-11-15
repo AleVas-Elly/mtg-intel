@@ -5,12 +5,13 @@
 // per card and for every card at once. Cards and pictures are real (Scryfall); nothing is saved: the last screen
 // shows what would be sent. Local copy only. Never merge to main.
 import { useEffect, useMemo, useState } from "preact/hooks";
+import { createPortal } from "preact/compat";
 import { peek } from "../api";
 import type { WantsDoc } from "../types";
 import { CardImage } from "../ui/CardImage";
 import { IconClose, IconMinus, IconPlus } from "../ui/icons";
 import { preview, printings, type ScryCard } from "../scry";
-import { condName, langName, versionText } from "../format";
+import { langName, versionText } from "../format";
 import "./paste.css";
 
 type Target = "wants" | "collection";
@@ -124,7 +125,7 @@ const priceOf = (c: Card, foil: boolean) => (foil ? c.prices?.eur_foil : c.price
 type Upd = (id: number, p: Partial<Item>) => void;
 
 /** Want-list language: one, several ("en,it" = English or Italian), or any. A copy in any of them counts. */
-const langText = (v: string) => (!v ? "Language…" : v === "any" ? "Any language" : v.split(",").map(langName).join(" or "));
+const langText = (v: string) => (!v ? "Mixed" : v === "any" ? "Any language" : v.split(",").map(langName).join(" or "));
 function LangPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const on = value && value !== "any" ? value.split(",") : [];
   const flip = (l: string) => { const next = on.includes(l) ? on.filter((x) => x !== l) : [...on, l]; onChange(next.length ? LANGS.filter((x) => next.includes(x)).join(",") : "any"); };
@@ -191,156 +192,164 @@ function Stepper({ value, onChange }: { value: number; onChange: (n: number) => 
   );
 }
 
-/** Language, condition, finish, copies and (collection) price paid for one card. `row` = compact selects. */
-function Fields({ it, upd, target, row, share }: { it: Item; upd: Upd; target: Target; row?: boolean; share?: number }) {
-  const fins = [...(target === "wants" ? ["any"] : []), ...finishes(it.card)];
-  const condLabel = target === "wants" ? "Worst condition" : "Condition";
-  if (row) return (
-    <>
-      <Stepper value={it.qty} onChange={(qty) => upd(it.id, { qty })} />
-      {target === "wants" ? <LangPick value={it.lang} onChange={(lang) => upd(it.id, { lang })} /> : (
-        <select class="select sm" value={it.lang} onChange={(e) => upd(it.id, { lang: (e.target as HTMLSelectElement).value })} aria-label="Language">
-          {LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-        </select>
-      )}
-      <select class="select sm" value={it.cond} onChange={(e) => upd(it.id, { cond: (e.target as HTMLSelectElement).value })} aria-label={condLabel}>
-        {CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
-      </select>
-      <select class="select sm" value={it.finish} onChange={(e) => upd(it.id, { finish: (e.target as HTMLSelectElement).value })} aria-label="Finish">
-        {fins.map((f) => <option value={f}>{finishName(f)}</option>)}
-      </select>
-      {target === "collection" && <span class="money"><span>€</span><input inputMode="decimal" placeholder={share ? `≈${share.toFixed(2)}` : "paid"} value={it.price}
-        onInput={(e) => upd(it.id, { price: (e.target as HTMLInputElement).value })} aria-label="Price paid each" /></span>}
-    </>
-  );
+/** A segmented control; with mixed values (several cards) no option is pressed. */
+function Seg({ label, value, options, onPick }: { label: string; value: string; options: [string, string][]; onPick: (v: string) => void }) {
   return (
-    <div class="group form">
-      <div class="f-row"><span>Copies</span><Stepper value={it.qty} onChange={(qty) => upd(it.id, { qty })} /></div>
-      <label class="f-row"><span>Language</span>
-        {target === "wants" ? <LangPick value={it.lang} onChange={(lang) => upd(it.id, { lang })} /> : (
-          <select class="select" value={it.lang} onChange={(e) => upd(it.id, { lang: (e.target as HTMLSelectElement).value })}>
-            {LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-          </select>
-        )}
-      </label>
-      <div class="f-row stack"><span>{condLabel}</span>
-        <div class="seg full">{CONDS.map((c) => <button type="button" aria-pressed={it.cond === c} onClick={() => upd(it.id, { cond: c })}>{c}</button>)}</div>
-        <small>{condName(it.cond)}{target === "wants" ? " or better" : ""}</small>
-      </div>
-      <div class="f-row stack"><span>Finish</span>
-        <div class="seg full">{fins.map((f) => <button type="button" aria-pressed={it.finish === f} onClick={() => upd(it.id, { finish: f })}>{finishName(f)}</button>)}</div>
-      </div>
-      {target === "collection" && (
-        <label class="f-row"><span>Price paid<small>Each, optional. Change it any time later.</small></span>
-          <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={it.price} onInput={(e) => upd(it.id, { price: (e.target as HTMLInputElement).value })} /></span>
-        </label>
-      )}
+    <div class="seg" role="group" aria-label={label}>
+      {options.map(([v, l]) => <button type="button" aria-pressed={value === v} onClick={() => onPick(v)}>{l}</button>)}
     </div>
   );
 }
 
-// ---- the three ways to pick ---------------------------------------------------------------------
-/** A: every card a row, settings inline, "set all" bar on top; the picture opens its versions. */
-function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProps) {
-  const [open, setOpen] = useState<number | null>(null);
-  const [sel, setSel] = useState<number[]>([]);
-  const picked = items.filter((x) => sel.includes(x.id));
-  const flip = (id: number) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
-  const openNext = (id: number) => { setOpen(id); requestAnimationFrame(() => document.getElementById(`pl-row-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })); };
-  return (
-    <div class="pl-table">
-      <BulkBar target={target} items={picked.length ? picked : items} setAll={(p) => setAll(p, picked.length ? sel : undefined)} lot={lot} setLot={setLot}
-        selected={picked.length} total={items.length} onSelectAll={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))}
-        onLeaveOut={() => { setAll({ status: "dropped" }, sel); setSel([]); }} onClear={() => setSel([])} />
-      {items.map((it, i) => (
-        <div class={`pl-row${open === it.id ? " open" : ""}${sel.includes(it.id) ? " picked" : ""}`} id={`pl-row-${it.id}`}>
-          <input type="checkbox" class="pl-check-box" checked={sel.includes(it.id)} onChange={() => flip(it.id)} aria-label={`Select ${it.card?.name}`} />
-          <button type="button" class="pl-thumb" onClick={() => setOpen(open === it.id ? null : it.id)} aria-expanded={open === it.id} aria-label={`Versions of ${it.card?.name}`}>
-            <CardImage src={img(it.card, "small")} alt="" foil={it.finish === "foil"} />
-          </button>
-          <div class="pl-name">
-            <b>{it.card?.name}</b>
-            <button type="button" class="pl-link" onClick={() => setOpen(open === it.id ? null : it.id)}>
-              {it.card?.set_name} · {it.card?.collector_number}{it.chosen ? "" : " · newest regular"} <em>{open === it.id ? "close" : "change, more options"}</em>
-            </button>
-            {extras(it, target) && <small class="pl-extras">{extras(it, target)}</small>}
-          </div>
-          <div class="pl-fields"><Fields it={it} upd={upd} target={target} row share={spread.get(it.id)} /></div>
-          {open === it.id && <div class="pl-under"><VersionStrip it={it} upd={upd} target={target} /><More it={it} upd={upd} target={target} />
-            <div class="pl-under-foot">
-              <button class="btn" type="button" onClick={() => setOpen(null)}>Done</button>
-              {i < items.length - 1 && <button class="btn primary" type="button" onClick={() => openNext(items[i + 1].id)}>Done, next card</button>}
-            </div>
-          </div>}
-        </div>
-      ))}
-    </div>
-  );
-}
+const sameOf = (items: Item[], k: "lang" | "cond" | "finish" | "deal" | "target" | "date") => (items.every((x) => x[k] === items[0]?.[k]) ? items[0]?.[k] ?? "" : "");
+const same2 = (items: Item[], k: "lists") => (items.every((x) => x[k].join() === items[0]?.[k].join()) ? items[0]?.[k] ?? [] : []);
 
-/** Settings for every card, or only the ticked ones: a header line (who, actions), then labelled fields in a grid. */
-function BulkBar({ target, setAll, items, lot, setLot, selected, total, onSelectAll, onLeaveOut, onClear }: {
-  target: Target; setAll: (p: Partial<Item>) => void; items: Item[]; lot: string; setLot: (v: string) => void;
-  selected: number; total: number; onSelectAll: () => void; onLeaveOut: () => void; onClear: () => void;
+/** The settings of one card, or of several at once (`bulk`): seen options, not dropdowns, then More settings folded. */
+function SettingsForm({ items, apply, target, bulk, share, lot, setLot }: {
+  items: Item[]; apply: (p: Partial<Item>) => void; target: Target; bulk?: boolean; share?: number; lot?: string; setLot?: (v: string) => void;
 }) {
-  const [more, setMore] = useState(false);
-  const same = (k: "lang" | "cond" | "finish" | "deal") => (items.every((x) => x[k] === items[0]?.[k]) ? items[0]?.[k] ?? "" : "");
-  const Mixed = ({ v }: { v: string }) => <option value="" disabled>{v}</option>;
+  const it = items[0];
+  const wants = target === "wants";
+  const fins = bulk ? (wants ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]) : [...(wants ? ["any"] : []), ...finishes(it.card)];
+  const extraCount = wants ? [sameOf(items, "target"), sameOf(items, "deal"), same2(items, "lists").length, items.every((x) => x.zero)].filter(Boolean).length : [sameOf(items, "date")].filter(Boolean).length;
   return (
-    <div class={`pl-bulk${selected ? " scoped" : ""}`}>
-      <div class="pl-bulk-top">
-        <label class="pl-bulk-who">
-          <input type="checkbox" class="pl-check-box" checked={selected === total} ref={(el) => { if (el) el.indeterminate = selected > 0 && selected < total; }}
-            onChange={onSelectAll} aria-label="Select every card" />
-          <b>{selected ? `${selected} of ${total} selected` : `Every card · ${total}`}</b>
-        </label>
-        <small>{selected ? "Changes here apply to the ticked cards only." : "Tick cards to change only some of them."}</small>
-        {selected > 0 && <span class="pl-bulk-acts">
-          <button type="button" class="pl-link" onClick={onClear}><em>Clear</em></button>
-          <button type="button" class="btn sm danger-soft" onClick={onLeaveOut}>Leave out {selected}</button>
-        </span>}
-      </div>
-      <div class="pl-bulk-grid">
-        <div class="pl-f"><small>Language</small>
-          {target === "wants" ? <LangPick value={same("lang")} onChange={(lang) => setAll({ lang })} /> : (
-            <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language">
-              <Mixed v="Mixed" />{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
+    <div class="pl-form">
+      <div class="pl-form-grid">
+        {!bulk && <div class="pl-f"><span>Copies</span><Stepper value={it.qty} onChange={(qty) => apply({ qty })} /></div>}
+        <div class="pl-f"><span>Language</span>
+          {wants ? <LangPick value={sameOf(items, "lang")} onChange={(lang) => apply({ lang })} /> : (
+            <select class="select" value={sameOf(items, "lang")} onChange={(e) => apply({ lang: (e.target as HTMLSelectElement).value })}>
+              <option value="" disabled>Mixed</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
             </select>
           )}
         </div>
-        <div class="pl-f"><small>{target === "wants" ? "Worst condition" : "Condition"}</small>
-          <select class="select sm" value={same("cond")} onChange={(e) => setAll({ cond: (e.target as HTMLSelectElement).value })} aria-label="Condition">
-            <Mixed v="Mixed" />{CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
-          </select>
+        <div class="pl-f"><span>{wants ? "Worst condition" : "Condition"}</span>
+          <Seg label="Condition" value={sameOf(items, "cond")} onPick={(cond) => apply({ cond })} options={CONDS.map((c) => [c, c])} />
         </div>
-        <div class="pl-f"><small>Finish</small>
-          <select class="select sm" value={same("finish")} onChange={(e) => setAll({ finish: (e.target as HTMLSelectElement).value })} aria-label="Finish">
-            <Mixed v="Mixed" />{(target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]).map((f) => <option value={f}>{finishName(f)}</option>)}
-          </select>
+        <div class="pl-f"><span>Finish</span>
+          <Seg label="Finish" value={sameOf(items, "finish")} onPick={(finish) => apply({ finish })} options={fins.map((f) => [f, f === "any" ? "Any" : finishName(f)])} />
         </div>
-        {more && (target === "wants" ? <>
-          <div class="pl-f"><small>Deal from</small>
-            <span class="money"><input inputMode="numeric" placeholder={same("deal") === "" && items.some((x) => x.deal) ? "mixed" : "20"} value={same("deal")} onInput={(e) => setAll({ deal: (e.target as HTMLInputElement).value })} /><span>%</span></span>
+        {!wants && !bulk && (
+          <div class="pl-f"><span>Price paid, each</span>
+            <span class="money"><span>€</span><input inputMode="decimal" placeholder={share ? share.toFixed(2) : "optional"} value={it.price} onInput={(e) => apply({ price: (e.target as HTMLInputElement).value })} /></span>
           </div>
-          <div class="pl-f"><small>CardTrader Zero only</small>
-            <input type="checkbox" class="switch" checked={items.every((x) => x.zero)} onChange={(e) => setAll({ zero: (e.target as HTMLInputElement).checked })} aria-label="CardTrader Zero only" />
+        )}
+        {!wants && bulk && setLot && (
+          <div class="pl-f"><span>Paid for the whole lot</span>
+            <span class="money"><span>€</span><input inputMode="decimal" placeholder="optional" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span>
           </div>
-          <div class="pl-f wide"><small>Lists</small><ListPick value={same2(items, "lists")} onChange={(lists) => setAll({ lists })} /></div>
-        </> : <>
-          <div class="pl-f"><small>Paid for the whole lot</small>
-            <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span>
-          </div>
-          <div class="pl-f"><small>Date bought</small>
-            <span class="money text-in"><input type="date" onChange={(e) => setAll({ date: (e.target as HTMLInputElement).value })} /></span>
-          </div>
-          <p class="pl-f wide pl-note">{lot ? "The lot's price is shared across the cards without their own price, by Cardmarket price. A price typed on a card wins." : "Bought several cards for one price? Type it once; it's shared out by Cardmarket price."}</p>
-        </>)}
-        <button type="button" class="pl-more-toggle" aria-expanded={more} onClick={() => setMore(!more)}>{more ? "Fewer options" : "More options"}</button>
+        )}
+      </div>
+      {!wants && bulk && <p class="pl-note">One price for several cards? It's shared out by Cardmarket price. A price typed on a card wins.</p>}
+      <details class="pl-more" open={extraCount > 0}>
+        <summary>More settings{extraCount > 0 && <small>{extraCount} set</small>}</summary>
+        <div class="pl-form-grid">
+          {wants ? <>
+            <div class="pl-f"><span>Target price</span>
+              <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={sameOf(items, "target")} onInput={(e) => apply({ target: (e.target as HTMLInputElement).value })} /></span>
+            </div>
+            <div class="pl-f"><span>Deal from</span>
+              <span class="money"><input inputMode="numeric" placeholder="20" value={sameOf(items, "deal")} onInput={(e) => apply({ deal: (e.target as HTMLInputElement).value })} /><span>% under</span></span>
+            </div>
+            <label class="pl-f pl-switch"><span>CardTrader Zero only</span>
+              <input type="checkbox" class="switch" checked={items.every((x) => x.zero)} onChange={(e) => apply({ zero: (e.target as HTMLInputElement).checked })} />
+            </label>
+            <div class="pl-f wide"><span>Lists</span><ListPick value={same2(items, "lists")} onChange={(lists) => apply({ lists })} /></div>
+          </> : (
+            <div class="pl-f"><span>Date bought</span>
+              <span class="money text-in"><input type="date" value={sameOf(items, "date")} onInput={(e) => apply({ date: (e.target as HTMLInputElement).value })} /></span>
+            </div>
+          )}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/** A row's settings as one line; values that differ from the defaults stand out. */
+function settingsLine(it: Item, target: Target): { text: string; on: boolean }[] {
+  const wants = target === "wants";
+  const parts = [
+    { text: wants ? langText(it.lang) : langName(it.lang), on: it.lang !== USUAL.lang },
+    { text: wants ? `${it.cond} or better` : it.cond, on: it.cond !== USUAL.cond },
+    { text: finishName(it.finish), on: it.finish !== (wants ? "any" : "nonfoil") },
+  ];
+  const extra = wants ? [it.target && `target €${it.target}`, it.deal && `deal from ${it.deal}%`, ...it.lists, it.zero && "Zero only"] : [it.date];
+  return [...parts, ...extra.filter(Boolean).map((t) => ({ text: t as string, on: true }))];
+}
+
+/** The cards as one list. A row reads; tapping it opens its versions and settings. Ticked rows change together. */
+function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProps) {
+  const [open, setOpen] = useState<number | null>(null);   // a card's id, or -1 for the change-many form
+  const [sel, setSel] = useState<number[]>([]);
+  const picked = items.filter((x) => sel.includes(x.id));
+  const scope = picked.length ? picked : items;
+  const flip = (id: number) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const go = (id: number | null) => {
+    setOpen(id);
+    if (id !== null) requestAnimationFrame(() => document.getElementById(`pl-row-${id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+  };
+  return (
+    <div class="pl-table">
+      <div class="pl-toolbar">
+        <label class="pl-all">
+          <input type="checkbox" class="pl-check-box" checked={picked.length === items.length} ref={(el) => { if (el) el.indeterminate = picked.length > 0 && picked.length < items.length; }}
+            onChange={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))} aria-label="Select every card" />
+          <span>{picked.length ? `${picked.length} selected` : `${items.reduce((t, x) => t + x.qty, 0)} cards`}</span>
+        </label>
+        <span class="pl-toolbar-acts">
+          {picked.length > 0 && <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>}
+          {picked.length > 0 && <button type="button" class="btn sm" onClick={() => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); }}>Leave out</button>}
+          <button type="button" class="btn sm" aria-expanded={open === -1} onClick={() => setOpen(open === -1 ? null : -1)}>
+            {picked.length ? `Change ${picked.length}` : "Change all"}
+          </button>
+        </span>
+      </div>
+      {open === -1 && (
+        <div class="pl-editor pl-editor-bulk">
+          <h3>{picked.length ? `Change ${picked.length} cards` : `Change every card`}</h3>
+          <SettingsForm items={scope} apply={(p) => setAll(p, picked.length ? sel : undefined)} target={target} bulk lot={lot} setLot={setLot} />
+          <div class="pl-editor-foot"><button class="btn sm primary" type="button" onClick={() => setOpen(null)}>Done</button></div>
+        </div>
+      )}
+      <div class="pl-list">
+        {items.map((it, i) => {
+          const share = spread.get(it.id);
+          return (
+            <div class={`pl-row${open === it.id ? " open" : ""}${sel.includes(it.id) ? " picked" : ""}`} id={`pl-row-${it.id}`}>
+              <div class="pl-row-line">
+                <input type="checkbox" class="pl-check-box" checked={sel.includes(it.id)} onChange={() => flip(it.id)} aria-label={`Select ${it.card?.name}`} />
+                <button type="button" class="pl-row-main" aria-expanded={open === it.id} onClick={() => go(open === it.id ? null : it.id)}>
+                  <CardImage src={img(it.card, "small")} alt="" foil={it.finish === "foil"} />
+                  <span class="pl-row-text">
+                    <b class="pl-row-name">{it.card?.name}</b>
+                    <span class="pl-row-ver">{it.card?.set.toUpperCase()} {it.card?.collector_number} · {it.card?.set_name}</span>
+                    <span class="pl-row-set">{settingsLine(it, target).map((p) => <span class={p.on ? "on" : ""}>{p.text}</span>)}</span>
+                  </span>
+                  <span class="pl-row-fig">
+                    <b class={it.qty > 1 ? "" : "one"}>{it.qty}×</b>
+                    {target === "collection" && <small>{it.price ? `€${it.price}` : share ? `≈ €${share.toFixed(2)}` : "no price"}</small>}
+                  </span>
+                  <svg class="pl-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </button>
+              </div>
+              {open === it.id && (
+                <div class="pl-editor">
+                  <VersionStrip it={it} upd={upd} target={target} />
+                  <SettingsForm items={[it]} apply={(p) => upd(it.id, p)} target={target} share={share} />
+                  <div class="pl-editor-foot">
+                    <button class="btn sm" type="button" onClick={() => go(null)}>Done</button>
+                    {i < items.length - 1 && <button class="btn sm primary" type="button" onClick={() => go(items[i + 1].id)}>Next card</button>}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
-const same2 = (items: Item[], k: "lists") => (items.every((x) => x[k].join() === items[0]?.[k].join()) ? items[0]?.[k] ?? [] : []);
 
 /** The lists on the want-list, as chips, plus a new one. */
 function ListPick({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
@@ -351,38 +360,6 @@ function ListPick({ value, onChange }: { value: string[]; onChange: (v: string[]
       <input class="chip-input" placeholder="New list" onKeyDown={(e) => { const v = (e.target as HTMLInputElement).value.trim(); if (e.key === "Enter" && v) { e.preventDefault(); onChange([...value, v]); (e.target as HTMLInputElement).value = ""; } }} />
     </span>
   );
-}
-
-/** One card's rarer settings, folded under the row. */
-function More({ it, upd, target }: { it: Item; upd: Upd; target: Target }) {
-  if (target === "collection") return (
-    <div class="group form pl-more">
-      <label class="f-row"><span>Date bought<small>Optional</small></span>
-        <span class="money text-in"><input type="date" value={it.date} onInput={(e) => upd(it.id, { date: (e.target as HTMLInputElement).value })} /></span>
-      </label>
-    </div>
-  );
-  return (
-    <div class="group form pl-more">
-      <label class="f-row"><span>Target price<small>Alert at or under this</small></span>
-        <span class="money"><span>€</span><input inputMode="decimal" placeholder="none" value={it.target} onInput={(e) => upd(it.id, { target: (e.target as HTMLInputElement).value })} /></span>
-      </label>
-      <label class="f-row"><span>Deal from<small>How far under the market counts as a deal</small></span>
-        <span class="money"><input inputMode="numeric" placeholder="20" value={it.deal} onInput={(e) => upd(it.id, { deal: (e.target as HTMLInputElement).value })} /><span>%</span></span>
-      </label>
-      <div class="f-row stack"><span>Lists</span><ListPick value={it.lists} onChange={(lists) => upd(it.id, { lists })} /></div>
-      <label class="f-row"><span>CardTrader Zero only</span>
-        <input type="checkbox" class="switch" checked={it.zero} onChange={(e) => upd(it.id, { zero: (e.target as HTMLInputElement).checked })} />
-      </label>
-    </div>
-  );
-}
-
-/** What a card has beyond the defaults, for its row. */
-function extras(it: Item, target: Target): string {
-  return (target === "wants"
-    ? [it.target && `target €${it.target}`, it.deal && `deal from ${it.deal}%`, ...it.lists, it.zero && "Zero only"]
-    : [it.date]).filter(Boolean).join(" · ");
 }
 
 /** The lot's price shared across cards without their own price, by Cardmarket price (each copy). */
@@ -617,7 +594,7 @@ export function PasteButton({ to }: { to: Target }) {
   return (
     <>
       <button class="btn sm" type="button" onClick={() => setOpen(true)}>{to === "collection" ? "Add a list or deck" : "Paste a list"}</button>
-      {open && <Flow key={key} target={to} onClose={() => setOpen(false)} />}
+      {open && createPortal(<Flow key={key} target={to} onClose={() => setOpen(false)} />, document.body)}
     </>
   );
 }
