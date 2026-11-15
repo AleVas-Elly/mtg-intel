@@ -2,16 +2,17 @@
 // Cardmarket prices are joined in here. "My cards" names my exact printings in the query.
 import { can } from "../access";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { peek, refresh } from "../api";
+import { peek, refresh, useDoc } from "../api";
+import { myPurchases, ownedCards } from "../collection";  // PROTOTYPE (issue 6): search my collection
 import type { AppData } from "../data";
 import { eur } from "../format";
 import { openCard } from "../router";
 import { CardImage } from "../ui/CardImage";
-import { IconWants, IconPlus, IconSearch, IconWarn } from "../ui/icons";
+import { IconWants, IconPlus, IconSearch, IconStack, IconWarn } from "../ui/icons";
 import { known, type ScryCard } from "../scry";
 import { openScryCard } from "./CardPane";
 import { SetSymbol } from "../ui/symbols";
-import type { Wish } from "../types";
+import type { PurchasesDoc, Wish } from "../types";
 
 const API = "https://api.scryfall.com/cards/search";
 const MAX_NESTED = 20;
@@ -66,7 +67,8 @@ const EXAMPLES = ["art:cat", "t:legendary c:u", "is:showcase mv<=3", "o:\"draw a
 
 export function Search({ data }: { data: AppData }) {
   const [q, setQ] = useState(() => sessionStorage.getItem("search-q") || "");
-  const [scope, setScope] = useState<"mine" | "all">(() => (sessionStorage.getItem("search-scope") as "mine" | "all") || "all");  // PROTOTYPE (issue 6): All cards by default
+  type Scope = "mine" | "coll" | "all";
+  const [scope, setScope] = useState<Scope>(() => (sessionStorage.getItem("search-scope") as Scope) || "all");  // PROTOTYPE (issue 6): All cards by default
   const [cards, setCards] = useState<ScryCard[]>([]);
   const [state, setState] = useState<"idle" | "busy" | "done">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +78,10 @@ export function Search({ data }: { data: AppData }) {
   const input = useRef<HTMLInputElement>(null);
   const wantsById = new Map<string, Wish>();
   for (const w of data.wants?.wishes ?? []) if (w.scryfall_id) wantsById.set(w.scryfall_id, w);
+  // PROTOTYPE (issue 6): my collection, as a third place to search
+  const purchases = useDoc<PurchasesDoc>(can("collection") ? "purchases" : null).doc;
+  const owned = purchases ? ownedCards(myPurchases(data.edits.ops, purchases)) : [];
+  const ownedIds = new Set(owned.map((o) => o.scryfall_id).filter(Boolean) as string[]);
 
   const search = async (e?: Event) => {
     e?.preventDefault();
@@ -87,7 +93,7 @@ export function Search({ data }: { data: AppData }) {
     const seen = new Set<string>();
     const add = (page: ScryCard[]) => {
       if (id !== run_id.current) return;
-      const fresh = page.filter((c) => !seen.has(c.id) && (scope === "all" || wantsById.has(c.id)));
+      const fresh = page.filter((c) => !seen.has(c.id) && (scope === "all" || (scope === "mine" ? wantsById.has(c.id) : ownedIds.has(c.id))));
       fresh.forEach((c) => seen.add(c.id));
       setCards((prev) => [...prev, ...fresh]);
     };
@@ -95,7 +101,8 @@ export function Search({ data }: { data: AppData }) {
       if (scope === "all") {
         setMore(await run(query, "cards", add));
       } else {
-        const printings = [...wantsById.values()].filter((w) => w.set && w.number).map((w) => [w.set!, w.number!] as [string, string]);
+        const from = scope === "mine" ? [...wantsById.values()] : owned;
+        const printings = [...new Map(from.filter((w) => w.set && w.number).map((w) => [`${w.set}|${w.number}`, [w.set!, w.number!] as [string, string]])).values()];
         const groups = Math.max(1, Math.floor((MAX_NESTED - 2 - (query.match(/\(/g) ?? []).length) / 2));
         for (const f of printingFilters(printings, groups)) {
           if (id !== run_id.current) return;
@@ -130,9 +137,10 @@ export function Search({ data }: { data: AppData }) {
     <div class="page">
       <header class="head"><div><h1 class="title">Search</h1><p class="sub">Scryfall search syntax, joined with my lists and Cardmarket prices</p></div></header>
       <form class="toolbar search-bar" onSubmit={search} role="search">
-        <div class="seg scope" role="group" aria-label="Where to search">
-          <button type="button" aria-pressed={scope === "mine"} onClick={() => setScope("mine")}><IconWants />My want-list</button>
-          <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}><IconSearch />All cards</button>
+        <div class="seg scope grow" role="group" aria-label="Where to search" data-scope={scope}>
+          <button type="button" class="s-mine" aria-pressed={scope === "mine"} aria-label="My want-list" title="My want-list" onClick={() => setScope("mine")}><IconWants /><span class="lbl">My want-list</span></button>
+          {can("collection") && <button type="button" class="s-coll" aria-pressed={scope === "coll"} aria-label="My collection" title="My collection" onClick={() => setScope("coll")}><IconStack /><span class="lbl">My collection</span></button>}
+          <button type="button" class="s-all" aria-pressed={scope === "all"} aria-label="All cards" title="All cards" onClick={() => setScope("all")}><IconSearch /><span class="lbl">All cards</span></button>
         </div>
         <label class="field"><IconSearch /><span class="sr">Search</span>
           <input ref={input} type="search" enterKeyHint="search" autoCapitalize="off" autoCorrect="off" spellcheck={false}
@@ -148,10 +156,10 @@ export function Search({ data }: { data: AppData }) {
         </div>
       )}
       {state !== "idle" && (
-        <div class="list-head">{state === "busy" ? "Searching…" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}${more ? " (first pages)" : ""}`}<span>{scope === "mine" ? "in my want-list" : "every card, newest printing"}</span></div>
+        <div class="list-head">{state === "busy" ? "Searching…" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}${more ? " (first pages)" : ""}`}<span>{scope === "mine" ? "in my want-list" : scope === "coll" ? "in my collection" : "every card, newest printing"}</span></div>
       )}
       {state === "done" && !cards.length && !error && (
-        <div class="empty"><h2>No cards found</h2><p>{scope === "mine" ? "Nothing on my want-list matches. Try All cards." : "Scryfall found nothing for that search."}</p></div>
+        <div class="empty"><h2>No cards found</h2><p>{scope === "mine" ? "Nothing on my want-list matches. Try All cards." : scope === "coll" ? "Nothing in my collection matches. Try All cards." : "Scryfall found nothing for that search."}</p></div>
       )}
       <div class="cards">
         {cards.map((c) => {
