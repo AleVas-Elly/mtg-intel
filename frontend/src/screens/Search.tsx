@@ -54,7 +54,7 @@ async function run(query: string, unique: string, onPage: (cards: ScryCard[], to
     const r: Response = await paced(url);
     if (r.status === 404) return false;
     const body = await r.json();
-    if (!r.ok) throw new Error(body.details || "Scryfall couldn't run that search.");
+    if (!r.ok) throw new Error(body.details || "Couldn't run that search. Check the words and try again.");
     const invalid = (body.warnings ?? []).filter((w: string) => w.startsWith("Invalid expression"));
     if (invalid.length) throw new Error(invalid.join(" "));
     onPage(body.data, body.total_cards);
@@ -135,7 +135,7 @@ export function Search({ data }: { data: AppData }) {
 
   return (
     <div class="page">
-      <header class="head"><div><h1 class="title">Search</h1><p class="sub">Scryfall search syntax, joined with my lists and Cardmarket prices</p></div></header>
+      <header class="head"><div><h1 class="title">Search</h1><p class="sub">Every card, your want-list or your collection, with Cardmarket prices</p></div></header>
       <form class="toolbar search-bar" onSubmit={search} role="search">
         <div class="seg scope grow" role="group" aria-label="Where to search" data-scope={scope}>
           <button type="button" class="s-all" aria-pressed={scope === "all"} aria-label="All cards" title="All cards" onClick={() => setScope("all")}><IconSearch /><span class="lbl">All cards</span></button>
@@ -152,14 +152,14 @@ export function Search({ data }: { data: AppData }) {
       {state === "idle" && (
         <div class="hint">
           Try {EXAMPLES.map((ex, i) => <>{i > 0 && ", "}<a href="#" class="link" onClick={(e) => { e.preventDefault(); setQ(ex); setTimeout(() => input.current?.form?.requestSubmit(), 0); }}><code>{ex}</code></a></>)}.
-          Art and function tags (<code>art:</code>, <code>function:</code>) come from Scryfall's community and aren't complete. For plain-language questions, ask Claude.
+          Art and function tags (<code>art:</code>, <code>function:</code>) come from a community list and aren't complete.
         </div>
       )}
       {state !== "idle" && (
         <div class="list-head">{state === "busy" ? "Searching…" : `${cards.length} ${cards.length === 1 ? "card" : "cards"}${more ? " (first pages)" : ""}`}<span>{scope === "mine" ? "in my want-list" : scope === "coll" ? "in my collection" : "every card, newest printing"}</span></div>
       )}
       {state === "done" && !cards.length && !error && (
-        <div class="empty"><h2>No cards found</h2><p>{scope === "mine" ? "Nothing on my want-list matches. Try All cards." : scope === "coll" ? "Nothing in my collection matches. Try All cards." : "Scryfall found nothing for that search."}</p></div>
+        <div class="empty"><h2>No cards found</h2><p>{scope === "mine" ? "Nothing on my want-list matches. Try All cards." : scope === "coll" ? "Nothing in my collection matches. Try All cards." : "No card matches that search."}</p></div>
       )}
       <div class="cards">
         {cards.map((c) => {
