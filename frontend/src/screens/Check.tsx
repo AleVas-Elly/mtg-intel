@@ -1,13 +1,9 @@
-// Data validation by eye (spec 3b): random spot checks with pictures, and every row the
-// automatic checks flagged, grouped by what they found.
+// Data validation (spec 3b): every row the automatic checks flagged, grouped by what they found.
+// (The random spot check was dropped: the user didn't find it useful, 2026-11-15.)
 import { useMemo, useState } from "preact/hooks";
 import type { AppData } from "../data";
-import { cmTrend, collectorLine, eur, showsFoil } from "../format";
-import { openCard } from "../router";
-import { CardImage } from "../ui/CardImage";
-import { IconCopy, IconShuffle } from "../ui/icons";
+import { IconCopy } from "../ui/icons";
 import { CardList } from "../ui/Row";
-import { SetSymbol } from "../ui/symbols";
 import type { Wish } from "../types";
 
 const REASONS: Record<string, string> = {
@@ -18,17 +14,9 @@ const REASONS: Record<string, string> = {
   markets_apart: "Markets far apart",
 };
 
-function shuffled<T>(xs: T[], n: number): T[] {
-  const a = xs.slice();
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
-  return a.slice(0, n);
-}
-
 export function Check({ data }: { data: AppData }) {
   const wishes = data.wants?.wishes ?? [];
-  const [seed, setSeed] = useState(0);
   const [copied, setCopied] = useState(false);
-  const spot = useMemo(() => shuffled(wishes, 12), [wishes.length, seed]);
   const groups = useMemo(() => {
     const out = new Map<string, Wish[]>();
     for (const w of wishes) for (const f of data.flagsOf(w)) out.set(f.code, [...(out.get(f.code) ?? []), w]);
@@ -50,25 +38,7 @@ export function Check({ data }: { data: AppData }) {
           <p class="sub">{data.wants ? `${flagged.size} of ${wishes.length} versions flagged` : "Loading…"}</p>
         </div>
       </header>
-      <p class="hint" style={{ marginTop: 0 }}>Look at a few cards at random and at everything the automatic checks flagged. Something wrong? Tap the card, use “Copy details for Claude”, and paste it to Claude: it gets fixed where the data comes from.</p>
-
-      <div class="list-head">Spot check<span>
-        <button class="btn sm" type="button" onClick={() => setSeed((s) => s + 1)} ><IconShuffle />Shuffle</button>
-      </span></div>
-      <div class="cards">
-        {spot.map((w) => {
-          const live = data.liveOf(w.key);
-          return (
-            <button class="tile" type="button" data-key={w.key} onClick={() => openCard(w.key)}>
-              <CardImage src={w.image} alt={w.name} foil={showsFoil(w)} placeholder={w.thumb} />
-              <b>{w.name}{data.flagsOf(w).length > 0 && <span class="flag-dot" title="Flagged" />}</b>
-              <span class="ours"><SetSymbol set={w.set} rarity={w.rarity} />{collectorLine(w)}</span>
-              <span class="theirs">CardTrader: {w.ct ? `${w.ct.version || "no version label"} · ${w.ct.expansion} #${w.ct.number}` : "none"}</span>
-              <span>{live ? `CT ${eur(live.price)}` : "CT –"} · CM {eur(cmTrend(w, live?.foil))}</span>
-            </button>
-          );
-        })}
-      </div>
+      <p class="hint" style={{ marginTop: 0 }}>Everything the automatic checks flagged. Something wrong? Tap the card, use “Copy details for Claude”, and paste it to Claude: it gets fixed where the data comes from.</p>
 
       {groups.length > 0 ? (
         <>
@@ -87,7 +57,7 @@ export function Check({ data }: { data: AppData }) {
           ))}
         </>
       ) : data.wants && (
-        <div class="empty"><h2>Nothing flagged</h2><p>The automatic checks found nothing doubtful. The spot check above is still worth a look.</p></div>
+        <div class="empty"><h2>Nothing flagged</h2><p>The automatic checks found nothing doubtful.</p></div>
       )}
       <p class="hint">Checks: our version against CardTrader's own name, number and label; the Cardmarket product both sides link; foil wishes on printings without foil; missing or €0 Cardmarket prices; sudden one-day jumps; CardTrader and Cardmarket more than 2.5× apart. “Regular” means no special treatment.</p>
     </div>

@@ -68,6 +68,13 @@ export const TIERS: Record<number, { label: string; cls: string }> = {
 export const tierOf = (d: Deal) => (d.tier ? TIERS[d.tier] : null);
 
 /** Live data checks that need the CardTrader side. */
+/** A one-day Cardmarket jump that lands within 30% of CardTrader's cheapest copy is the market moving,
+ *  not a data error (Ponder SLD #7125: +68% back to €4.10 with CardTrader at €4.20), so it isn't flagged. */
+export function jumpConfirmed(w: Wish, live: LiveWish | undefined): boolean {
+  const cm = cmTrend(w, live?.foil);
+  return !!(live && cm && cm / live.price >= 0.7 && cm / live.price <= 1.3);
+}
+
 export function liveFlags(w: Wish, live: LiveWish | undefined): { code: string; text: string }[] {
   const out = [];
   const cm = cmTrend(w, live?.foil);

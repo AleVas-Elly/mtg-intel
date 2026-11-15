@@ -530,9 +530,16 @@ img { display: block; }
 .kv dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 /* Alerts (D88): the bot's messages, newest first; unread ones carry the accent edge */
 .al-seg { margin: 4px 0 14px; }
+/* each section wears a colour the app already uses: Deals gold, Digest the want-list cyan, System Check's red */
+.al-deals { --al: var(--deals); --al-ink: var(--deals-ink); }
+.al-digest { --al: var(--wants); --al-ink: var(--wants-ink); }
+.al-system { --al: var(--check); --al-ink: var(--check-ink); }
+.al-seg button::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--al); margin-right: 7px; vertical-align: 1px; }
+.al-seg button[aria-pressed="true"] { background: var(--al); color: var(--al-ink); }
+.al-seg button[aria-pressed="true"]::before { background: currentColor; }
 .al-list { display: grid; gap: 12px; }
 .al { display: grid; grid-template-columns: 1fr; background: var(--surface); border-radius: var(--radius); overflow: hidden; position: relative; }
-.al.unread::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); }
+.al.unread::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--al, var(--accent)); }
 .al.focus { outline: 2px solid var(--ink); outline-offset: 2px; }
 .al.done .al-pic { filter: saturate(0.4); }
 .al-pic { width: 100%; display: block; aspect-ratio: 1.91; object-fit: cover; background: var(--surface-2); }

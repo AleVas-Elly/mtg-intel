@@ -2,7 +2,7 @@
 import { useMemo } from "preact/hooks";
 import { useDoc } from "./api";
 import type { Deal, EditsDoc, LiveDoc, LiveWish, WantsDoc, Wish } from "./types";
-import { liveFlags } from "./format";
+import { jumpConfirmed, liveFlags } from "./format";
 import { usualPrice } from "./markets";
 import { overlay, useEdits } from "./edits";
 
@@ -30,7 +30,7 @@ export function useAppData(): AppData {
     return {
       wants: doc, live: live.doc, byKey, liveOf, edits,
       dealOf: (key: string) => deals.get(key),
-      flagsOf: (w: Wish) => [...w.flags, ...liveFlags(w, liveOf(w.key))],
+      flagsOf: (w: Wish) => [...w.flags.filter((f) => f.code !== "cm_jump" || !jumpConfirmed(w, liveOf(w.key))), ...liveFlags(w, liveOf(w.key))],
       error: wants.error || live.error,
     };
   }, [wants.doc, live.doc, wants.error, live.error, edits]);

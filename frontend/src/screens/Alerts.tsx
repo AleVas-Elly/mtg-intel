@@ -114,7 +114,7 @@ function AlertCard({ a, focus, z, onAction, onSnooze }: { a: Alert; focus: boole
   onSnooze?: (a: Alert, body: { days?: number; below?: number } | null) => void }) {
   const [snoozing, setSnoozing] = useState(false);
   return (
-    <article id={`al-${a.id}`} class={`al${a.read ? "" : " unread"}${a.done ? " done" : ""}${focus ? " focus" : ""}`}>
+    <article id={`al-${a.id}`} class={`al al-${a.section}${a.read ? "" : " unread"}${a.done ? " done" : ""}${focus ? " focus" : ""}`}>
       {a.picture && <img class="al-pic" src={a.picture} alt="" loading="lazy" />}
       <div class="al-body">
         <div class="al-meta"><time dateTime={a.at}>{ago(a.at)}</time>{a.updated !== a.at && a.section === "deals" && <span> · updated {ago(a.updated)}</span>}</div>
@@ -184,7 +184,7 @@ export function Alerts({ owner }: { owner: boolean }) {
       <header class="head"><div><h1 class="title">Alerts</h1></div></header>
       <div class="seg al-seg" role="tablist" aria-label="Sections">
         {shown.map((s) => (
-          <button type="button" role="tab" aria-selected={section === s.id} aria-pressed={section === s.id}
+          <button type="button" role="tab" class={`al-${s.id}`} aria-selected={section === s.id} aria-pressed={section === s.id}
             onClick={() => { setSection(s.id); if (asked) go("/alerts", null, true); }}>
             {s.label}{count(s.id) > 0 && <small>{count(s.id)}</small>}
           </button>
