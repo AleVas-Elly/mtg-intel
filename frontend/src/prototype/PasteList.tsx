@@ -130,14 +130,37 @@ function LangPick({ value, onChange }: { value: string; onChange: (v: string) =>
   const on = value && value !== "any" ? value.split(",") : [];
   const flip = (l: string) => { const next = on.includes(l) ? on.filter((x) => x !== l) : [...on, l]; onChange(next.length ? LANGS.filter((x) => next.includes(x)).join(",") : "any"); };
   return (
-    <details class="pl-lang" onToggle={(e) => { const me = e.currentTarget as HTMLDetailsElement; if (me.open) document.querySelectorAll<HTMLDetailsElement>(".pl-lang[open]").forEach((d) => d !== me && (d.open = false)); }}>
-      <summary class="select sm" aria-label="Languages">{langText(value)}</summary>
-      <div class="pl-lang-pop" role="group" aria-label="Languages">
-        <button type="button" class="pl-lang-quick" onClick={() => onChange("en,it")}>English or Italian</button>
-        <label><input type="checkbox" checked={value === "any"} onChange={() => onChange("any")} /> Any language</label>
-        {LANGS.map((l) => <label><input type="checkbox" checked={on.includes(l)} onChange={() => flip(l)} /> {langName(l)}</label>)}
-      </div>
+    <Pop label="Languages" text={langText(value)}>
+      <Opt on={value === "en,it"} onPick={() => onChange("en,it")} close>English or Italian</Opt>
+      <Opt on={value === "any"} onPick={() => onChange("any")} close>Any language</Opt>
+      <hr />
+      {LANGS.map((l) => <Opt on={on.includes(l)} onPick={() => flip(l)} multi>{langName(l)}</Opt>)}
+    </Pop>
+  );
+}
+
+// a tap outside an open list closes it
+document.addEventListener("pointerdown", (e) => {
+  const inside = (e.target as Element).closest?.(".pl-pop");
+  document.querySelectorAll<HTMLDetailsElement>(".pl-pop[open]").forEach((d) => d !== inside && (d.open = false));
+});
+
+/** One look for every list that opens from a pill (set, language): our own panel, not the browser's. */
+function Pop({ label, text, children }: { label: string; text: string; children: preact.ComponentChildren }) {
+  return (
+    <details class="pl-pop" onToggle={(e) => { const me = e.currentTarget as HTMLDetailsElement; if (me.open) document.querySelectorAll<HTMLDetailsElement>(".pl-pop[open]").forEach((d) => d !== me && (d.open = false)); }}>
+      <summary class="select" aria-label={label}><span>{text}</span></summary>
+      <div class="pl-pop-list" role="listbox" aria-label={label} aria-multiselectable="true">{children}</div>
     </details>
+  );
+}
+function Opt({ on, onPick, close, multi, children, note }: { on: boolean; onPick: () => void; close?: boolean; multi?: boolean; children: preact.ComponentChildren; note?: string }) {
+  return (
+    <button type="button" class={`pl-opt${multi ? " multi" : ""}`} role="option" aria-selected={on}
+      onClick={(e) => { onPick(); if (close) (e.currentTarget.closest("details") as HTMLDetailsElement).open = false; }}>
+      <span class="pl-opt-mark" aria-hidden="true">{on && <svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>}</span>
+      <span>{children}</span>{note && <small>{note}</small>}
+    </button>
   );
 }
 
@@ -159,10 +182,11 @@ function VersionStrip({ it, upd, target }: { it: Item; upd: Upd; target: Target 
           {["all", ...treatments].map((t) => <button type="button" aria-pressed={treat === t} onClick={() => setTreat(t)}>{t === "all" ? `All ${all.length}` : t}</button>)}
         </div>
         {sets.length > 1 && (
-          <select class="select sm" value={set} onChange={(e) => setSet((e.target as HTMLSelectElement).value)} aria-label="Set">
-            <option value="all">Every set</option>
-            {sets.map(([code, name]) => <option value={code}>{name}</option>)}
-          </select>
+          <Pop label="Set" text={set === "all" ? "Every set" : sets.find(([c]) => c === set)?.[1] ?? set}>
+            <Opt on={set === "all"} onPick={() => setSet("all")} close note={String(all.length)}>Every set</Opt>
+            <hr />
+            {sets.map(([code, name]) => <Opt on={set === code} onPick={() => setSet(code)} close note={String(all.filter((c) => c.set === code).length)}>{name}</Opt>)}
+          </Pop>
         )}
       </div>
       <div class="versions" role="radiogroup" aria-label="Version">
@@ -205,22 +229,23 @@ const sameOf = (items: Item[], k: "lang" | "cond" | "finish" | "deal" | "target"
 const same2 = (items: Item[], k: "lists") => (items.every((x) => x[k].join() === items[0]?.[k].join()) ? items[0]?.[k] ?? [] : []);
 
 /** The settings of one card, or of several at once (`bulk`): seen options, not dropdowns, then More settings folded. */
-function SettingsForm({ items, apply, target, bulk, share, lot, setLot }: {
-  items: Item[]; apply: (p: Partial<Item>) => void; target: Target; bulk?: boolean; share?: number; lot?: string; setLot?: (v: string) => void;
+function SettingsForm({ items, apply, change, target, bulk, share }: {
+  items: Item[]; apply: (p: Partial<Item>) => void; change: (f: (x: Item) => Partial<Item>) => void; target: Target; bulk?: boolean; share?: number;
 }) {
   const it = items[0];
   const wants = target === "wants";
   const fins = bulk ? (wants ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]) : [...(wants ? ["any"] : []), ...finishes(it.card)];
-  const extraCount = wants ? [sameOf(items, "target"), sameOf(items, "deal"), same2(items, "lists").length, items.every((x) => x.zero)].filter(Boolean).length : [sameOf(items, "date")].filter(Boolean).length;
+  const extraCount = wants ? [sameOf(items, "target"), sameOf(items, "deal"), !bulk && same2(items, "lists").length, items.every((x) => x.zero)].filter(Boolean).length : [sameOf(items, "date")].filter(Boolean).length;
   return (
     <div class="pl-form">
       <div class="pl-form-grid">
+        {wants && bulk && <div class="pl-f wide"><span>Add to list</span><ListPick items={items} change={change} /></div>}
         {!bulk && <div class="pl-f"><span>Copies</span><Stepper value={it.qty} onChange={(qty) => apply({ qty })} /></div>}
         <div class="pl-f"><span>Language</span>
           {wants ? <LangPick value={sameOf(items, "lang")} onChange={(lang) => apply({ lang })} /> : (
-            <select class="select" value={sameOf(items, "lang")} onChange={(e) => apply({ lang: (e.target as HTMLSelectElement).value })}>
-              <option value="" disabled>Mixed</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-            </select>
+            <Pop label="Language" text={sameOf(items, "lang") ? langName(sameOf(items, "lang")) : "Mixed"}>
+              {LANGS.map((l) => <Opt on={sameOf(items, "lang") === l} onPick={() => apply({ lang: l })} close>{langName(l)}</Opt>)}
+            </Pop>
           )}
         </div>
         <div class="pl-f"><span>{wants ? "Worst condition" : "Condition"}</span>
@@ -234,13 +259,7 @@ function SettingsForm({ items, apply, target, bulk, share, lot, setLot }: {
             <span class="money"><span>€</span><input inputMode="decimal" placeholder={share ? share.toFixed(2) : "optional"} value={it.price} onInput={(e) => apply({ price: (e.target as HTMLInputElement).value })} /></span>
           </div>
         )}
-        {!wants && bulk && setLot && (
-          <div class="pl-f"><span>Paid for the whole lot</span>
-            <span class="money"><span>€</span><input inputMode="decimal" placeholder="optional" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span>
-          </div>
-        )}
       </div>
-      {!wants && bulk && <p class="pl-note">One price for several cards? It's shared out by Cardmarket price. A price typed on a card wins.</p>}
       <details class="pl-more" open={extraCount > 0}>
         <summary>More settings{extraCount > 0 && <small>{extraCount} set</small>}</summary>
         <div class="pl-form-grid">
@@ -254,7 +273,7 @@ function SettingsForm({ items, apply, target, bulk, share, lot, setLot }: {
             <label class="pl-f pl-switch"><span>CardTrader Zero only</span>
               <input type="checkbox" class="switch" checked={items.every((x) => x.zero)} onChange={(e) => apply({ zero: (e.target as HTMLInputElement).checked })} />
             </label>
-            <div class="pl-f wide"><span>Lists</span><ListPick value={same2(items, "lists")} onChange={(lists) => apply({ lists })} /></div>
+            {!bulk && <div class="pl-f wide"><span>Lists</span><ListPick items={items} change={change} /></div>}
           </> : (
             <div class="pl-f"><span>Date bought</span>
               <span class="money text-in"><input type="date" value={sameOf(items, "date")} onInput={(e) => apply({ date: (e.target as HTMLInputElement).value })} /></span>
@@ -279,11 +298,10 @@ function settingsLine(it: Item, target: Target): { text: string; on: boolean }[]
 }
 
 /** The cards as one list. A row reads; tapping it opens its versions and settings. Ticked rows change together. */
-function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProps) {
-  const [open, setOpen] = useState<number | null>(null);   // a card's id, or -1 for the change-many form
+function PickTable({ items, upd, target, setAll, each, lot, setLot, spread, deck }: PickProps) {
+  const [open, setOpen] = useState<number | null>(null);
   const [sel, setSel] = useState<number[]>([]);
   const picked = items.filter((x) => sel.includes(x.id));
-  const scope = picked.length ? picked : items;
   const flip = (id: number) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const go = (id: number | null) => {
     setOpen(id);
@@ -291,26 +309,31 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
   };
   return (
     <div class="pl-table">
-      <div class="pl-toolbar">
-        <label class="pl-all">
-          <input type="checkbox" class="pl-check-box" checked={picked.length === items.length} ref={(el) => { if (el) el.indeterminate = picked.length > 0 && picked.length < items.length; }}
-            onChange={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))} aria-label="Select every card" />
-          <span>{picked.length ? `${picked.length} selected` : `${items.reduce((t, x) => t + x.qty, 0)} cards`}</span>
-        </label>
-        <span class="pl-toolbar-acts">
-          {picked.length > 0 && <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>}
-          {picked.length > 0 && <button type="button" class="btn sm" onClick={() => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); }}>Leave out</button>}
-          <button type="button" class="btn sm" aria-expanded={open === -1} onClick={() => setOpen(open === -1 ? null : -1)}>
-            {picked.length ? `Change ${picked.length}` : "Change all"}
-          </button>
-        </span>
-      </div>
-      {open === -1 && (
-        <div class="pl-editor pl-editor-bulk">
-          <h3>{picked.length ? `Change ${picked.length} cards` : `Change every card`}</h3>
-          <SettingsForm items={scope} apply={(p) => setAll(p, picked.length ? sel : undefined)} target={target} bulk lot={lot} setLot={setLot} />
-          <div class="pl-editor-foot"><button class="btn sm primary" type="button" onClick={() => setOpen(null)}>Done</button></div>
+      <div class={`pl-top${picked.length ? " active" : ""}`}>
+        <div class="pl-toolbar">
+          <label class="pl-all">
+            <input type="checkbox" class="pl-check-box" checked={picked.length === items.length} ref={(el) => { if (el) el.indeterminate = picked.length > 0 && picked.length < items.length; }}
+              onChange={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))} aria-label="Select every card" />
+            <span>{picked.length ? `${picked.length} of ${items.length} selected` : "Select all"}</span>
+          </label>
+          {picked.length ? (
+            <span class="pl-toolbar-acts">
+              <button type="button" class="pl-text-btn" onClick={() => setSel([])}>Clear</button>
+              <button type="button" class="btn sm" onClick={() => { setAll({ status: "dropped" }, sel); setSel([]); setOpen(null); }}>Leave out</button>
+            </span>
+          ) : <span class="pl-hint">Tick cards to set them together</span>}
         </div>
+        {picked.length > 0 && (
+          <div class="pl-bulk-panel">
+            <SettingsForm items={picked} apply={(p) => setAll(p, sel)} change={(f) => each(f, sel)} target={target} bulk />
+          </div>
+        )}
+      </div>
+      {target === "collection" && !deck && !picked.length && (
+        <label class="pl-lotline">Paid one price for all of these?
+          <span class="money"><span>€</span><input inputMode="decimal" placeholder="optional" value={lot} onInput={(e) => setLot((e.target as HTMLInputElement).value)} /></span>
+          <small>Shared out by Cardmarket price; a price typed on a card wins.</small>
+        </label>
       )}
       <div class="pl-list">
         {items.map((it, i) => {
@@ -336,7 +359,7 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
               {open === it.id && (
                 <div class="pl-editor">
                   <VersionStrip it={it} upd={upd} target={target} />
-                  <SettingsForm items={[it]} apply={(p) => upd(it.id, p)} target={target} share={share} />
+                  <SettingsForm items={[it]} apply={(p) => upd(it.id, p)} change={(f) => upd(it.id, f(it))} target={target} share={share} />
                   <div class="pl-editor-foot">
                     <button class="btn sm" type="button" onClick={() => go(null)}>Done</button>
                     {i < items.length - 1 && <button class="btn sm primary" type="button" onClick={() => go(items[i + 1].id)}>Next card</button>}
@@ -351,13 +374,21 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
   );
 }
 
-/** The lists on the want-list, as chips, plus a new one. */
-function ListPick({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
-  const known = [...new Set([...(peek<WantsDoc>("wants")?.wishes ?? []).flatMap((w) => w.lists), ...value])].sort();
+/** The lists on the want-list, as chips, plus a new one. For several cards a tap puts all of them on the list,
+ *  or takes all of them off when every one is already on it; a list some of them are on shows as partly on. */
+function ListPick({ items, change }: { items: Item[]; change: (f: (x: Item) => Partial<Item>) => void }) {
+  const known = [...new Set([...(peek<WantsDoc>("wants")?.wishes ?? []).flatMap((w) => w.lists), ...items.flatMap((x) => x.lists)])].sort();
+  const toggle = (l: string) => {
+    const all = items.every((x) => x.lists.includes(l));
+    change((x) => ({ lists: all ? x.lists.filter((y) => y !== l) : x.lists.includes(l) ? x.lists : [...x.lists, l] }));
+  };
   return (
     <span class="chips">
-      {known.map((l) => <button type="button" class="chip toggle" aria-pressed={value.includes(l)} onClick={() => onChange(value.includes(l) ? value.filter((x) => x !== l) : [...value, l])}>{l}</button>)}
-      <input class="chip-input" placeholder="New list" onKeyDown={(e) => { const v = (e.target as HTMLInputElement).value.trim(); if (e.key === "Enter" && v) { e.preventDefault(); onChange([...value, v]); (e.target as HTMLInputElement).value = ""; } }} />
+      {known.map((l) => {
+        const n = items.filter((x) => x.lists.includes(l)).length;
+        return <button type="button" class="chip toggle" aria-pressed={n === items.length ? "true" : n ? "mixed" : "false"} onClick={() => toggle(l)}>{l}{n > 0 && n < items.length && <small>{n}</small>}</button>;
+      })}
+      <input class="chip-input" placeholder="New list" onKeyDown={(e) => { const v = (e.target as HTMLInputElement).value.trim(); if (e.key === "Enter" && v) { e.preventDefault(); change((x) => ({ lists: x.lists.includes(v) ? x.lists : [...x.lists, v] })); (e.target as HTMLInputElement).value = ""; } }} />
     </span>
   );
 }
@@ -379,7 +410,7 @@ function spreadLot(items: Item[], lot: string): Map<number, number> {
   return out;
 }
 
-interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>, only?: number[]) => void; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
+interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>, only?: number[]) => void; each: (f: (x: Item) => Partial<Item>, only?: number[]) => void; deck: boolean; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
 
 // ---- a precon deck (collection only): MTGJSON's deck lists name every card's exact printing ----
 interface DeckRef { name: string; fileName: string; releaseDate: string; type: string; code: string }
@@ -476,6 +507,7 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
     const r = await paced(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`);
     if (r.ok) { const card = (await r.json()) as Card; upd(it.id, { card, status: "ok", prints: null, finish: defaultFinish(target, it, card) }); }
   };
+  const each = (f: (x: Item) => Partial<Item>, only?: number[]) => setItems((xs) => xs.map((x) => (only && !only.includes(x.id) ? x : { ...x, ...f(x) })));
   const another = async (it: Item) => {
     const a = await paced(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(it.line.name)}`);
     upd(it.id, { status: "unknown", card: null, options: a.ok ? ((await a.json()) as { data: string[] }).data.filter((n) => n !== it.card?.name).slice(0, 6) : [] });
@@ -558,7 +590,7 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
             <small>{lot ? "Shared out across the cards by Cardmarket price; each card shows its share." : "Leave it empty to price cards later."}</small>
           </div>
         )}
-        {step === "pick" && <PickTable items={live} upd={upd} target={target} setAll={setAll} lot={lot} setLot={setLot} spread={spread} />}
+        {step === "pick" && <PickTable items={live} upd={upd} target={target} setAll={setAll} each={each} deck={!!deck} lot={lot} setLot={setLot} spread={spread} />}
 
         {step === "done" && (
           <div class="pl-done">
