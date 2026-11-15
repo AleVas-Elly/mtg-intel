@@ -27,7 +27,12 @@ migrations_dir = "migrations"
 [observability]
 enabled = true
 
-# Secrets (wrangler secret put): SESSION_SECRET (signs sign-in cookies), INGEST_TOKEN (lets the
+# App notifications (D88): the VAPID public key. Its private half is the VAPID_PRIVATE secret (JWK);
+# a new pair means every device turns notifications on again.
+[vars]
+VAPID_PUBLIC = "BFexzLDHf8IrqAosdGAd8Tmq3MTg3ky3PObp4tskNkdzrNQHCJl-BoSe9JDTgyhsAI9L_B0JYa4us12cr4Ypvpw"
+
+# Secrets (wrangler secret put): VAPID_PRIVATE, SESSION_SECRET (signs sign-in cookies), INGEST_TOKEN (lets the
 # GitHub jobs send data; the same value is the SITE_INGEST_TOKEN GitHub secret).
 
 # The timer Worker (infra/trigger), reached only through this binding: starts the GitHub workflow

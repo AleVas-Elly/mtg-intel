@@ -11,6 +11,7 @@ import {
   type AuthenticatorTransportFuture,
 } from "@simplewebauthn/server";
 import { b64url, fromB64url, randomToken, sameSecret, sha256Hex, sign, verify } from "./crypto";
+import { type Ping, push, type Subscription } from "./push";
 import {
   type Account, can, docPerm, ended, isOwner, meOf, OWNER, type Perm, PERMS, PRESETS, presetOf, tidy,
   withoutDetails, withoutMoney,
@@ -23,6 +24,8 @@ interface Env {
   SESSION_SECRET: string;
   INGEST_TOKEN: string;
   TRIGGER?: Fetcher; // the timer Worker (service binding): starts the GitHub workflow that applies edits
+  VAPID_PUBLIC?: string; // app notifications (D88): the public key (a var), the private key as JWK (a secret)
+  VAPID_PRIVATE?: string;
 }
 
 interface Place { city?: string; country?: string }
@@ -703,6 +706,64 @@ async function suggestions(request: Request, env: Env, rest: string, ctx: Execut
 
 /** A document for the signed-in browser. Its version is kept in D1 (D67), so the usual answer to
  *  a refresh, "not changed", costs no KV read; only a changed document is read from KV. */
+/** App notifications (D88): this account's devices, turning them on and off, and a test ping.
+ *  Only the owner for now; People gets a switch for everyone else (D88). */
+const mayNotify = (a: Account) => isOwner(a);
+
+interface PushDevice { sub: Subscription; device: string; browser: string; created: string }
+
+/** Send a ping to every device of these accounts; devices the push service calls gone are forgotten. */
+async function pingAll(env: Env, origin: string, accountIds: string[], ping: Ping, only?: string): Promise<{ sent: number; failed: string[] }> {
+  if (!env.VAPID_PUBLIC || !env.VAPID_PRIVATE) return { sent: 0, failed: ["Notifications aren't set up on the server."] };
+  const rows = (await env.DB.prepare(`SELECT endpoint, doc FROM push_devices WHERE account IN (${accountIds.map(() => "?").join()})`)
+    .bind(...accountIds).all<{ endpoint: string; doc: string }>()).results.filter((r) => !only || r.endpoint === only);
+  const keys = { VAPID_PUBLIC: env.VAPID_PUBLIC, VAPID_PRIVATE: env.VAPID_PRIVATE, SITE_URL: origin };
+  const out = await Promise.all(rows.map(async (r) => {
+    const d = JSON.parse(r.doc) as PushDevice;
+    const result = await push(d.sub, ping, keys).catch((e) => String(e));
+    if (result === "gone") await env.DB.prepare("DELETE FROM push_devices WHERE endpoint = ?").bind(r.endpoint).run();
+    return result === "ok" ? null : `${d.device}: ${result === "gone" ? "no longer subscribed" : result}`;
+  }));
+  return { sent: out.filter((x) => x === null).length, failed: out.filter((x): x is string => x !== null) };
+}
+
+async function notifications(request: Request, env: Env, rest: string, url: URL): Promise<Response> {
+  if (rest === "key") return json({ key: env.VAPID_PUBLIC ?? null });
+  const w = await who(request, env);
+  if (!w) return json({ error: "Sign in first." }, 401);
+  const me = w.account;
+  if (!mayNotify(me)) return json({ error: "Notifications aren't on for your account." }, 403);
+  const list = async () => (await env.DB.prepare("SELECT endpoint, doc FROM push_devices WHERE account = ? ORDER BY created")
+    .bind(me.id).all<{ endpoint: string; doc: string }>()).results.map((r) => {
+    const d = JSON.parse(r.doc) as PushDevice;
+    return { endpoint: r.endpoint, device: d.device, browser: d.browser, created: d.created };
+  });
+  if (rest === "devices" && request.method === "GET") return json(await list());
+  const body = (await request.json().catch(() => null)) as { sub?: Subscription; endpoint?: string } | null;
+  if (request.method !== "POST" || !body) return json({ error: "Not found" }, 404);
+  if (rest === "devices") {
+    const sub = body.sub;
+    const valid = sub && typeof sub.endpoint === "string" && /^https:\/\/[^\s]{10,900}$/.test(sub.endpoint)
+      && typeof sub.keys?.p256dh === "string" && sub.keys.p256dh.length < 200 && typeof sub.keys?.auth === "string" && sub.keys.auth.length < 100;
+    if (!valid) return json({ error: "That subscription isn't valid." }, 400);
+    const d: PushDevice = { sub: { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } },
+      device: deviceName(request), browser: browserName(request), created: new Date().toISOString() };
+    await env.DB.prepare("INSERT OR REPLACE INTO push_devices (endpoint, account, created, doc) VALUES (?, ?, ?, ?)")
+      .bind(sub.endpoint, me.id, d.created, JSON.stringify(d)).run();
+    return json(await list());
+  }
+  if (rest === "devices/remove") {
+    await env.DB.prepare("DELETE FROM push_devices WHERE endpoint = ? AND account = ?").bind(String(body.endpoint), me.id).run();
+    return json(await list());
+  }
+  if (rest === "test") {
+    const r = await pingAll(env, url.origin, [me.id], { title: "mtg-intel", body: "Notifications work on this device.", url: "/settings", tag: "test" }, String(body.endpoint));
+    if (!r.sent) return json({ error: r.failed[0] ?? "This device isn't subscribed any more. Turn notifications on again." }, 502);
+    return json({ ok: true });
+  }
+  return json({ error: "Not found" }, 404);
+}
+
 async function data(request: Request, env: Env, key: string): Promise<Response> {
   const w = await who(request, env);
   if (key === "edits") {
@@ -891,6 +952,7 @@ export default {
       if (path.startsWith("/api/auth/")) return await auth(request, env, path.slice(10), url, ctx);
       if (path === "/api/suggestions" || path.startsWith("/api/suggestions/")) return await suggestions(request, env, path.slice(17), ctx);
       if (path.startsWith("/api/data/")) return await data(request, env, path.slice(10));
+      if (path.startsWith("/api/push/")) return await notifications(request, env, path.slice(10), url);
       if (path.startsWith("/api/ingest/")) return await ingest(request, env, path.slice(12), url);
       if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
       if (path.startsWith("/api/ct/")) return await ctCopies(request, env, path.slice(8), ctx);

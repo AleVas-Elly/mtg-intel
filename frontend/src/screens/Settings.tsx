@@ -10,6 +10,7 @@ import { IconBack } from "../ui/icons";
 import { toast } from "../toast";
 import { useMe } from "../access";
 import { type Device, join, MyAccess, PeopleSection, where } from "./People";
+import { NotificationsSection } from "./Notifications";
 
 type Theme = "auto" | "light" | "dark";
 
@@ -77,6 +78,8 @@ export function Settings({ data }: { data: AppData }) {
         <span>Motion and layout<br /><small style={{ color: "var(--ink-2)", fontSize: "12.5px" }}>How lively the site moves, and rows or big pictures</small></span>
         <button class="btn sm" type="button" onClick={() => setLabOpen(true)}>Open</button>
       </div>
+
+      {me.owner && <NotificationsSection />}
 
       {me.owner ? <PeopleSection refreshKey={peopleKey} onRemoveDevice={setRemoving} /> : <MyAccess name={me.name} expires={me.expires} perms={me.perms} />}
 
