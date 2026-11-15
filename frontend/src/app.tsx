@@ -21,6 +21,7 @@ import { dismissToast, useToast } from "./toast";
 
 import { LOCAL } from "./env";
 import { setLabOpen, useLabOpen } from "./labstate";
+import { AddPage } from "./prototype/PasteList";  // PROTOTYPE (issue 6)
 
 const TABS: { path: string; label: string; Icon: typeof IconHome; needs?: Perm }[] = [
   { path: "/", label: "Home", Icon: IconHome },
@@ -31,7 +32,7 @@ const TABS: { path: string; label: string; Icon: typeof IconHome; needs?: Perm }
   { path: "/check", label: "Check", Icon: IconCheck, needs: "wants" },
 ];
 /** Screens someone without that switch can't open (D78): they land on Home. */
-const NEEDS: Record<string, Perm> = { "/deals": "deals", "/wants": "wants", "/collection": "collection", "/bought": "collection", "/check": "wants" };
+const NEEDS: Record<string, Perm> = { "/deals": "deals", "/wants": "wants", "/wants/add": "wants", "/collection/add": "collection", "/collection": "collection", "/bought": "collection", "/check": "wants" };
 
 export function App() {
   const auth = useAuth();
@@ -47,7 +48,7 @@ export function App() {
 
 /** Which section's colour the page wears (D62): the Want-list is cyan, the Collection pink,
  *  Deals gold, Check red. */
-const SEC: Record<string, string> = { "/wants": "wants", "/collection": "collection", "/bought": "collection", "/deals": "deals", "/check": "check" };
+const SEC: Record<string, string> = { "/wants": "wants", "/wants/add": "wants", "/collection/add": "collection", "/collection": "collection", "/bought": "collection", "/deals": "deals", "/check": "check" };
 const sectionOf = (path: string) => SEC[path] ?? "";
 
 function Signed({ path: asked, card }: { path: string; card: string | null }) {
@@ -69,6 +70,8 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
   const dealCount = data.live?.deals.filter((d) => data.byKey.has(d.key)).length ?? 0;  // a removed wish's deal drops out
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
   const screen =
+    path === "/wants/add" ? <AddPage target="wants" /> :
+    path === "/collection/add" ? <AddPage target="collection" /> :
     path === "/wants" ? <Wants data={data} card={card} /> :
     path === "/collection" || path === "/bought" ? <Collection data={data} card={card} /> :
     path === "/dashboards" ? <Dashboards data={data} /> :
@@ -84,7 +87,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
       <nav class="rail" aria-label="Main">
         <a class="brand" href="/" onClick={link("/")}><img src="/icon-64.png" alt="" />mtg-intel</a>
         {tabs.map(({ path: p, label, Icon }) => (
-          <a href={p} onClick={link(p)} class={SEC[p] ? `sec-${SEC[p]}` : undefined} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}>
+          <a href={p} onClick={link(p)} class={SEC[p] ? `sec-${SEC[p]}` : undefined} aria-current={path === p || path === `${p}/add` || (p === "/collection" && path === "/bought") ? "page" : undefined}>
             <Icon />{label}{counts[p] != null && <span class="count">{counts[p]}</span>}
           </a>
         ))}
@@ -102,7 +105,7 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
       <ToastView />
       <nav class="tabbar" aria-label="Main">
         {phoneTabs.map(({ path: p, label, Icon }) => (
-          <a class={`tab${SEC[p] ? ` sec-${SEC[p]}` : ""}`} href={p} onClick={link(p)} aria-current={path === p || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
+          <a class={`tab${SEC[p] ? ` sec-${SEC[p]}` : ""}`} href={p} onClick={link(p)} aria-current={path === p || path === `${p}/add` || (p === "/collection" && path === "/bought") ? "page" : undefined}><Icon />{label}</a>
         ))}
       </nav>
     </div>

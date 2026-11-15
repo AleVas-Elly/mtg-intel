@@ -1,30 +1,8 @@
 /* PROTOTYPE, throwaway (mtg-intel-docs issue 6). Built on The Drop tokens (styles.css). */
 
 /* ---- shell ---- */
-.pl { position: fixed; inset: 0; z-index: 75; background: var(--bg); display: grid; grid-template-rows: auto 1fr auto; animation: pl-in var(--t-pane) var(--out); }
-@keyframes pl-in { from { opacity: 0; transform: translateY(16px); } }
-.pl-head { display: flex; align-items: flex-start; gap: 14px; padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
-.pl-head > div { flex: 1; min-width: 0; }
-.pl-head h2 { font-weight: 800; font-stretch: 112%; font-size: 26px; line-height: 1.05; letter-spacing: -0.03em; }
-.pl-into { font-size: 13px; color: var(--ink-2); padding-top: 8px; }
-.pl-steps { display: flex; flex-wrap: wrap; gap: 4px 16px; list-style: none; padding: 0; margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--ink-3); counter-reset: s; }
-.pl-steps li { counter-increment: s; }
-.pl-steps li::before { content: counter(s) "  "; font-variant-numeric: tabular-nums; }
-.pl-steps li[aria-current] { color: var(--ink); }
-.pl-body { overflow-y: auto; padding: 20px 20px 96px; overscroll-behavior: contain; }
-.pl-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--bg); }
-.pl-headbtns { display: flex; gap: 8px; }
-@media (max-width: 640px) { .pl-into { display: none; } .pl-body { padding-inline: 16px; } }
 
 /* ---- 1 paste ---- */
-.pl-mode { margin-bottom: 16px; }
-.pl-paste { max-width: 640px; }
-.pl-paste p { color: var(--ink-2); font-size: 15px; line-height: 1.45; margin-bottom: 14px; max-width: 60ch; }
-.pl-paste textarea { width: 100%; border: 0; border-radius: var(--radius); background: var(--surface); padding: 16px 18px; font: inherit; font-size: 15px; line-height: 1.6; color: var(--ink); resize: vertical; }
-.pl-paste textarea:focus { outline: 2px solid var(--focus); }
-.pl-row-btns { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; color: var(--ink-3); font-size: 13px; }
-.pl-search { width: 100%; height: 44px; border: 0; border-radius: 999px; background: var(--fill); padding: 0 18px; font: inherit; font-size: 15px; color: var(--ink); }
-.pl-search:focus { outline: 2px solid var(--focus); }
 .pl-decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px; margin-top: 14px; max-width: 900px; background: var(--line); border-radius: var(--radius); overflow: hidden; }
 .pl-deck { text-align: left; border: 0; background: var(--surface); padding: 14px 16px; font: inherit; color: var(--ink); cursor: pointer; transition: background var(--t-small) var(--ease); }
 .pl-deck:hover { background: var(--surface-2, var(--fill-strong)); }
@@ -32,18 +10,6 @@
 .pl-deck small { color: var(--ink-2); font-size: 13px; }
 
 /* ---- 2 check ---- */
-.pl-check { max-width: 760px; }
-.pl-ok { font-size: 15px; margin-bottom: 14px; }
-.pl-unclear { background: var(--surface); border-radius: var(--radius-s); padding: 14px 16px; margin-bottom: 8px; }
-.pl-unclear code { font: inherit; font-size: 13px; font-weight: 600; color: var(--ink-2); display: inline-flex; align-items: center; gap: 8px; }
-.pl-unclear code::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
-.pl-unclear.unknown code::before { background: var(--bad); }
-.pl-guess { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
-.pl-guess .thumb { width: 44px; }
-.pl-guess > span { margin-right: 4px; }
-.pl-left { font-size: 13px; color: var(--ink-3); margin: 10px 0; }
-.pl-found { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 20px; }
-.pl-found .thumb { width: 60px; }
 
 /* ---- 3 pick: deck header ---- */
 .pl-deckhead { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 24px; margin-bottom: 20px; }
@@ -54,7 +20,6 @@
 .pl-deckhead > small { flex-basis: 100%; margin-top: -6px; }
 
 /* ---- 3 pick: toolbar ---- */
-.pl-table { max-width: 980px; }
 .pl-toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 4px 10px 16px; margin: -8px 0 4px; background: var(--bg); }
 .pl-all { display: inline-flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 700; cursor: pointer; font-variant-numeric: tabular-nums; }
 .pl-toolbar-acts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
@@ -63,24 +28,10 @@
 .pl-check-box { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); cursor: pointer; flex: none; }
 
 /* ---- 3 pick: the list ---- */
-.pl-list { background: var(--surface); border-radius: var(--radius); }
-.pl-row:first-child .pl-row-line { border-radius: var(--radius) var(--radius) 0 0; }
-.pl-row:last-child:not(.open) .pl-row-line, .pl-row:last-child .pl-editor { border-radius: 0 0 var(--radius) var(--radius); }
-.pl-row { scroll-margin-top: 64px; }
-.pl-row-text { display: grid; gap: 2px; min-width: 0; }
-.pl-row-name { font-size: 15.5px; line-height: 1.2; font-weight: 800; font-stretch: 106%; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-row-ver { font-size: 13px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- 3 pick: the editor (one card, or several) ---- */
-.pl-row.open .pl-row-line, .pl-row.open .pl-editor { background: var(--fill); }
-.pl-editor { padding: 4px 20px 18px 48px; animation: pl-open var(--t-small) var(--out); }
 @keyframes pl-open { from { opacity: 0; transform: translateY(-4px); } }
-.pl-editor-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-.pl-versions { margin: 6px 0 2px; }
-.pl-versions .versions { padding-left: 6px; margin-left: -6px; }
 .pl-vfilters { position: relative; z-index: 8; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
-.pl-vfilters .seg button { text-transform: capitalize; }
-.select.sm { height: 34px; font-size: 13.5px; padding-block: 0; }
 
 
 
@@ -115,25 +66,8 @@
 
 
 /* ---- 4 done ---- */
-.pl-done h3 { font-size: 26px; font-weight: 800; font-stretch: 112%; letter-spacing: -0.02em; }
-.pl-done p { color: var(--ink-2); margin: 6px 0 14px; }
-.pl-done pre { background: var(--surface); padding: 16px; border-radius: var(--radius-s); font-size: 12.5px; overflow-x: auto; white-space: pre; }
 
 /* ---- round 9: rows with inline settings ---- */
-.pl-row-line { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto 32px; align-items: center; gap: 14px; padding: 0 10px 0 16px; transition: background var(--t-small) var(--ease); }
-.pl-row + .pl-row > .pl-row-line { box-shadow: inset 0 1px 0 var(--line); }
-.pl-row-line:hover, .pl-row.picked .pl-row-line { background: var(--fill); }
-.pl-row-main { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px 0; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
-.pl-row-main .thumb { width: 44px; }
-.pl-row-extra { font-size: 12.5px; font-weight: 650; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-row-ctrls { display: grid; grid-auto-flow: column; grid-template-columns: 52px 136px 118px 100px 124px; align-items: center; gap: 2px; }
-.pl-row-ctrls.money { grid-template-columns: 52px 112px 64px 96px 84px; }
-.pl-row-ctrls > .pl-pop, .pl-row-ctrls .pl-ghost { min-width: 0; max-width: 100%; }
-.pl-row-ctrls .pl-ghost { width: max-content; max-width: 100%; }
-.pl-chev-btn { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 999px; background: none; color: var(--ink-3); cursor: pointer; }
-.pl-chev-btn:hover { background: var(--fill); color: var(--ink); }
-.pl-chev { width: 16px; height: 16px; transition: transform var(--t-small) var(--out); }
-.pl-chev-btn[aria-expanded="true"] .pl-chev { transform: rotate(180deg); }
 
 /* quiet dropdowns on rows: text until hovered, a value you changed stands out */
 .pl-pop summary.pl-ghost { min-width: 0; max-width: 200px; }
@@ -150,7 +84,6 @@
 .pl-ghost-money input::placeholder { color: var(--ink-3); }
 .pl-pop .select.on { color: var(--ink); }
 .pl-pop.narrow .pl-pop-list { min-width: 196px; }
-.pl-row-ctrls .pl-pop-list { left: auto; right: 0; }
 .pl-qty-grid { display: grid; grid-template-columns: repeat(4, 40px); gap: 4px; padding: 4px; }
 .pl-qty { height: 40px; border: 0; border-radius: 10px; background: none; font: inherit; font-size: 16px; font-weight: 800; font-stretch: 80%; color: var(--ink); cursor: pointer; font-variant-numeric: tabular-nums; }
 .pl-qty:hover { background: var(--fill); }
@@ -169,26 +102,10 @@
 .pl-bulk-line .pl-pop:last-child .pl-pop-list { left: auto; right: 0; }
 
 /* the rarer settings */
-.pl-more-form { display: flex; flex-wrap: wrap; gap: 16px 24px; align-items: flex-start; margin-top: 14px; }
-.pl-pop-list > .pl-more-form { margin: 0; padding: 10px; flex-direction: column; min-width: 240px; }
-.pl-f { display: grid; gap: 7px; min-width: 0; }
-.pl-f > span:first-child { font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.pl-f > .money { justify-self: start; min-width: 150px; }
-.pl-f > .money input { width: 70px; }
-.pl-switch { cursor: pointer; }
-.pl-switch .switch { justify-self: start; }
 
 @media (max-width: 760px) {
-  .pl-row-line { grid-template-columns: 18px minmax(0, 1fr) 32px; grid-template-areas: "tick main chev" "ctrls ctrls ctrls"; column-gap: 10px; padding: 0 6px 8px 12px; }
-  .pl-row-line > .pl-check-box { grid-area: tick; }
-  .pl-row-main { grid-area: main; grid-template-columns: 40px minmax(0, 1fr); gap: 10px; padding-bottom: 4px; }
-  .pl-row-main .thumb { width: 40px; }
-  .pl-row-ctrls, .pl-row-ctrls.money { grid-area: ctrls; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0; margin-left: 20px; }
   .pl-ghost { padding: 0 6px 0 8px; font-size: 13px; }
   .pl-ghost-money { padding: 0 8px; }
-  .pl-chev-btn { grid-area: chev; }
-  .pl-row-ctrls .pl-pop-list { left: 0; right: auto; }
-  .pl-editor { padding: 4px 14px 16px; }
   .pl-hint { display: none; }
   .pl-toolbar { padding-left: 12px; }
 }
@@ -197,14 +114,6 @@
 .btn.xs { height: 30px; padding: 0 12px; font-size: 13px; }
 
 /* how to add: a list of ways, not a grid of cards */
-.pl-ways { max-width: 640px; background: var(--surface); border-radius: var(--radius); overflow: hidden; }
-.pl-way { display: flex; align-items: center; gap: 16px; width: 100%; padding: 16px 18px; border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer; transition: background var(--t-small) var(--ease); }
-.pl-way + .pl-way { box-shadow: inset 0 1px 0 var(--line); }
-.pl-way:hover { background: var(--fill); }
-.pl-way > span { flex: 1; display: grid; gap: 3px; }
-.pl-way b { font-size: 17px; font-weight: 800; font-stretch: 108%; letter-spacing: -0.01em; }
-.pl-way small { font-size: 14px; color: var(--ink-2); }
-.pl-way svg { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
 
 /* the paste step's worked example */
 .pl-example { display: grid; gap: 6px; margin-bottom: 14px; }
@@ -222,21 +131,13 @@
 .pl-cs-card b { font-size: 15px; font-weight: 800; font-stretch: 106%; }
 .pl-cs-card small { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pl-cs-none { padding: 10px; color: var(--ink-3); font-size: 13.5px; }
-.pl-cs.pl-cs-row .pl-search { height: 38px; max-width: 360px; }
 .pl-cs.pl-cs-row .pl-cs-res { display: flex; gap: 10px; overflow-x: auto; background: none; padding: 2px 2px 4px; }
 .pl-cs.pl-cs-row .pl-cs-card { display: grid; grid-template-columns: none; grid-template-rows: auto auto; width: 112px; flex: none; gap: 6px; padding: 6px; align-items: start; }
 .pl-cs.pl-cs-row .pl-cs-card .thumb { width: 100px; }
 .pl-cs.pl-cs-row .pl-cs-card b { font-size: 12.5px; line-height: 1.2; white-space: normal; }
 .pl-cs.pl-cs-row .pl-cs-card small { display: none; }
-.pl-chosen { display: grid; gap: 6px; margin-top: 18px; }
-.pl-chosen > small { font-size: 13px; font-weight: 600; color: var(--ink-2); }
-.pl-chosen-card { display: grid; grid-template-columns: 36px 1fr auto; gap: 12px; align-items: center; padding: 6px 6px 6px 10px; background: var(--surface); border-radius: var(--radius-s); }
-.pl-chosen-card .thumb { width: 36px; }
-.pl-chosen-card b { font-weight: 800; font-stretch: 106%; }
 
 /* check step */
-.pl-guess.stack { display: grid; gap: 10px; }
-.pl-guess-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 
 /* a file */
 .pl-drop { display: grid; gap: 8px; justify-items: center; text-align: center; padding: 40px 24px; border-radius: var(--radius); background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); cursor: pointer; transition: background var(--t-small) var(--ease); }
@@ -248,3 +149,110 @@
 
 /* searching inside a list */
 .pl-pop-search { position: sticky; top: -6px; z-index: 1; height: 36px; margin: -6px -6px 6px; padding: 0 14px; border: 0; border-bottom: 1px solid var(--line); border-radius: var(--radius-s) var(--radius-s) 0 0; background: var(--surface-2, var(--surface)); font: inherit; font-size: 14px; color: var(--ink); outline: none; }
+
+/* ---- round 11: Add cards as a page of the app ---- */
+.add-crumb { display: inline-flex; align-items: center; gap: 2px; margin: 0 0 6px -4px; font-size: 13.5px; font-weight: 650; color: var(--sec-text, var(--ink-2)); text-decoration: none; opacity: 0.85; }
+.add-crumb:hover { opacity: 1; }
+.add-crumb svg { width: 16px; height: 16px; }
+.add-ways { margin: 6px 0 14px; }
+.add-input { margin-bottom: 8px; }
+.add-input .field { height: 44px; }
+.add-note { font-size: 14px; }
+
+/* search: the app's list, an add button per card */
+.pl-cs { display: grid; gap: 10px; }
+.pl-cs .list { margin-top: 2px; }
+.pl-cs .row[aria-selected="true"] { background: var(--fill); }
+.pl-add { background: var(--fill); }
+.pl-add:hover { background: var(--fill-strong); }
+.pl-add.on { background: var(--ink); color: var(--bg); }
+.pl-add b { font-size: 15px; font-weight: 800; font-stretch: 80%; font-variant-numeric: tabular-nums; }
+.pl-cs-none { padding: 10px 4px; color: var(--ink-3); font-size: 13.5px; }
+.pl-cs.pl-cs-row { margin-top: 10px; }
+.pl-cs.pl-cs-row .field { max-width: 360px; height: 38px; }
+
+/* paste: the box beside a worked example */
+.add-paste { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+.add-paste textarea { min-height: 150px; border-radius: var(--radius-s); line-height: 1.55; }
+.add-paste-side { display: grid; gap: 14px; }
+.add-paste-acts { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pl-example { display: grid; gap: 6px; }
+.pl-example div { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline; font-size: 13.5px; }
+.pl-example b { font-weight: 700; }
+.pl-example span { color: var(--ink-3); text-align: right; }
+@media (max-width: 700px) { .add-paste { grid-template-columns: 1fr; } }
+
+/* lines that need a look */
+.add-check { padding: 12px 16px; }
+.add-check + .add-check { box-shadow: inset 0 1px 0 var(--line); }
+.add-check-line { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 14px; align-items: center; }
+.add-check-line .thumb { width: 48px; }
+.add-check-q { width: 48px; aspect-ratio: 488 / 680; display: grid; place-items: center; border-radius: 4.5% / 3.3%; background: var(--fill); color: var(--ink-3); font-size: 20px; font-weight: 800; }
+.add-check-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.add-check .pl-cs-row { margin-left: 62px; }
+@media (max-width: 640px) { .add-check-line { grid-template-columns: 40px minmax(0, 1fr); } .add-check-line .thumb, .add-check-q { width: 40px; } .add-check-acts { grid-column: 1 / -1; justify-content: flex-start; } .add-check .pl-cs-row { margin-left: 0; } }
+
+/* the cards to add: Want-list rows with a tick box and their settings on the right */
+.add-list .row.add-row { grid-template-columns: 18px minmax(0, 1fr) auto; padding-left: 16px; cursor: default; }
+.add-list .row + .row::before { left: 112px; }
+.add-list .row.picked { background: var(--fill); }
+.add-row-main { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 14px; align-items: center; min-width: 0; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.add-row-main .thumb { width: 48px; }
+.add-row-main .r-main { display: flex; }
+@media (max-width: 760px) {
+  .add-list .row.add-row { grid-template-columns: 18px minmax(0, 1fr); row-gap: 6px; }
+  .add-list .row-ctrls, .add-list .pl-row-ctrls, .add-list .pl-row-ctrls.money { grid-column: 2; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 0; margin-left: -8px; }
+  .add-list .pl-ghost { padding: 0 6px 0 8px; font-size: 13px; }
+  .add-list .row + .row::before { left: 16px; }
+}
+.pl-row-ctrls { display: grid; grid-auto-flow: column; grid-template-columns: 52px 128px 112px 96px 112px; align-items: center; gap: 2px; }
+.pl-row-ctrls.money { grid-template-columns: 52px 104px 60px 92px 84px; }
+@media (max-width: 1180px) and (min-width: 761px) { .shell.has-detail .pl-row-ctrls { display: flex; flex-wrap: wrap; justify-content: flex-end; max-width: 300px; } }
+
+/* the side pane: the app's, with the card's versions and settings */
+.add-pane .group.form { padding: 0 16px; }
+.add-versions { padding: 12px 16px !important; }
+.add-versions .pl-versions { margin: 0; }
+.add-pane .f-row .pl-pop-list { left: auto; right: 0; }
+.add-pane .stepper { display: inline-flex; align-items: center; gap: 8px; }
+.add-pane .stepper b { min-width: 22px; text-align: center; font-size: 20px; font-weight: 800; font-stretch: 70%; font-variant-numeric: tabular-nums; }
+.add-pane-foot { display: flex; gap: 8px; margin-top: 18px; }
+.add-pane-foot .btn { flex: 1; justify-content: center; }
+.pl-vfilters { position: relative; z-index: 8; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.pl-vfilters .seg button { text-transform: capitalize; }
+.pl-versions .versions { padding-left: 6px; margin-left: -6px; }
+
+/* more settings, in a list for several cards */
+.pl-more-form { display: grid; gap: 14px; padding: 10px; min-width: 240px; }
+.pl-f { display: grid; gap: 7px; min-width: 0; }
+.pl-f > span:first-child { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.pl-f > .money { justify-self: start; min-width: 150px; }
+.pl-f > .money input { width: 70px; }
+.pl-switch { cursor: pointer; }
+.pl-switch .switch { justify-self: start; }
+
+/* the bar that adds them all: floats above the list (and above the phone's tab bar) */
+.add-bar { position: sticky; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; padding: 8px 8px 8px 20px; border-radius: 999px; background: var(--surface); box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06), 0 28px 56px -22px rgba(0, 0, 0, 0.32); font-size: 14.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 899px) { .add-bar { bottom: calc(86px + env(safe-area-inset-bottom)); } }
+.add-empty { padding: 36px 20px; }
+.add-sent { background: var(--surface); padding: 16px; border-radius: var(--radius-s); font-size: 12.5px; overflow-x: auto; white-space: pre; margin: 10px 0 18px; }
+
+/* the toolbar sits on the page now */
+.pl-top { position: sticky; top: 0; z-index: 6; margin: 0 0 8px; background: var(--bg); padding-top: 6px; }
+.pl-toolbar { display: flex; align-items: center; gap: 12px; padding: 4px 4px 8px 16px; }
+.pl-all { display: inline-flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 700; cursor: pointer; font-variant-numeric: tabular-nums; }
+.pl-toolbar-acts { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
+.pl-text-btn { border: 0; background: none; padding: 0 6px; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink-2); cursor: pointer; }
+.pl-text-btn:hover { color: var(--ink); }
+.pl-check-box { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); cursor: pointer; flex: none; }
+.pl-deckhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; margin: 22px 0 4px; padding: 0 4px; }
+.pl-deckhead b { display: block; font-size: 17px; font-weight: 800; font-stretch: 108%; }
+.pl-deckhead small { color: var(--ink-2); font-size: 13px; }
+.pl-deckhead label { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+.pl-decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px; margin-top: 12px; background: var(--line); border-radius: var(--radius); overflow: hidden; }
+.pl-deck { text-align: left; border: 0; background: var(--surface); padding: 14px 16px; font: inherit; color: var(--ink); cursor: pointer; transition: background var(--t-small) var(--ease); }
+.pl-deck:hover { background: var(--surface-2, var(--fill-strong)); }
+.pl-deck b { display: block; font-size: 15px; font-weight: 800; font-stretch: 106%; }
+.pl-deck small { color: var(--ink-2); font-size: 13px; }
+.add-pane .f-row > .pl-pop { flex: none; }
+.add-pane .f-row .pl-pop summary { min-width: 150px; max-width: 220px; }
