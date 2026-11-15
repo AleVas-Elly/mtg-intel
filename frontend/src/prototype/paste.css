@@ -44,7 +44,7 @@
 .pl-bulk.stacked { flex-direction: column; align-items: stretch; position: static; background: none; padding: 0; }
 
 /* A table */
-.pl-row { display: grid; grid-template-columns: 52px minmax(160px, 1fr) auto; gap: 12px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); }
+.pl-row { display: grid; grid-template-columns: 22px 52px minmax(160px, 1fr) auto; gap: 12px; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); }
 .pl-row.open { background: var(--surface); border-radius: var(--radius-s); padding-inline: 10px; }
 .pl-thumb { border: 0; padding: 0; background: none; cursor: pointer; }
 .pl-thumb .thumb { width: 52px; }
@@ -56,7 +56,7 @@
 .pl-fields .money { height: 34px; }
 .pl-fields .money input { width: 44px; }
 .pl-under { grid-column: 1 / -1; }
-@media (max-width: 760px) { .pl-row { grid-template-columns: 52px 1fr; } .pl-fields { grid-column: 1 / -1; justify-content: flex-start; } }
+@media (max-width: 760px) { .pl-row { grid-template-columns: 22px 52px 1fr; } .pl-fields { grid-column: 1 / -1; justify-content: flex-start; } }
 
 /* B one by one */
 .pl-one { display: grid; grid-template-columns: minmax(220px, 340px) minmax(0, 1fr); gap: 28px; max-width: 1080px; }
@@ -134,3 +134,5 @@
 .pl-lang-pop label { display: flex; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 10px; font-size: 14px; cursor: pointer; }
 .pl-lang-pop label:hover { background: var(--fill); }
 .pl-lang-quick { border: 0; border-radius: 10px; padding: 8px; margin-bottom: 4px; background: var(--fill-strong); color: var(--ink); font: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; text-align: left; }
+.pl-check-box { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
+.pl-row.picked { background: color-mix(in srgb, var(--accent) 9%, transparent); }

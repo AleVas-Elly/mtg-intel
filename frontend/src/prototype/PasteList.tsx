@@ -243,12 +243,18 @@ function Fields({ it, upd, target, row, share }: { it: Item; upd: Upd; target: T
 /** A: every card a row, settings inline, "set all" bar on top; the picture opens its versions. */
 function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProps) {
   const [open, setOpen] = useState<number | null>(null);
+  const [sel, setSel] = useState<number[]>([]);
+  const picked = items.filter((x) => sel.includes(x.id));
+  const flip = (id: number) => setSel((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   const openNext = (id: number) => { setOpen(id); requestAnimationFrame(() => document.getElementById(`pl-row-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })); };
   return (
     <div class="pl-table">
-      <BulkBar target={target} setAll={setAll} items={items} lot={lot} setLot={setLot} />
+      <BulkBar target={target} items={picked.length ? picked : items} setAll={(p) => setAll(p, picked.length ? sel : undefined)} lot={lot} setLot={setLot}
+        selected={picked.length} total={items.length} onSelectAll={() => setSel(picked.length === items.length ? [] : items.map((x) => x.id))}
+        onLeaveOut={() => { setAll({ status: "dropped" }, sel); setSel([]); }} />
       {items.map((it, i) => (
-        <div class={`pl-row${open === it.id ? " open" : ""}`} id={`pl-row-${it.id}`}>
+        <div class={`pl-row${open === it.id ? " open" : ""}${sel.includes(it.id) ? " picked" : ""}`} id={`pl-row-${it.id}`}>
+          <input type="checkbox" class="pl-check-box" checked={sel.includes(it.id)} onChange={() => flip(it.id)} aria-label={`Select ${it.card?.name}`} />
           <button type="button" class="pl-thumb" onClick={() => setOpen(open === it.id ? null : it.id)} aria-expanded={open === it.id} aria-label={`Versions of ${it.card?.name}`}>
             <CardImage src={img(it.card, "small")} alt="" foil={it.finish === "foil"} />
           </button>
@@ -273,13 +279,18 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
 }
 
 /** Set language, condition, finish on every card; "More options" sets the rarer ones for every card. */
-function BulkBar({ target, setAll, items, lot, setLot }: { target: Target; setAll: (p: Partial<Item>) => void; items: Item[]; lot: string; setLot: (v: string) => void }) {
+function BulkBar({ target, setAll, items, lot, setLot, selected, total, onSelectAll, onLeaveOut }: {
+  target: Target; setAll: (p: Partial<Item>) => void; items: Item[]; lot: string; setLot: (v: string) => void;
+  selected: number; total: number; onSelectAll: () => void; onLeaveOut: () => void;
+}) {
   const [more, setMore] = useState(false);
   const same = (k: "lang" | "cond" | "finish") => (items.every((x) => x[k] === items[0]?.[k]) ? items[0]?.[k] : "");
   return (
     <div class="pl-bulk">
       <div class="pl-bulk-main">
-        <span>Every card</span>
+        <input type="checkbox" class="pl-check-box" checked={selected === total} ref={(el) => { if (el) el.indeterminate = selected > 0 && selected < total; }}
+          onChange={onSelectAll} aria-label="Select every card" />
+        <span>{selected ? `${selected} selected` : "Every card"}</span>
         {target === "wants" ? <LangPick value={same("lang")} onChange={(lang) => setAll({ lang })} /> : (
           <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language for every card">
             <option value="" disabled>Language…</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
@@ -292,12 +303,13 @@ function BulkBar({ target, setAll, items, lot, setLot }: { target: Target; setAl
           <option value="" disabled>Finish…</option>
           {(target === "wants" ? ["any", "nonfoil", "foil"] : ["nonfoil", "foil"]).map((f) => <option value={f}>{finishName(f)}</option>)}
         </select>
+        {selected > 0 && <button type="button" class="btn sm" onClick={onLeaveOut}>Leave out</button>}
         <button type="button" class="pl-link" aria-expanded={more} onClick={() => setMore(!more)}><em>{more ? "Fewer options" : "More options"}</em></button>
       </div>
       {more && (target === "wants" ? (
         <div class="pl-bulk-more">
           <label>Deal from <span class="money"><input inputMode="numeric" placeholder="20" onChange={(e) => setAll({ deal: (e.target as HTMLInputElement).value })} /><span>%</span></span></label>
-          <label>Add every card to <ListPick value={same2(items, "lists")} onChange={(lists) => setAll({ lists })} /></label>
+          <label>{selected ? "Add them to" : "Add every card to"} <ListPick value={same2(items, "lists")} onChange={(lists) => setAll({ lists })} /></label>
           <label>CardTrader Zero only <input type="checkbox" class="switch" onChange={(e) => setAll({ zero: (e.target as HTMLInputElement).checked })} /></label>
         </div>
       ) : (
@@ -372,7 +384,7 @@ function spreadLot(items: Item[], lot: string): Map<number, number> {
   return out;
 }
 
-interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>) => void; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
+interface PickProps { items: Item[]; upd: Upd; target: Target; setAll: (p: Partial<Item>, only?: number[]) => void; lot: string; setLot: (v: string) => void; spread: Map<number, number> }
 
 // ---- a precon deck (collection only): MTGJSON's deck lists name every card's exact printing ----
 interface DeckRef { name: string; fileName: string; releaseDate: string; type: string; code: string }
@@ -473,7 +485,8 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
     const a = await paced(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(it.line.name)}`);
     upd(it.id, { status: "unknown", card: null, options: a.ok ? ((await a.json()) as { data: string[] }).data.filter((n) => n !== it.card?.name).slice(0, 6) : [] });
   };
-  const setAll = (p: Partial<Item>) => setItems((xs) => xs.map((x) => {
+  const setAll = (p: Partial<Item>, only?: number[]) => setItems((xs) => xs.map((x) => {
+    if (only && !only.includes(x.id)) return x;
     if (p.finish && p.finish !== "any" && !finishes(x.card).includes(p.finish)) return x;  // a finish the card doesn't have is skipped
     return { ...x, ...p };
   }));
