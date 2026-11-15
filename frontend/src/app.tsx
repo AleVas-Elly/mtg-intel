@@ -59,7 +59,12 @@ function Signed({ path: asked, card }: { path: string; card: string | null }) {
   /** The phone's tab bar has room for five; Check is on Home and in the menu. */
   const phoneTabs = tabs.filter((t) => t.path !== "/check");
   // Dashboards sets its own section, by the tab that is open
-  useEffect(() => { if (path !== "/dashboards") document.documentElement.dataset.section = sectionOf(path); }, [path]);
+  // no section: no attribute at all, or every `:root[data-section]` rule paints with an empty colour
+  useEffect(() => {
+    if (path === "/dashboards") return;
+    const sec = sectionOf(path);
+    if (sec) document.documentElement.dataset.section = sec; else delete document.documentElement.dataset.section;
+  }, [path]);
   const unread = useUnread();
   const dealCount = data.live?.deals.filter((d) => data.byKey.has(d.key)).length ?? 0;  // a removed wish's deal drops out
   const flagged = (data.wants?.wishes ?? []).filter((w) => data.flagsOf(w).length).length;
