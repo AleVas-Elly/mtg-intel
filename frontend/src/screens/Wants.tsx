@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
+import { PasteButton } from "../prototype/PasteList";  // PROTOTYPE (issue 6)
 import { useDoc } from "../api";
 import type { AppData } from "../data";
 import { dealGap, wishCount } from "../data";
@@ -102,6 +103,7 @@ export function Wants({ data, card }: { data: AppData; card: string | null }) {
             {data.wants ? <>{total} wishes{data.wants.price_date && <>, Cardmarket prices of {day(data.wants.price_date)}</>}</> : "Loading…"}
           </p>
         </div>
+        <PasteButton to="wants" />
       </header>
       <EditsStatus data={data} />
       <Inbox />

@@ -4,14 +4,48 @@
     {
       "name": "site-local",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["--prefix", "frontend", "wrangler", "dev", "--config", "frontend/wrangler.toml", "--port", "8787", "--local"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "wrangler",
+        "dev",
+        "--config",
+        "frontend/wrangler.toml",
+        "--port",
+        "8787",
+        "--local"
+      ],
       "port": 8787
     },
     {
       "name": "design-mocks",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8790", "--bind", "127.0.0.1", "--directory", ".impeccable/mocks"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8790",
+        "--bind",
+        "127.0.0.1",
+        "--directory",
+        ".impeccable/mocks"
+      ],
       "port": 8790
+    },
+    {
+      "name": "paste-prototype",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "wrangler",
+        "dev",
+        "--config",
+        "frontend/wrangler.toml",
+        "--port",
+        "8797",
+        "--local"
+      ],
+      "port": 8797
     }
   ]
 }

@@ -1,5 +1,6 @@
 // Collection (D60): every card I own, with the Want-list's filters, sorts and the card pane.
 // Replaces the Bought page; what I paid and saved now lives on the Want-list dashboard.
+import { PasteButton } from "../prototype/PasteList";  // PROTOTYPE (issue 6)
 import { can } from "../access";
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { useDoc } from "../api";
@@ -198,7 +199,8 @@ export function Collection({ data, card }: { data: AppData; card: string | null 
           <h1 class="title">Collection</h1>
           <p class="sub">{doc === undefined ? "Loading…" : qtyOf(owned) ? <>{qtyOf(owned)} {qtyOf(owned) === 1 ? "card" : "cards"}, worth {eur(owned.reduce((t, o) => t + (valueOf(o) ?? 0), 0))} at Cardmarket's trend</> : "Your cards, with what they're worth"}</p>
         </div>
-        <a class="btn sm" href="/dashboards" onClick={link("/dashboards")}>Dashboard</a>
+        <span class="pl-headbtns"><PasteButton to="collection" />
+        <a class="btn sm" href="/dashboards" onClick={link("/dashboards")}>Dashboard</a></span>
       </header>
       {doc === undefined && !owned.length ? <RowSkeleton /> : !owned.length && !left.length ? (
         <div class="empty">
