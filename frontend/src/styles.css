@@ -563,7 +563,8 @@ img { display: block; }
 }
 
 /* Settings › Notifications: what rings on this device (D88) */
-.rings { border-top: 1px solid var(--line); padding: 4px 16px 12px; }
+.ring-open { margin: 0 16px 12px; padding: 12px 12px 4px; border-radius: 14px; background: var(--fill); animation: pop 300ms var(--smooth); }
+.rings { padding: 4px 0 8px; }
 .ring-row { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 10px 0; font-size: 14.5px; }
 .ring-row + .ring-row { border-top: 1px solid var(--line); }
 .ring-row > span { color: var(--ink-2); }

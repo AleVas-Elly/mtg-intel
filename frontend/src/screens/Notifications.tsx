@@ -4,6 +4,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { currentEndpoint, isApple, type PushDevice, pushDevices, pushState, type PushState, type RingSettings, saveRings, sendTest, turnOff, turnOn } from "../notify";
 import { toast } from "../toast";
+import { IconBack } from "../ui/icons";
 
 export function HomeScreenGuide() {
   return (
@@ -73,12 +74,21 @@ function RingSettingsView({ value, onChange, busy, owner }: { value: RingSetting
   );
 }
 
+/** One line for the closed row: what rings and when it's quiet. */
+function ringSummary(r: RingSettings, owner: boolean): string {
+  const kinds = [r.kinds.deals && ["every deal and target", "good deals and up", "great deals and up", "steals"][r.ring],
+    owner && r.kinds.digest && "digest", owner && r.kinds.system && "problems"].filter(Boolean) as string[];
+  const quiet = r.quiet.on && r.quiet.from !== r.quiet.to ? ` · quiet ${String(r.quiet.from).padStart(2, "0")}–${String(r.quiet.to).padStart(2, "0")}` : "";
+  return kinds.length ? `Rings for ${kinds.join(", ")}${quiet}` : "Never rings: alerts wait on the Alerts page";
+}
+
 export function NotificationsSection({ owner }: { owner: boolean }) {
   const [state, setState] = useState<PushState | null>(null);
   const [devices, setDevices] = useState<PushDevice[]>([]);
   const [here, setHere] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const load = async () => {
     setState(await pushState());
     setHere(await currentEndpoint());
@@ -108,12 +118,22 @@ export function NotificationsSection({ owner }: { owner: boolean }) {
       <div class="group-title" id="notifications">Notifications</div>
       <div class="group">
         {state === "on" && (
-          <div class="kv"><dt>This device</dt><dd style={{ display: "flex", gap: "8px", justifyContent: "flex-end", flexWrap: "wrap" }}>
-            <button class="btn sm" type="button" disabled={busy} onClick={() => act(sendTest, "Test sent. It should arrive in a few seconds.")}>Send a test</button>
-            <button class="btn sm" type="button" disabled={busy} onClick={() => act(turnOff, "Notifications are off on this device.")}>Turn off</button>
-          </dd></div>
+          <div class="dev">
+            <button class="dev-row" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+              <span class="dev-name">This device<small>{mine ? ringSummary(mine.rings, owner) : ""}</small></span>
+              <span class="dev-last">On<IconBack class="dev-chev" /></span>
+            </button>
+            {open && (
+              <div class="ring-open">
+                <div class="ring-opts">
+                  <button class="btn sm" type="button" disabled={busy} onClick={() => act(sendTest, "Test sent. It should arrive in a few seconds.")}>Send a test</button>
+                  <button class="btn sm" type="button" disabled={busy} onClick={() => act(turnOff, "Notifications are off on this device.")}>Turn off</button>
+                </div>
+                {mine && <RingSettingsView value={mine.rings} onChange={changeRings} busy={false} owner={owner} />}
+              </div>
+            )}
+          </div>
         )}
-        {state === "on" && mine && <RingSettingsView value={mine.rings} onChange={changeRings} busy={false} owner={owner} />}
         {state === "off" && (
           <div class="kv"><dt>This device<br /><small class="hint" style={{ margin: 0 }}>{owner ? "Deals, the digest and problems with the bot" : "Deal alerts"}</small></dt><dd>
             <button class="btn sm" type="button" disabled={busy} onClick={() => act(turnOn, "Notifications are on. Send a test to check.")}>Turn on</button>
