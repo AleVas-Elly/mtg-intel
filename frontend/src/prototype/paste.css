@@ -125,3 +125,12 @@
 .pl-deckhead small { color: var(--ink-2); font-size: 13px; }
 .pl-deckhead label { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; }
 .pl-deckhead > small { flex-basis: 100%; }
+.pl-under-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; max-width: 620px; }
+.pl-row { scroll-margin-top: 70px; }
+.pl-lang { position: relative; }
+.pl-lang summary { list-style: none; display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; max-width: 210px; overflow: hidden; text-overflow: ellipsis; }
+.pl-lang summary::-webkit-details-marker { display: none; }
+.pl-lang-pop { position: absolute; z-index: 5; top: calc(100% + 6px); left: 0; min-width: 200px; display: grid; gap: 2px; padding: 8px; border-radius: var(--radius-s); background: var(--surface-2, var(--surface)); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+.pl-lang-pop label { display: flex; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 10px; font-size: 14px; cursor: pointer; }
+.pl-lang-pop label:hover { background: var(--fill); }
+.pl-lang-quick { border: 0; border-radius: 10px; padding: 8px; margin-bottom: 4px; background: var(--fill-strong); color: var(--ink); font: inherit; font-weight: 700; font-size: 13.5px; cursor: pointer; text-align: left; }

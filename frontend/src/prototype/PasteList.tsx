@@ -123,6 +123,23 @@ const priceOf = (c: Card, foil: boolean) => (foil ? c.prices?.eur_foil : c.price
 // ---- shared pieces ------------------------------------------------------------------------------
 type Upd = (id: number, p: Partial<Item>) => void;
 
+/** Want-list language: one, several ("en,it" = English or Italian), or any. A copy in any of them counts. */
+const langText = (v: string) => (!v ? "Language…" : v === "any" ? "Any language" : v.split(",").map(langName).join(" or "));
+function LangPick({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const on = value && value !== "any" ? value.split(",") : [];
+  const flip = (l: string) => { const next = on.includes(l) ? on.filter((x) => x !== l) : [...on, l]; onChange(next.length ? LANGS.filter((x) => next.includes(x)).join(",") : "any"); };
+  return (
+    <details class="pl-lang" onToggle={(e) => { const me = e.currentTarget as HTMLDetailsElement; if (me.open) document.querySelectorAll<HTMLDetailsElement>(".pl-lang[open]").forEach((d) => d !== me && (d.open = false)); }}>
+      <summary class="select sm" aria-label="Languages">{langText(value)}</summary>
+      <div class="pl-lang-pop" role="group" aria-label="Languages">
+        <button type="button" class="pl-lang-quick" onClick={() => onChange("en,it")}>English or Italian</button>
+        <label><input type="checkbox" checked={value === "any"} onChange={() => onChange("any")} /> Any language</label>
+        {LANGS.map((l) => <label><input type="checkbox" checked={on.includes(l)} onChange={() => flip(l)} /> {langName(l)}</label>)}
+      </div>
+    </details>
+  );
+}
+
 /** Every printing, with filters by set and treatment; the newest regular one is marked. */
 function VersionStrip({ it, upd, target }: { it: Item; upd: Upd; target: Target }) {
   const [treat, setTreat] = useState("all");
@@ -181,9 +198,11 @@ function Fields({ it, upd, target, row, share }: { it: Item; upd: Upd; target: T
   if (row) return (
     <>
       <Stepper value={it.qty} onChange={(qty) => upd(it.id, { qty })} />
-      <select class="select sm" value={it.lang} onChange={(e) => upd(it.id, { lang: (e.target as HTMLSelectElement).value })} aria-label="Language">
-        {LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-      </select>
+      {target === "wants" ? <LangPick value={it.lang} onChange={(lang) => upd(it.id, { lang })} /> : (
+        <select class="select sm" value={it.lang} onChange={(e) => upd(it.id, { lang: (e.target as HTMLSelectElement).value })} aria-label="Language">
+          {LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
+        </select>
+      )}
       <select class="select sm" value={it.cond} onChange={(e) => upd(it.id, { cond: (e.target as HTMLSelectElement).value })} aria-label={condLabel}>
         {CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
       </select>
@@ -198,9 +217,11 @@ function Fields({ it, upd, target, row, share }: { it: Item; upd: Upd; target: T
     <div class="group form">
       <div class="f-row"><span>Copies</span><Stepper value={it.qty} onChange={(qty) => upd(it.id, { qty })} /></div>
       <label class="f-row"><span>Language</span>
-        <select class="select" value={it.lang} onChange={(e) => upd(it.id, { lang: (e.target as HTMLSelectElement).value })}>
-          {LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-        </select>
+        {target === "wants" ? <LangPick value={it.lang} onChange={(lang) => upd(it.id, { lang })} /> : (
+          <select class="select" value={it.lang} onChange={(e) => upd(it.id, { lang: (e.target as HTMLSelectElement).value })}>
+            {LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
+          </select>
+        )}
       </label>
       <div class="f-row stack"><span>{condLabel}</span>
         <div class="seg full">{CONDS.map((c) => <button type="button" aria-pressed={it.cond === c} onClick={() => upd(it.id, { cond: c })}>{c}</button>)}</div>
@@ -222,11 +243,12 @@ function Fields({ it, upd, target, row, share }: { it: Item; upd: Upd; target: T
 /** A: every card a row, settings inline, "set all" bar on top; the picture opens its versions. */
 function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProps) {
   const [open, setOpen] = useState<number | null>(null);
+  const openNext = (id: number) => { setOpen(id); requestAnimationFrame(() => document.getElementById(`pl-row-${id}`)?.scrollIntoView({ block: "start", behavior: "smooth" })); };
   return (
     <div class="pl-table">
       <BulkBar target={target} setAll={setAll} items={items} lot={lot} setLot={setLot} />
-      {items.map((it) => (
-        <div class={`pl-row${open === it.id ? " open" : ""}`}>
+      {items.map((it, i) => (
+        <div class={`pl-row${open === it.id ? " open" : ""}`} id={`pl-row-${it.id}`}>
           <button type="button" class="pl-thumb" onClick={() => setOpen(open === it.id ? null : it.id)} aria-expanded={open === it.id} aria-label={`Versions of ${it.card?.name}`}>
             <CardImage src={img(it.card, "small")} alt="" foil={it.finish === "foil"} />
           </button>
@@ -238,7 +260,12 @@ function PickTable({ items, upd, target, setAll, lot, setLot, spread }: PickProp
             {extras(it, target) && <small class="pl-extras">{extras(it, target)}</small>}
           </div>
           <div class="pl-fields"><Fields it={it} upd={upd} target={target} row share={spread.get(it.id)} /></div>
-          {open === it.id && <div class="pl-under"><VersionStrip it={it} upd={upd} target={target} /><More it={it} upd={upd} target={target} /></div>}
+          {open === it.id && <div class="pl-under"><VersionStrip it={it} upd={upd} target={target} /><More it={it} upd={upd} target={target} />
+            <div class="pl-under-foot">
+              <button class="btn" type="button" onClick={() => setOpen(null)}>Done</button>
+              {i < items.length - 1 && <button class="btn primary" type="button" onClick={() => openNext(items[i + 1].id)}>Done, next card</button>}
+            </div>
+          </div>}
         </div>
       ))}
     </div>
@@ -253,9 +280,11 @@ function BulkBar({ target, setAll, items, lot, setLot }: { target: Target; setAl
     <div class="pl-bulk">
       <div class="pl-bulk-main">
         <span>Every card</span>
-        <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language for every card">
-          <option value="" disabled>Language…</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
-        </select>
+        {target === "wants" ? <LangPick value={same("lang")} onChange={(lang) => setAll({ lang })} /> : (
+          <select class="select sm" value={same("lang")} onChange={(e) => setAll({ lang: (e.target as HTMLSelectElement).value })} aria-label="Language for every card">
+            <option value="" disabled>Language…</option>{LANGS.map((l) => <option value={l}>{langName(l)}</option>)}
+          </select>
+        )}
         <select class="select sm" value={same("cond")} onChange={(e) => setAll({ cond: (e.target as HTMLSelectElement).value })} aria-label="Condition for every card">
           <option value="" disabled>Condition…</option>{CONDS.map((c) => <option value={c}>{target === "wants" ? `${c} or better` : c}</option>)}
         </select>
@@ -528,7 +557,7 @@ function Flow({ target, onClose }: { target: Target; onClose: () => void }) {
             <h3>{total} cards added to your {where}</h3>
             <p>Prototype: nothing was saved. This is what would be sent, one edit per line:</p>
             <pre>{live.map((x) => target === "wants"
-              ? `add   ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  copies ${x.qty} · ${x.lang} · ${x.cond} or better · foil ${x.finish}${x.target ? ` · target €${x.target}` : ""} · deal from ${x.deal || 20}%${x.lists.length ? ` · lists ${x.lists.join("; ")}` : ""}${x.zero ? " · Zero only" : ""}`
+              ? `add   ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  copies ${x.qty} · ${langText(x.lang)} · ${x.cond} or better · foil ${x.finish}${x.target ? ` · target €${x.target}` : ""} · deal from ${x.deal || 20}%${x.lists.length ? ` · lists ${x.lists.join("; ")}` : ""}${x.zero ? " · Zero only" : ""}`
               : `owned ${x.card?.set.toUpperCase()} ${x.card?.collector_number}  ${x.card?.name}  ×${x.qty} · ${x.lang} · ${x.cond} · ${x.finish}${x.price ? ` · paid €${x.price} each` : spread.has(x.id) ? ` · paid €${spread.get(x.id)!.toFixed(2)} each (share of the lot)` : " · no price"}${x.date ? ` · ${x.date}` : ""}`).join("\n")}</pre>
           </div>
         )}
