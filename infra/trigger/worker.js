@@ -34,6 +34,7 @@ async function dispatch(env, workflow) {
           body: JSON.stringify({ ref: "main" }),
         },
       );
+      console.log(`${workflow}: GitHub answered ${response.status}`);
       if (response.status === 204) return null;
       const text = (await response.text()).slice(0, 200);
       problem = `${workflow}: GitHub answered ${response.status} ${text}`;
@@ -122,7 +123,8 @@ export async function toApp(env, text) {
 
 export default {
   async scheduled(event, env) {
-    if (!env.GITHUB_TOKEN) return; // not set up yet
+    // No early return without GITHUB_TOKEN: on 2026-11-20 an empty one (a failed paste) silently stopped
+    // every run and the watchdog. Now GitHub refuses it and the usual alert says so.
     if (event.cron === "* * * * *") {
       const found = await fastLane(env).catch(() => []);
       if (found.length) await dispatch(env, "deals.yml"); // a full check alerts it, the usual way
