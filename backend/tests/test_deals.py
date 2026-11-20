@@ -449,3 +449,13 @@ def test_rank_numbers_the_tiers_for_the_app_ring_settings():
 
     assert [rank(SimpleNamespace(tier=t)) for t in TIERS] == [3, 2, 1]
     assert rank(SimpleNamespace(tier=None)) == 0  # a target price
+
+
+def test_cardtrader_slowness_alerts_only_once_it_has_lasted_half_an_hour():
+    state = {}
+    assert not deals.slow_lasting(state, True, NOW)
+    assert not deals.slow_lasting(state, True, NOW + timedelta(minutes=25))
+    assert not deals.slow_lasting(state, False, NOW + timedelta(minutes=30))  # one check in time ends it
+    assert "slow_since" not in state
+    assert not deals.slow_lasting(state, True, NOW + timedelta(minutes=35))
+    assert deals.slow_lasting(state, True, NOW + timedelta(minutes=65))

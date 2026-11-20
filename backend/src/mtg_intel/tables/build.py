@@ -11,7 +11,7 @@ import json
 import os
 import shutil
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 from typing import Protocol
@@ -20,6 +20,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from mtg_intel import deals
+from mtg_intel.archive.sources import DAILY
 from mtg_intel.archive.store import hf_retry
 from mtg_intel.tables import mycards, prices, reference
 
@@ -295,9 +296,13 @@ def build(raw: RawArchive, store: TableStore, staging: Path, now: datetime, publ
     # every later run over it only hides new problems.
     gaps: dict[str, list[str]] = state.setdefault("known_gaps", {})
     new_gaps = False
-    for name, counts, since in (("Cardmarket", cm_days, None), ("MTGJSON", mj_days, first_daily_date(processed))):
+    for name, counts, since, source in (("Cardmarket", cm_days, None, "cardmarket_price_guide"),
+                                        ("MTGJSON", mj_days, first_daily_date(processed), "mtgjson_allprices_today")):
         known = set(gaps.get(name, []))
-        report.problems += check_days(name, counts, now, ignore_before=since, known_gaps=known)
+        # Days the grab already alerts about (no new file for over a day): saying it again here is noise.
+        upstream = grab_gap_days(raw.list(source), now)
+        for problem in check_days(name, counts, now, ignore_before=since, known_gaps=known, upstream=upstream):
+            (report.notes if problem.startswith(UPSTREAM) else report.problems).append(problem)
         missing = {d.isoformat() for d in missing_days(counts, since)}
         if missing - known:
             gaps[name] = sorted(known | missing)
@@ -432,11 +437,27 @@ def missing_days(row_counts: dict[str, int], ignore_before: date | None = None) 
     return sorted(expected - set(known))
 
 
+UPSTREAM = "the grab reported it: "  # marks a day problem the grab's own alert already covers
+
+
+def grab_gap_days(raw_paths: list[str], now: datetime) -> set[date]:
+    """Days inside a stretch of over `DAILY` with no new raw file (paths `raw/<source>/<date>/<HHMM>Z_…`),
+    up to now: the grab alerted those as stale, so a price day missing or late there is the source's."""
+    saved = sorted(datetime.strptime(f"{p.split('/')[2]} {p.split('/')[3][:4]}", "%Y-%m-%d %H%M").replace(tzinfo=UTC)
+                   for p in raw_paths)
+    days: set[date] = set()
+    for before, after in pairwise(saved + [now]):
+        if after - before > DAILY:
+            days.update(before.date() + timedelta(days=i) for i in range(1, (after.date() - before.date()).days + 1))
+    return days
+
+
 def check_days(
     name: str, row_counts: dict[str, int], now: datetime, ignore_before: date | None = None,
-    known_gaps: set[str] | None = None,
+    known_gaps: set[str] | None = None, upstream: set[date] = frozenset(),
 ) -> list[str]:
-    """Missing days (except known gaps), a stale latest day, and sudden drops in row count."""
+    """Missing days (except known gaps), a stale latest day, and sudden drops in row count. A missing or
+    late day in `upstream` (see `grab_gap_days`) starts with `UPSTREAM`, for the caller to keep as a note."""
     if not row_counts:
         return []
     known = sorted(date.fromisoformat(d) for d in row_counts)
@@ -444,10 +465,11 @@ def check_days(
         known = [d for d in known if d >= ignore_before] or known[-1:]
     problems = []
     missing = [d for d in missing_days(row_counts, ignore_before) if d.isoformat() not in (known_gaps or set())]
-    if missing:
-        problems.append(f"{name}: missing price days {', '.join(d.isoformat() for d in missing)}")
+    for lost, days in ((True, [d for d in missing if d in upstream]), (False, [d for d in missing if d not in upstream])):
+        if days:
+            problems.append(f"{UPSTREAM if lost else ''}{name}: missing price days {', '.join(d.isoformat() for d in days)}")
     if (now.date() - known[-1]).days > 1:
-        problems.append(f"{name}: latest price day is {known[-1].isoformat()}")
+        problems.append(f"{UPSTREAM if now.date() in upstream else ''}{name}: latest price day is {known[-1].isoformat()}")
     for previous, current in pairwise(known):
         before, after = row_counts[previous.isoformat()], row_counts[current.isoformat()]
         if after < before * SHRINK_LIMIT:

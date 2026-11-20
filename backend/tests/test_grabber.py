@@ -272,6 +272,22 @@ def test_source_unchanged_for_too_long_is_stale(tmp_path: Path):
     assert "31 h" in report.results[0].detail
 
 
+def test_a_lasting_stale_source_alerts_once_a_day_then_says_it_is_over(tmp_path: Path):
+    server, store = FakeServer(), LocalStore(tmp_path / "archive")
+    daily = Source(name="daily", url="https://example.test/daily.json", max_age=timedelta(hours=30))
+    server.files[daily.url] = b"same every day"
+    assert grab(server, store, tmp_path, [daily]).alert is None
+
+    assert grab(server, store, tmp_path, [daily], NOW + timedelta(hours=31)).alert[0] == "mtg-intel grab needs a look"
+    assert grab(server, store, tmp_path, [daily], NOW + timedelta(hours=37)).alert is None  # same outage, next run
+    other = Source(name="other", url="https://example.test/other.json")  # a new problem alerts at once
+    assert grab(server, store, tmp_path, [daily, other], NOW + timedelta(hours=43)).alert[1].startswith("daily: stale")
+    assert grab(server, store, tmp_path, [daily], NOW + timedelta(hours=68)).alert is not None  # a day on
+    server.files[daily.url] = b"new at last"
+    title, text = grab(server, store, tmp_path, [daily], NOW + timedelta(hours=70)).alert
+    assert title == "mtg-intel grab is fine again" and str(NOW + timedelta(hours=31)).split("+")[0].replace(" ", "T") in text
+
+
 def test_a_failing_source_is_reported_as_failed_not_stale(tmp_path: Path):
     server, store = FakeServer(), LocalStore(tmp_path / "archive")
     weekly = Source(

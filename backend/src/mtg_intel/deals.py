@@ -22,7 +22,7 @@ import duckdb
 import pyarrow as pa
 
 from mtg_intel.archive.cardtrader import Session
-from mtg_intel.archive.notify import Rich
+from mtg_intel.archive.notify import Rich, problem_alert  # noqa: F401 (callers use deals.problem_alert)
 
 # Deal tiers (D47, D52), strongest first: % under the usual price for a card over PRICEY_EUR,
 # name, what the message says. The first number also names the tier on the website.
@@ -48,6 +48,9 @@ USUAL_MIN_DAYS = 5  # ... with at least this many days; with less, the next-chea
 # block every deal on the card, so the trend is shown but not used.
 REFERENCE_RATIO = 2.5
 PROBLEM_REALERT = timedelta(hours=6)  # the same check problem is repeated at most this often
+# CardTrader answering slowly for a check or two is normal (the cards left over are asked 5 minutes
+# later); only this long a slow spell alerts (2026-11-19: 7 "slow" + "fine again" pairs in 3 days).
+SLOW_ALERT_AFTER = timedelta(minutes=30)
 
 # CardTrader condition words, best first, and the want-list grade each one meets.
 CONDITIONS = ["Mint", "Near Mint", "Slightly Played", "Moderately Played", "Played", "Heavily Played", "Poor"]
@@ -682,21 +685,14 @@ def cardmarket_targets(watch: list[dict[str, Any]], alerted: dict[str, dict], no
     return messages
 
 
-def problem_alert(state: dict[str, Any], problems: list[str], now: datetime) -> tuple[str, str] | None:
-    """The alert to send about this check's problems, if any: the first time, again after
-    `PROBLEM_REALERT` while it lasts, and once when it is over. Remembered in `state["problem"]`,
-    so an outage (CardTrader down, an expired token) is one message, not one every 10 minutes."""
-    last = state.get("problem")
-    if problems:
-        text = "\n".join(problems)
-        if last and now - datetime.fromisoformat(last["at"]) < PROBLEM_REALERT:
-            return None
-        state["problem"] = {"at": now.isoformat(), "since": (last or {}).get("since", now.isoformat()), "text": text}
-        return "mtg-intel deal check needs a look", text
-    if last:
-        del state["problem"]
-        return "mtg-intel deal check is fine again", f"The problem seen since {last['since']} is gone."
-    return None
+def slow_lasting(state: dict[str, Any], slow: bool, now: datetime) -> bool:
+    """Whether CardTrader has been too slow for every check of the last `SLOW_ALERT_AFTER`
+    (remembered in `state["slow_since"]`; one check in time ends the spell)."""
+    if not slow:
+        state.pop("slow_since", None)
+        return False
+    since = state.setdefault("slow_since", now.isoformat())
+    return now - datetime.fromisoformat(since) >= SLOW_ALERT_AFTER
 
 
 def note_site_upload(state: dict[str, Any], error: str | None) -> None:

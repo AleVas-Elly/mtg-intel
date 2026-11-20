@@ -24,10 +24,12 @@ class Entry:
 class Manifest:
     version: int = 1
     entries: dict[str, Entry] = field(default_factory=dict)
+    alerts: dict = field(default_factory=dict)  # the grab's ongoing problem, so it alerts once (notify.problem_alert)
 
     def to_json(self) -> str:
         return json.dumps(
-            {"version": self.version, "entries": {k: asdict(v) for k, v in sorted(self.entries.items())}},
+            {"version": self.version, "entries": {k: asdict(v) for k, v in sorted(self.entries.items())},
+             **({"alerts": self.alerts} if self.alerts else {})},
             indent=2,
         ) + "\n"
 
@@ -37,4 +39,5 @@ class Manifest:
         return cls(
             version=data.get("version", 1),
             entries={k: Entry(**v) for k, v in data.get("entries", {}).items()},
+            alerts=data.get("alerts", {}),
         )

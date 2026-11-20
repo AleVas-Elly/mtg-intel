@@ -9,7 +9,7 @@ import shutil
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -17,6 +17,7 @@ import httpx
 import zstandard
 
 from mtg_intel.archive.manifest import Entry, Manifest
+from mtg_intel.archive.notify import problem_alert
 from mtg_intel.archive.sources import USER_AGENT, InvalidDownload, Source
 from mtg_intel.archive.store import Store
 
@@ -48,6 +49,7 @@ class Report:
     finished_at: str = ""
     context: dict[str, str] = field(default_factory=dict)  # e.g. git commit, trigger
     results: list[Result] = field(default_factory=list)
+    alert: tuple[str, str] | None = None  # (title, text) to send: problems alert once, then daily
 
     @property
     def problems(self) -> list[Result]:
@@ -86,6 +88,12 @@ def run(
             files.append(saved)
 
     report.finished_at = datetime.now(UTC).replace(microsecond=0).isoformat()
+    # One alert per problem, then a daily reminder, then "fine again" (2026-11-19: a two-day
+    # Cardmarket outage alerted on every run). A source with a new kind of problem alerts at once.
+    report.alert = problem_alert(
+        manifest.alerts, [f"{r.source}: {r.status}, {r.detail}" for r in report.problems], now, "grab",
+        realert=timedelta(hours=24), key=" ".join(sorted(f"{r.source}:{r.status}" for r in report.problems)),
+    )
 
     # Every run is recorded, even when nothing changed, so a gap in the archive can be told
     # apart from a source that did not update.

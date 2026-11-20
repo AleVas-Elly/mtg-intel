@@ -1,7 +1,7 @@
 import gzip
 import json
 import lzma
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pyarrow as pa
@@ -478,3 +478,25 @@ def test_a_card_i_bought_keeps_its_price_history_after_it_leaves_the_wantlist(tm
     assert "my/price_history.parquet (6 rows)" in report.written
     history = pq.read_table(tmp_path / "tables/my/price_history.parquet").to_pylist()
     assert {r["scryfall_id"] for r in history} == {"sf-1"}
+
+
+def test_price_days_the_grab_already_reported_lost_are_notes_not_problems():
+    # Cardmarket published nothing from the 17th 02:17 to the 19th 08:17 (2026-11-19): the grab alerted
+    # it as stale, so the late and the missing day it left are no second alert.
+    paths = ["raw/cardmarket_price_guide/2026-11-16/0217Z_g.zst", "raw/cardmarket_price_guide/2026-11-17/0217Z_g.zst"]
+    during = datetime(2026, 11, 19, 2, 17, tzinfo=UTC)
+    assert build.grab_gap_days(paths, during) == {date(2026, 11, 18), date(2026, 11, 19)}
+    counts = {"2026-11-16": 10, "2026-11-17": 10}
+    late = build.check_days("Cardmarket", counts, during, upstream=build.grab_gap_days(paths, during))
+    assert late == [f"{build.UPSTREAM}Cardmarket: latest price day is 2026-11-17"]
+
+    after = datetime(2026, 11, 19, 8, 17, tzinfo=UTC)
+    paths.append("raw/cardmarket_price_guide/2026-11-19/0817Z_g.zst")
+    counts["2026-11-19"] = 10
+    assert build.check_days("Cardmarket", counts, after, upstream=build.grab_gap_days(paths, after)) == [
+        f"{build.UPSTREAM}Cardmarket: missing price days 2026-11-18"]
+    # Files arriving every day while a day is still missing: that one is the tables' own problem.
+    daily = [f"raw/cardmarket_price_guide/2026-11-{d}/0217Z_g.zst" for d in (16, 17, 18, 19)]
+    assert build.check_days("Cardmarket", counts, after, upstream=build.grab_gap_days(daily, after)) == [
+        "Cardmarket: missing price days 2026-11-18"]
+    assert build.grab_gap_days(daily, after + timedelta(hours=1)) == set()

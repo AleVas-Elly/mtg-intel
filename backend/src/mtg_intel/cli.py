@@ -169,9 +169,10 @@ def main(argv: list[str] | None = None) -> int:
         for r in report.results:
             print(f"{r.status:>9}  {r.source}  {r.detail}".rstrip())
 
+        if report.alert:
+            title, text = report.alert
+            alert(client, title, f"{text}\n{run_url}".strip())
         if report.problems:
-            lines = [f"{r.source}: {r.status}, {r.detail}" for r in report.problems]
-            alert(client, "mtg-intel grab needs a look", "\n".join(lines + [run_url]).strip())
             return 1
     return 0
 
@@ -867,9 +868,10 @@ def check_deals(args: argparse.Namespace) -> int:
             session.summary()
         except InvalidDownload as e:
             problems.append(f"CardTrader: {e} (HTTP {session.last_status})")
-        if result.late_blueprints:
+        if deals.slow_lasting(state, bool(result.late_blueprints), now):
             problems.append(f"CardTrader is slow: {len(result.late_blueprints)} cards not checked within "
-                            f"{CARDTRADER_BUDGET.seconds // 60} minutes")
+                            f"{CARDTRADER_BUDGET.seconds // 60} minutes, for "
+                            f"{int((now - datetime.fromisoformat(state['slow_since'])).total_seconds() // 60)} minutes now")
         problems += deals.site_problems(state)  # the last check's upload (it runs after this alert)
         for problem in problems:
             print(f"PROBLEM  {problem}", file=sys.stderr)

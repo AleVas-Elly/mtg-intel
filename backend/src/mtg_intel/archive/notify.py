@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import Any
 
 import httpx
 
@@ -172,3 +174,22 @@ def send_alert(client: httpx.Client, topic: str | None, title: str, message: str
         return True
     except httpx.HTTPError:
         return False
+
+
+def problem_alert(state: dict[str, Any], problems: list[str], now: datetime, name: str = "deal check",
+                  realert: timedelta = timedelta(hours=6), key: str | None = None) -> tuple[str, str] | None:
+    """The alert to send about a job's problems, if any: the first time, again after `realert` while
+    it lasts or as soon as `key` (which problems) changes, and once when it is over. Remembered in
+    `state["problem"]`, so an outage is one message, not one per run."""
+    last = state.get("problem")
+    if problems:
+        text = "\n".join(problems)
+        if last and now - datetime.fromisoformat(last["at"]) < realert and last.get("key") == key:
+            return None
+        state["problem"] = {"at": now.isoformat(), "since": (last or {}).get("since", now.isoformat()),
+                            "text": text, "key": key}
+        return f"mtg-intel {name} needs a look", text
+    if last:
+        del state["problem"]
+        return f"mtg-intel {name} is fine again", f"The problem seen since {last['since']} is gone."
+    return None
