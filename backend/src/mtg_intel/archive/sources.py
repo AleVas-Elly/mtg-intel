@@ -98,6 +98,8 @@ def cardtrader_catalog(client: httpx.Client, dest: Path) -> dict[str, str]:
 
 # A daily file that has not changed for this long means the source (or we) stopped updating.
 DAILY = timedelta(hours=30)
+# Cardmarket often skips a day (gaps up to 54 h seen in Nov 2026), so alert only when two days are missing.
+CARDMARKET_MAX_AGE = timedelta(hours=60)
 
 SOURCES: list[Source] = [
     Source(
@@ -106,7 +108,7 @@ SOURCES: list[Source] = [
         compress=True,
         min_bytes=5_000_000,
         validate=json_with_key("priceGuides"),
-        max_age=DAILY,
+        max_age=CARDMARKET_MAX_AGE,
     ),
     Source(
         name="cardmarket_products_singles",
@@ -114,7 +116,7 @@ SOURCES: list[Source] = [
         compress=True,
         min_bytes=5_000_000,
         validate=json_with_key("products"),
-        max_age=DAILY,
+        max_age=CARDMARKET_MAX_AGE,
     ),
     Source(
         name="cardmarket_products_nonsingles",
@@ -122,7 +124,7 @@ SOURCES: list[Source] = [
         compress=True,
         min_bytes=100_000,
         validate=json_with_key("products"),
-        max_age=DAILY,
+        max_age=CARDMARKET_MAX_AGE,
     ),
     Source(
         name="mtgjson_allprices_today",
