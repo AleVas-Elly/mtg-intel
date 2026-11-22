@@ -28,8 +28,6 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_DATASET: ${{ secrets.HF_DATASET }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MTG_INTEL_TABLES_STAGING: ${{ runner.temp }}/tables-staging
           SITE_URL: ${{ secrets.SITE_URL }}
           SITE_INGEST_TOKEN: ${{ secrets.SITE_INGEST_TOKEN }}

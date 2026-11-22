@@ -2,7 +2,7 @@
 // at all; a workflow_dispatch call starts a run within seconds. The workflows keep their own
 // schedules as a fallback.
 
-import { ctTokenAnswer, telegramUpdate } from "./telegram.ts";
+import { ctTokenAnswer } from "./cardtrader.ts";
 import { fastLane } from "./fastlane.ts";
 
 const SCHEDULE = {
@@ -58,7 +58,7 @@ async function editsWaiting(env) {
   if (!env.DB) return false;
   try {
     const now = new Date();
-    // A purchase from the Telegram button is held until `hold_until` so its Undo works (D53).
+    // An edit with `hold_until` waits until then (the old Telegram button's Undo window, D53).
     const row = await env.DB.prepare(
       "SELECT MAX(name) AS newest FROM edits WHERE at < ? AND (hold_until IS NULL OR hold_until < ?)",
     ).bind(new Date(now.getTime() - EDITS_LATE_MS).toISOString(), now.toISOString()).first();
@@ -88,25 +88,11 @@ async function watchdog(env) {
   const known = await env.DB.prepare("SELECT value FROM meta WHERE key = 'watchdog'").first();
   if (stale && !known) {
     const since = at ? `${Math.round((Date.now() - at) / 60000)} minutes ago (${live.at})` : "never";
-    await telegram(env, `mtg-intel deal checks have stopped\n\nLast finished check: ${since}.\nhttps://github.com/${env.GITHUB_REPO}/actions/workflows/deals.yml`);
+    await toApp(env, `mtg-intel deal checks have stopped\n\nLast finished check: ${since}.\nhttps://github.com/${env.GITHUB_REPO}/actions/workflows/deals.yml`);
     await env.DB.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('watchdog', ?)").bind(new Date().toISOString()).run();
   } else if (!stale && known) {
-    await telegram(env, `mtg-intel deal checks are running again (last check ${live.at}).`);
+    await toApp(env, `mtg-intel deal checks are running again (last check ${live.at}).`);
     await env.DB.prepare("DELETE FROM meta WHERE key = 'watchdog'").run();
-  }
-}
-
-async function telegram(env, text) {
-  await toApp(env, text);
-  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text }),
-    });
-  } catch {
-    // nothing else to tell
   }
 }
 
@@ -146,17 +132,14 @@ export default {
     }
     if (problems.length) {
       // A 401 means the GitHub token expired: make a new one and run `wrangler secret put GITHUB_TOKEN`.
-      await telegram(env, `mtg-intel timer could not start a run (after ${RETRY_WAITS_MS.length + 1} tries)\n\n${problems.join("\n")}`);
+      await toApp(env, `mtg-intel timer could not start a run (after ${RETRY_WAITS_MS.length + 1} tries)\n\n${problems.join("\n")}`);
       throw new Error(problems.join("; "));
     }
   },
 
   // No public URL: only the website Worker reaches this, through its service binding, right after
-  // I edit the want-list there, and to pass on the bot's button taps (telegram.ts).
+  // I edit the want-list there.
   async fetch(request, env) {
-    if (new URL(request.url).pathname === "/telegram") {
-      return telegramUpdate(request, env, () => dispatch(env, "wantlist.yml"), () => dispatch(env, "deals.yml"));
-    }
     // "Check CardTrader" on a card's pane (D83): the live copies of one card, asked for by hand.
     // The token stays here; the website only sees prices, conditions, languages and countries.
     if (request.method === "GET" && new URL(request.url).pathname === "/ct") {
@@ -181,18 +164,6 @@ export default {
         foil: !!p.properties_hash?.mtg_foil, zero: !!p.user?.can_sell_via_hub, country: p.user?.country_code || "", quantity: p.quantity || 1,
       })).sort((a, b) => a.price - b.price);
       return new Response(JSON.stringify({ checked_at: new Date().toISOString(), copies }), { headers: { "Content-Type": "application/json" } });
-    }
-    // A quiet note from the website (D78): someone joined, or suggested a card.
-    if (request.method === "POST" && new URL(request.url).pathname === "/notify") {
-      const { text } = await request.json().catch(() => ({}));
-      if (typeof text !== "string" || !text || text.length > 600) return new Response("Not valid", { status: 400 });
-      if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return new Response("No bot", { status: 503 });
-      const sent = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text, disable_notification: true }),
-      }).catch(() => null);
-      return new Response(sent?.ok ? "sent" : "failed", { status: sent?.ok ? 200 : 502 });
     }
     if (request.method !== "POST" || new URL(request.url).pathname !== "/wantlist" || !env.GITHUB_TOKEN) {
       return new Response("Not found", { status: 404 });

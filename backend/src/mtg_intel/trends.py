@@ -91,7 +91,7 @@ SECTIONS = [
 
 
 def weekly_note(moves: list[Move], site_url: str | None) -> str | None:
-    """The Monday note (Telegram HTML): each section with its cards, the weekly prices and the move."""
+    """The Monday note (small HTML, for the Alerts page): each section with its cards, the weekly prices and the move."""
     if not moves:
         return None
 

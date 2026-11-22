@@ -7,7 +7,7 @@ itself: off the want-list, onto the Bought list), sold out, taken out of the car
 deal, or replaced by a cheaper copy. Paying stays mine (CardTrader's purchase call pays the whole
 cart, including things I put there myself).
 
-The decisions are pure functions (tested on their own); `Account` and `Telegram` do the talking.
+The decisions are pure functions (tested on their own); `Account` and `App` do the talking.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from mtg_intel import deals
-from mtg_intel.archive.notify import TELEGRAM_API, app_buttons, to_app
+from mtg_intel.archive.notify import app_buttons, to_app
 
 API = "https://api.cardtrader.com/api/v2"
 CART_URL = "https://www.cardtrader.com/cart/edit"  # opens in my own language (/en-EU/…, /it-IT/…)
@@ -30,7 +30,6 @@ TIMEZONE = ZoneInfo("Europe/Amsterdam")
 ORDER_DAYS = 30  # purchases are read this far back (to see cancellations too)
 KEEP_DONE_DAYS = 3  # a finished alert is forgotten after this
 SLACK_PCT = 5.0  # an open alert ends only when its copy is this many points short of a deal
-NIGHT = (23, 8)  # 23:00-08:00: only Steals ring
 # A copy gone from the cart counts as gone at once: the cart is read before my purchases, so a copy I
 # just paid for shows as bought, and a purchase seen later still turns a "sold out" alert into BOUGHT.
 MISSING_CHECKS = 1
@@ -309,16 +308,6 @@ def still_a_deal(alert: dict[str, Any], price: float, assessment: deals.Assessme
     return below >= assessment.floor - SLACK_PCT
 
 
-def rings(deal: deals.Deal, now: datetime) -> bool:
-    """Steals always ring; Great deals ring by day; Good deals and target prices arrive silently."""
-    name = deal.tier[1] if deal.tier else ""
-    if "Steal" in name:
-        return True
-    hour = now.astimezone(TIMEZONE).hour
-    night = hour >= NIGHT[0] or hour < NIGHT[1]
-    return "Great" in name and not night
-
-
 # --- the alert message ---------------------------------------------------------------------------
 
 def _h(text: str) -> str:
@@ -348,51 +337,34 @@ def keyboard(alert: dict[str, Any], done: bool) -> list[list[dict[str, str]]]:
     return rows + ([alert["links"]] if alert.get("links") else [])
 
 
-class Telegram:
-    """Sends and edits alerts in my chat (HTML captions)."""
+class App:
+    """Brings a live alert up to date on the site's Alerts page (D88), without a ring."""
 
-    def __init__(self, client: httpx.Client, token: str, chat_id: str) -> None:
-        self.client, self.token, self.chat_id = client, token, chat_id
-
-    def call(self, method: str, body: dict) -> dict | None:
-        try:
-            r = self.client.post(f"{TELEGRAM_API}/bot{self.token}/{method}", json=body, timeout=30)
-            data = r.json()
-            if data.get("ok") or "message is not modified" in (data.get("description") or ""):
-                return data.get("result") or {}
-        except (httpx.HTTPError, ValueError):
-            pass
-        return None
+    def __init__(self, client: httpx.Client) -> None:
+        self.client = client
 
     def update(self, alert: dict[str, Any], text: str, buttons: list, picture: str | None = None, done: bool = False) -> bool:
-        if alert.get("app_id"):  # the same change on the Alerts page (D88), without a ring
-            to_app(self.client, "deals", alert["name"], html=text, id=alert["app_id"], picture=picture,
-                   buttons=app_buttons(buttons), done=done, ping=False)
-        target = {"chat_id": self.chat_id, "message_id": alert["message_id"], "reply_markup": {"inline_keyboard": buttons}}
-        if alert.get("photo") and picture:
-            body = target | {"media": {"type": "photo", "media": picture, "caption": text[:1024], "parse_mode": "HTML"}}
-            return self.call("editMessageMedia", body) is not None
-        if alert.get("photo"):
-            return self.call("editMessageCaption", target | {"caption": text[:1024], "parse_mode": "HTML"}) is not None
-        return self.call("editMessageText", target | {"text": text[:4096], "parse_mode": "HTML",
-                                                       "link_preview_options": {"is_disabled": True}}) is not None
+        if not alert.get("app_id"):  # from before the Alerts page (2026-11-15): nothing to update there
+            return False
+        return to_app(self.client, "deals", alert["name"], html=text, id=alert["app_id"], picture=picture,
+                      buttons=app_buttons(buttons), done=done, ping=False)
 
 
 DONE_PICTURE = {"bought": "bought", "sold_out": "sold", "removed": "ended", "ended": "ended", "replaced": "ended",
                 "got_it": "ended"}
 
 
-def finish(alert: dict[str, Any], v: Verdict, telegram: Telegram, account: Account | None, now: datetime) -> None:
+def finish(alert: dict[str, Any], v: Verdict, app: App, account: Account | None, now: datetime) -> None:
     """Close an alert: its done picture and line, and its copy out of my cart if the bot put it there."""
     if account and alert.get("added") and v.state in ("ended", "replaced", "got_it"):
         account.remove(int(alert["product_id"]))
     alert.update(state=v.state, line=v.line, closed=now.isoformat())
     picture = (alert.get("stamps") or {}).get(DONE_PICTURE.get(v.state, "ended"))
-    telegram.update(alert, caption(alert, v.line, done=True), keyboard(alert, done=True), picture, done=True)
+    app.update(alert, caption(alert, v.line, done=True), keyboard(alert, done=True), picture, done=True)
 
 
 def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict[str, Any]], cart: dict | None,
-            bought: dict[int, float], telegram: Telegram, account: Account | None, now: datetime) -> list[str]:
+            bought: dict[int, float], app: App, account: Account | None, now: datetime) -> list[str]:
     """Bring every open alert up to date (D54); a line per change, for the log."""
     wishes = {deals.wish_key(w): w for w in watch}
     items = cart_items(cart)
@@ -402,7 +374,7 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
     for alert in [a for a in alerts.values() if a.get("closed") and a.get("state") != "bought"]:
         if int(alert["product_id"]) in bought:  # it was me after all: my purchase showed up late
             finish(alert, Verdict("bought", f"✅ Bought for €{bought[int(alert['product_id'])]:.2f} · recorded, "
-                                            "off the want-list"), telegram, None, now)
+                                            "off the want-list"), app, None, now)
             log.append(f"{alert['name']}: bought after all")
     for alert in [a for a in alerts.values() if not a.get("closed")]:
         pid = int(alert["product_id"])
@@ -426,10 +398,10 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
             line = v.line or (cart_line(cart, now) + (f" · price now €{v.price:.2f}" if v.price else "") if in_cart
                               else alert.get("line") or "")
             if line != alert.get("line"):
-                telegram.update(alert, caption(alert, line), keyboard(alert, done=False))
+                app.update(alert, caption(alert, line), keyboard(alert, done=False))
                 alert["line"] = line
             continue
-        finish(alert, v, telegram, account, now)
+        finish(alert, v, app, account, now)
         log.append(f"{alert['name']}: {v.line}")
         if v.state == "bought":
             bought_now.append(alert)
@@ -441,7 +413,7 @@ def refresh(alerts: dict[str, dict], result: deals.CheckResult, watch: list[dict
         members = {k for k, w in wishes.items() if group and w.get("one_of") == group}
         for other in [a for a in alerts.values() if not a.get("closed")]:
             if (other["key"] == b["key"] and left <= 0) or other["key"] in members - {b["key"]}:
-                finish(other, Verdict("got_it", "✓ You already bought this card"), telegram, account, now)
+                finish(other, Verdict("got_it", "✓ You already bought this card"), app, account, now)
                 log.append(f"{other['name']}: already bought")
     return log
 

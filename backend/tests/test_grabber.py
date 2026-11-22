@@ -329,40 +329,16 @@ def test_alert_failure_never_raises():
     assert send_alert(client, "my-topic", "title", "body") is False
 
 
-def test_telegram_is_used_when_configured(monkeypatch):
-    from mtg_intel.archive.notify import alert
-
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
-    monkeypatch.setenv("NTFY_TOPIC", "my-topic")
-    posted: list[httpx.Request] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        posted.append(request)
-        return httpx.Response(200, json={"ok": True})
-
-    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "title", "body", section="digest") is True
-    [request] = posted
-    assert str(request.url) == "https://api.telegram.org/bot123:abc/sendMessage"
-    assert json.loads(request.content) == {"chat_id": "42", "text": "title\n\nbody",
-                                           "link_preview_options": {"is_disabled": True}}
-
-
-def _site(monkeypatch, telegram=False):
+def _site(monkeypatch):
     monkeypatch.setenv("SITE_URL", "https://site.test")
     monkeypatch.setenv("SITE_INGEST_TOKEN", "tok")
     monkeypatch.setenv("NTFY_TOPIC", "my-topic")
-    if telegram:
-        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
-        monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
-    else:
-        monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
 
 
-def test_the_app_gets_every_alert_in_its_section_and_telegram_too(monkeypatch):
+def test_the_app_gets_every_alert_in_its_section(monkeypatch):
     from mtg_intel.archive.notify import alert
 
-    _site(monkeypatch, telegram=True)
+    _site(monkeypatch)
     posted: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -370,10 +346,9 @@ def test_the_app_gets_every_alert_in_its_section_and_telegram_too(monkeypatch):
         return httpx.Response(200, json={"ok": True, "result": {}})
 
     assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "grab needs a look", "stale source")
-    app, tg = posted
+    [app] = posted  # the site took it: no ntfy
     assert str(app.url) == "https://site.test/api/ingest/alert" and app.headers["Authorization"] == "Bearer tok"
     assert json.loads(app.content) == {"section": "system", "title": "grab needs a look", "body": "stale source", "ping": True}
-    assert "api.telegram.org" in str(tg.url)  # side by side until Telegram is switched off; ntfy not needed
 
 
 def test_ntfy_backs_up_a_system_alert_the_site_did_not_take(monkeypatch):
@@ -407,41 +382,21 @@ def test_a_rich_deal_reaches_the_page_with_picture_buttons_and_what_its_ring_dep
 
     rich = Rich("<b>x</b>", [[{"text": "🧾 Pay", "url": "https://ct.test/cart"}], [{"text": "Set €3", "callback_data": "t|a|en|n|300"}]],
                 caption="🔥 Steal · <b>Sheoldred</b> · €18.40\nNear Mint", head="🔥 Steal · <b>Sheoldred</b> · €18.40",
-                picture="https://site.test/img/a.jpg", silent=True)
-    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "Steal: Sheoldred", "text", telegram=rich,
+                picture="https://site.test/img/a.jpg")
+    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "Steal: Sheoldred", "text", rich=rich,
                  section="deals", app_id="deal:7", deal={"rank": 3, "card": "abc|en|no", "price": 18.4})
     [doc] = sent
     assert doc["id"] == "deal:7" and doc["section"] == "deals" and doc["body"] == "🔥 Steal · Sheoldred · €18.40"
     assert doc["html"].startswith("🔥 Steal") and doc["picture"] == "https://site.test/img/a.jpg"
     assert doc["buttons"] == [[{"text": "🧾 Pay", "url": "https://ct.test/cart"}], [{"text": "Set €3", "action": "t|a|en|n|300"}]]
-    # quiet on Telegram, but the app always asks: each device's settings decide whether it rings (D88)
+    # the app always asks: each device's settings decide whether it rings (D88)
     assert doc["ping"] is True and (doc["rank"], doc["card"], doc["price"]) == (3, "abc|en|no", 18.4)
 
 
-def test_telegram_gets_the_rich_version_and_falls_back_to_plain_text(monkeypatch):
+def test_ntfy_is_the_fallback_without_the_site(monkeypatch):
     from mtg_intel.archive.notify import alert
 
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
-    bodies: list[dict] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        bodies.append(json.loads(request.content))
-        # Telegram refuses HTML it can't parse: the plain text must still arrive.
-        return httpx.Response(400 if "parse_mode" in bodies[-1] else 200, json={"ok": True, "result": {}})
-
-    buttons = [[{"text": "🛒 Bought it", "callback_data": "b|x"}]]
-    from mtg_intel.archive.notify import Rich
-
-    assert alert(httpx.Client(transport=httpx.MockTransport(handler)), "title", "body", telegram=Rich("<b>x", buttons))
-    assert bodies[0]["parse_mode"] == "HTML" and bodies[0]["reply_markup"] == {"inline_keyboard": buttons}
-    assert bodies[1]["text"] == "title\n\nbody" and "reply_markup" not in bodies[1]
-
-
-def test_ntfy_is_the_fallback_without_telegram(monkeypatch):
-    from mtg_intel.archive.notify import alert
-
-    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("SITE_URL", raising=False)
     monkeypatch.setenv("NTFY_TOPIC", "my-topic")
     posted: list[httpx.Request] = []
 

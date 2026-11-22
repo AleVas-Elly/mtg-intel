@@ -85,16 +85,6 @@ def test_still_a_deal_has_slack_and_a_target_wins():
     assert lifecycle.still_a_deal({}, 3.70, None, wish()) is None
 
 
-def test_only_good_deals_ring_by_day_and_only_steals_at_night():
-    steal = deals.best_deal(wish(), [listing(cents=100)])
-    good = deals.best_deal(wish(), [listing(cents=300)])
-    great = deals.best_deal(wish(), [listing(cents=260)])
-    assert [d.tier[1] for d in (steal, great, good)] == ["🚨 Steal", "🔥 Great deal", "✅ Good deal"]
-    night = datetime(2026, 11, 6, 23, 30, tzinfo=UTC)  # 00:30 in Amsterdam
-    assert [lifecycle.rings(d, NOW) for d in (steal, great, good)] == [True, True, False]
-    assert [lifecycle.rings(d, night) for d in (steal, great, good)] == [True, False, False]
-
-
 def test_caption_names_the_copy_and_crosses_out_a_finished_deal():
     alert = {"head": "🚨 Steal · <b>Esika</b> · €9.29", "copy": "Near Mint · English · Non-foil · Zero · Magicfree (Italy)",
              "details": "<blockquote expandable>x</blockquote>", "links": [{"text": "CardTrader", "url": "u"}]}
@@ -124,13 +114,13 @@ def test_the_cart_says_added_gone_or_error():
     assert lifecycle.cart_items(cart) == {7: (1, 7.08)} and lifecycle.cart_summary(cart) == (7.08, 1)
 
 
-class FakeTelegram(lifecycle.Telegram):
+class FakeApp(lifecycle.App):
     def __init__(self):
-        self.edits, self.chat_id = [], "42"
+        self.edits = []
 
-    def call(self, method, body):
-        self.edits.append((method, body))
-        return {}
+    def update(self, alert, text, buttons, picture=None, done=False):
+        self.edits.append((alert["app_id"], text, picture, done))
+        return True
 
 
 class FakeAccount:
@@ -146,10 +136,10 @@ class FakeAccount:
 
 
 def open_alert(mid, key="sf-loki|en|any", product=500, **kw):
-    return {"message_id": mid, "key": key, "name": "Loki", "blueprint_id": 10, "product_id": product, "price": 2.88,
+    return {"app_id": f"deal:{mid}", "key": key, "name": "Loki", "blueprint_id": 10, "product_id": product, "price": 2.88,
             "added": True, "head": "✅ Good deal · <b>Loki</b> · €2.88", "copy": "Near Mint", "details": "", "links": [],
             "stamps": {"bought": "https://s/img/b.jpg", "sold": "https://s/img/s.jpg", "ended": "https://s/img/e.jpg"},
-            "photo": True, "line": "", **kw}
+            "line": "", **kw}
 
 
 def test_refresh_updates_open_alerts_and_ends_the_others_of_a_bought_wish():
@@ -157,11 +147,11 @@ def test_refresh_updates_open_alerts_and_ends_the_others_of_a_bought_wish():
     alerts = {"1": open_alert(1), "2": open_alert(2, product=501), "3": open_alert(3, product=502)}
     cart = {"total": {"cents": 288}, "subcarts": [{"cart_items": [{"product": {"id": 501}, "quantity": 1, "price_cents": 288},
                                                                     {"product": {"id": 502}, "quantity": 1, "price_cents": 288}]}]}
-    tg, account = FakeTelegram(), FakeAccount()
+    tg, account = FakeApp(), FakeAccount()
     log = lifecycle.refresh(alerts, result, [wish(quantity=1)], cart, {500: 2.88}, tg, account, NOW)
     assert alerts["1"]["state"] == "bought" and alerts["2"]["state"] == "got_it" and alerts["3"]["state"] == "got_it"
     assert account.removed == [501, 502]  # the bot's copies of a wish I no longer need leave my cart
-    media = [b["media"]["media"] for m, b in tg.edits if m == "editMessageMedia"]
+    media = [picture for _, _, picture, done in tg.edits if done]
     assert media == ["https://s/img/b.jpg", "https://s/img/e.jpg", "https://s/img/e.jpg"]
     assert log[0] == "Loki: ✅ Bought for €2.88 · recorded, off the want-list"
 
@@ -170,10 +160,10 @@ def test_refresh_keeps_an_alert_in_the_cart_up_to_date():
     result = deals.check(fake_session_one(), [wish()], {}, NOW)
     alerts = {"1": open_alert(1, product=1)}  # listing 1 at €2.88 is in this check
     cart = {"total": {"cents": 288}, "subcarts": [{"cart_items": [{"product": {"id": 1}, "quantity": 1, "price_cents": 288}]}]}
-    tg = FakeTelegram()
+    tg = FakeApp()
     lifecycle.refresh(alerts, result, [wish()], cart, {}, tg, FakeAccount(), NOW)
     assert alerts["1"]["line"] == "🛒 In your cart · cart €2.88 for 1 card · checked 14:00" and "closed" not in alerts["1"]
-    assert tg.edits[0][0] == "editMessageCaption"
+    assert tg.edits[0][0] == "deal:1" and "In your cart" in tg.edits[0][1] and not tg.edits[0][3]
     tg.edits.clear()
     lifecycle.refresh(alerts, result, [wish()], cart, {}, tg, FakeAccount(), NOW)
     assert tg.edits == []  # nothing changed, nothing edited
@@ -193,7 +183,7 @@ def test_an_alert_whose_copy_the_feed_misses_stays_open_while_it_is_in_my_cart()
     result = deals.check(feed(feed_item(id=501, cents=650)), [w], {}, NOW)
     alerts = {"1": open_alert(1, product=500, price=5.68)}
     cart = {"subcarts": [{"cart_items": [{"product": {"id": 500}, "quantity": 1, "price_cents": 568}]}]}
-    lifecycle.refresh(alerts, result, [w], cart, {}, FakeTelegram(), FakeAccount(), NOW)
+    lifecycle.refresh(alerts, result, [w], cart, {}, FakeApp(), FakeAccount(), NOW)
     assert "closed" not in alerts["1"] and alerts["1"]["line"] != "⏹ No longer a deal"
 
 
@@ -204,7 +194,7 @@ def test_an_alert_is_judged_by_its_own_copys_finish():
     result = deals.check(feed(feed_item(id=500, cents=568, foil=True), feed_item(id=501, cents=650)), [w], {}, NOW)
     alerts = {"1": open_alert(1, product=501, price=6.50)}
     cart = {"subcarts": [{"cart_items": [{"product": {"id": 501}, "quantity": 1, "price_cents": 650}]}]}
-    lifecycle.refresh(alerts, result, [w], cart, {}, FakeTelegram(), FakeAccount(), NOW)
+    lifecycle.refresh(alerts, result, [w], cart, {}, FakeApp(), FakeAccount(), NOW)
     assert alerts["1"]["state"] == "ended" and alerts["1"]["line"].startswith("⏹ No longer a deal")
 
 
@@ -252,10 +242,10 @@ def test_order_purchases_are_applied_once_collected_and_taken_back(tmp_path: Pat
 def test_a_purchase_seen_late_turns_a_missed_alert_into_bought():
     result = deals.check(fake_session_one(), [wish()], {}, NOW)
     alerts = {"1": open_alert(1, product=77, state="sold_out", closed=NOW.isoformat(), line="❌ Missed")}
-    tg = FakeTelegram()
+    tg = FakeApp()
     log = lifecycle.refresh(alerts, result, [wish()], {"subcarts": []}, {77: 2.5}, tg, FakeAccount(), NOW)
     assert alerts["1"]["state"] == "bought" and log == ["Loki: bought after all"]
-    assert tg.edits[0][1]["media"]["media"] == "https://s/img/b.jpg"
+    assert tg.edits[0][2] == "https://s/img/b.jpg"
 
 
 def test_zero_box_purchases_are_recorded_and_refunds_taken_back():

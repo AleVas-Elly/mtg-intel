@@ -49,7 +49,7 @@ export function useUnread(): number {
   return n;
 }
 
-// --- The bot's text: Telegram's small HTML, drawn with an allow-list (never innerHTML) ---------
+// --- The alert's text: a small HTML, drawn with an allow-list (never innerHTML) ---------------
 
 const KEEP: Record<string, string> = { B: "b", STRONG: "b", I: "i", EM: "i", U: "u", INS: "u", S: "s", STRIKE: "s", DEL: "s", CODE: "code", PRE: "code" };
 

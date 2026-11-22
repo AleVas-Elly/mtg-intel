@@ -4,7 +4,7 @@ For each wish, the best price of each day (the lower of Cardmarket's trend for i
 shipping, D78, and the cheapest CardTrader copy fitting the wish, shipping included via Zero) over the last 90 days; the suggested target is the
 price reached on about 15% of those days, rounded down to a clean number. Suggested only where it
 helps: a wish with no target, a target never reached in 90 days, or one reached so often that it
-rings on ordinary prices. Sent weekly on Telegram (one tap sets it) and shown on the site.
+rings on ordinary prices. Sent weekly to the Alerts page (one tap sets it) and shown on the site.
 """
 
 from __future__ import annotations

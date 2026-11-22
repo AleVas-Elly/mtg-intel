@@ -128,16 +128,10 @@ async function accounts(env: Env): Promise<Account[]> {
 const logged = (env: Env, who: string, what: string) =>
   env.DB.prepare("INSERT INTO activity (account, at, what) VALUES (?, ?, ?)").bind(who, new Date().toISOString(), what.slice(0, 300));
 
-/** A quiet Telegram note to me through the timer Worker, which holds the bot token (D78). */
+/** A quiet note to me on the Alerts page's Digest (D78, D88); rings only where the device lets the digest ring. */
 function notify(env: Env, ctx: ExecutionContext | null, text: string) {
-  // also on the Alerts page's Digest (D88); rings only where the device lets the digest ring
   const saved = saveAlert(env, { section: "digest", title: text.slice(0, 120), body: text, ping: true }).catch(() => undefined);
   if (ctx) ctx.waitUntil(saved);
-  if (!env.TRIGGER) return;
-  const job = env.TRIGGER.fetch("https://trigger/notify", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
-  }).catch(() => undefined);
-  if (ctx) ctx.waitUntil(job);
 }
 
 const queueEdit = (env: Env, e: Edit & { hold_until?: string }, verb = "INSERT") =>
@@ -256,7 +250,7 @@ async function invite(env: Env, origin: string, a: Pick<Account, "id" | "name"> 
   return { url: `${origin}/setup#${token}`, expires: new Date(exp).toISOString() };
 }
 
-/** A device or person's place, for the activity log and Telegram. */
+/** A device or person's place, for the activity log and the Alerts page. */
 const placeText = (p: Place) => [p.city, p.country].filter(Boolean).join(", ");
 
 async function auth(request: Request, env: Env, path: string, url: URL, ctx: ExecutionContext): Promise<Response> {
@@ -996,23 +990,14 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
     if (done.length) await env.DB.batch(done);
     return json({ ok: true });
   }
-  // Done versions of a deal alert's picture (D53): stored for 60 days, served publicly by an
-  // unguessable name so Telegram can fetch them; and which ones belong to which alert message.
+  // A deal alert's picture and its done versions (D53, D88): stored for 60 days, served publicly by
+  // an unguessable name.
   const img = /^img\/([A-Za-z0-9_-]{16,64})$/.exec(path);
   if (img && request.method === "POST") {
     const body = await request.arrayBuffer();
     if (body.byteLength > 2_000_000) return json({ error: "Too large" }, 413);
     await env.DATA.put(`img:${img[1]}`, body, { expirationTtl: 60 * 86400 });
     return json({ ok: true, bytes: body.byteLength });
-  }
-  const link = /^tgimg\/(-?\d{1,20})\/(\d{1,12})$/.exec(path);
-  if (link && request.method === "POST") {
-    const map = (await request.json().catch(() => null)) as Record<string, string> | null;
-    if (!map || Object.values(map).some((u) => typeof u !== "string" || !u.startsWith(url.origin + "/img/"))) {
-      return json({ error: "Not valid" }, 400);
-    }
-    await env.DATA.put(`tgimg:${link[1]}:${link[2]}`, JSON.stringify(map), { expirationTtl: 60 * 86400 });
-    return json({ ok: true });
   }
   if (!DATA_KEY.test(path)) return json({ error: "Unknown key" }, 404);
   if (request.method === "GET") {
@@ -1037,48 +1022,12 @@ async function ingest(request: Request, env: Env, path: string, url: URL): Promi
   return json({ ok: true, bytes: text.length });
 }
 
-/** Telegram's webhook for the bot's buttons (D53): passed to the timer Worker, which holds the bot
- *  token, checks Telegram's secret header and records the purchase. */
-async function telegram(request: Request, env: Env): Promise<Response> {
-  if (!env.TRIGGER || request.method !== "POST") return json({ error: "Not found" }, 404);
-  const secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
-  return env.TRIGGER.fetch("https://trigger/telegram", {
-    method: "POST", headers: { "Content-Type": "application/json", "X-Telegram-Bot-Api-Secret-Token": secret },
-    body: await request.text(),
-  });
-}
-
-/** GET /img/<name>.jpg: a done version of a deal alert's picture, for Telegram (D53). */
+/** GET /img/<name>.jpg: a deal alert's picture or a done version of it (D53, D88). */
 async function doneImage(env: Env, file: string): Promise<Response> {
   const m = /^([A-Za-z0-9_-]{16,64})\.jpg$/.exec(file);
   const body = m ? await env.DATA.get(`img:${m[1]}`, "arrayBuffer") : null;
   if (!body) return new Response("Not found", { status: 404 });
   return new Response(body, { headers: { "Content-Type": "image/jpeg", "Cache-Control": "public, max-age=31536000, immutable" } });
-}
-
-const attr = (v: string) => v.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-/** GET /p/<signed>: a card's preview page for Telegram (D53). A deal alert links here so Telegram
- *  shows the card's picture small, beside its printing and the copy's condition, language and
- *  finish. Only what a GitHub job signed with the ingest token, only Scryfall pictures. A person
- *  who opens it is sent on to the card by script, never by a meta refresh: Telegram follows those
- *  and would preview the sign-in page instead (2026-11-06). */
-async function preview(env: Env, token: string): Promise<Response> {
-  const p = await verify<{ kind: string; k: string; i: string; t: string; d: string; s?: string; exp: number }>(env.INGEST_TOKEN, token);
-  if (!p || p.kind !== "preview" || !/^[A-Za-z0-9/_.?=-]{1,200}$/.test(p.i) || p.i.includes("..")) {
-    return new Response("Not found", { status: 404 });
-  }
-  const card = `/wants?card=${encodeURIComponent(p.k)}`;
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${attr(p.t)}</title>
-<meta name="robots" content="noindex">
-<meta property="og:type" content="article">
-<meta property="og:site_name" content="${attr(p.s || "mtg-intel")}">
-<meta property="og:title" content="${attr(p.t)}">
-<meta property="og:description" content="${attr(p.d)}">
-<meta property="og:image" content="https://cards.scryfall.io/${attr(p.i)}">
-<meta property="og:image:width" content="488"><meta property="og:image:height" content="680">
-</head><body><a href="${attr(card)}">Open the card</a><script>location.replace(${JSON.stringify(card).replace(/</g, "\\u003c")})</script></body></html>`;
-  return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "public, max-age=86400" } });
 }
 
 /** Scryfall's set and mana symbol SVGs, from our own origin so CSS masks can colour them by rarity. */
@@ -1117,8 +1066,6 @@ export default {
       if (path === "/api/edits" || path.startsWith("/api/edits/")) return await edits(request, env, path.slice(11), ctx);
       if (path.startsWith("/api/ct/")) return await ctCopies(request, env, path.slice(8), ctx);
       if (path.startsWith("/sym/")) return await symbol(request, path.slice(5), ctx);
-      if (path === "/api/telegram") return await telegram(request, env);
-      if (path.startsWith("/p/")) return await preview(env, path.slice(3));
       if (path.startsWith("/img/")) return await doneImage(env, path.slice(5));
       if (path.startsWith("/api/")) return json({ error: "Not found" }, 404);
     } catch (e) {

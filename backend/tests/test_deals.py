@@ -189,56 +189,27 @@ def test_message_says_how_strong_the_deal_is_and_what_it_was_compared_with():
     assert "https://www.cardmarket.com/en/Magic/Products?idProduct=890665&sellerCountry=23&language=1&minCondition=2&isFoil=N" in text
 
 
-def test_telegram_message_shows_both_markets_against_their_usual_and_details_behind_a_tap():
+def test_rich_alert_shows_both_markets_against_their_usual_and_details_behind_a_tap():
     deal = deals.best_deal(wish(scryfall_id="0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50", language="en", foil="no"),
                            [listing(id=1, cents=288), listing(id=2, cents=450)])
-    rich = deals.telegram(deal, "https://site.example/", "https://site.example/p/x", history=[["📈 T", "▁▂"]])
-    html, buttons, preview = rich.html, rich.buttons, rich.preview
+    rich = deals.rich_alert(deal, "https://site.example/", history=[["📈 T", "▁▂"]])
+    html, buttons = rich.html, rich.buttons
     top, more = html.split("<blockquote expandable>")
     assert top.strip().splitlines() == ["✅ Good deal · 38% under", "<b>Loki, God of Mischief</b>",
                                 "<b>CardTrader</b>  €2.88 (−38%)",
                                 "<b>Cardmarket</b>  €4.70 (€3.00 + €1.70 shipping) (+1%)",
-                                "Usual €4.67"]  # as the site's rows show them (D76)
-    assert preview == "https://site.example/p/x"
+                                "Usual €4.67",  # as the site's rows show them (D76)
+                                "MSH #343 · Borderless · NM · EN · Non-foil · Zero"]
     assert more == "<b>📈 T</b>\n▁▂</blockquote>"  # only the trends: no "why", seller or list (user)
-    assert buttons[0] == [{"text": "🛒 Bought it", "callback_data": "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|en|no|288|NM|0|en"}]
-    assert [b["text"] for b in buttons[1]] == ["CardTrader", "Cardmarket", "Site"]
-    assert buttons[1][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
+    assert len(buttons) == 1 and [b["text"] for b in buttons[0]] == ["CardTrader", "Cardmarket", "Site"]
+    assert buttons[0][2]["url"] == "https://site.example/wants?card=0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50%7Cen%7Cno"
     assert deals.version_line(deal) == ("MSH #343 · Borderless", "NM · EN · Non-foil · Zero")
-    # Without a picture the printing and copy go in the text.
-    html = deals.telegram(deals.best_deal(wish(), [listing(cents=288)], usual=4.20)).html
+    html = deals.rich_alert(deals.best_deal(wish(), [listing(cents=288)], usual=4.20)).html
     assert "MSH #343 · Borderless · NM · EN · Non-foil · Zero" in html and "Usual €4.20" in html
 
 
-def test_preview_link_is_signed_and_only_for_scryfall_pictures():
-    import base64
-    import hashlib
-    import hmac
-    import json
-
-    from mtg_intel import site
-
-    url = site.preview_url("https://s.example", "tok", "k|en|any", "https://cards.scryfall.io/normal/front/a/b.jpg?1",
-                           "MSH #343", "NM · EN", NOW, "Marvel Super Heroes")
-    body, mac = url.removeprefix("https://s.example/p/").split(".")
-    assert base64.urlsafe_b64decode(mac + "==") == hmac.new(b"tok", body.encode(), hashlib.sha256).digest()
-    payload = json.loads(base64.urlsafe_b64decode(body + "=="))
-    assert (payload["kind"], payload["i"], payload["t"], payload["d"], payload["s"]) == (
-        "preview", "normal/front/a/b.jpg?1", "MSH #343", "NM · EN", "Marvel Super Heroes")
-    assert deals.front_name("Esika, God of the Tree // The Prismatic Bridge") == "Esika, God of the Tree"
-    assert site.preview_url("https://s.example", "tok", "k", "https://evil.example/x.jpg", "t", "d", NOW) is None
-
-
-def test_bought_button_data_fits_telegram_and_names_the_copy():
-    # Japanese wish of any finish, a foil Slightly Played copy: CardTrader's "jp" is the want-list's "ja".
-    deal = deals.best_deal(wish(scryfall_id="0c3f2c9e-1d3b-4a4e-9a8c-6f1b2d3e4f50", language="ja", min_condition="SP",
-                                max_price_eur=200.0),
-                           [listing(cents=12345, language="jp", foil=True, condition="Slightly Played")])
-    data = deals.bought_data(deal)
-    assert data == "b|0c3f2c9e1d3b4a4e9a8c6f1b2d3e4f50|ja|any|12345|SP|1|ja" and len(data.encode()) <= 64
-    assert deals.bought_data(deals.best_deal(wish(scryfall_id=None), [listing(cents=100)])).startswith("b|10|")
-    # Names in HTML are escaped.
-    assert "<b>R&amp;D's &lt;Secret&gt;</b>" in deals.telegram(deals.best_deal(wish(name="R&D's <Secret>"), [listing(cents=100)])).html
+def test_names_in_the_alert_html_are_escaped():
+    assert "<b>R&amp;D's &lt;Secret&gt;</b>" in deals.rich_alert(deals.best_deal(wish(name="R&D's <Secret>"), [listing(cents=100)])).html
 
 
 def test_cardmarket_target_alerts_once_and_again_when_lower():
@@ -350,25 +321,9 @@ def test_deal_image_says_what_makes_it_a_deal_and_draws():
     png = dealimage.render(p, Image.new("RGB", (488, 680), "#335533"))
     image = Image.open(io.BytesIO(png))
     assert image.width == 1080 and 650 < image.height < 900  # wider than tall: no side bars
-    # The photo goes with a one-line caption (lock screen) and the details behind a tap.
-    rich = deals.telegram(deal, photo=png)
-    assert rich.photo == png and rich.caption == "✅ Good deal · <b>Loki, God of Mischief</b> · €2.88"  # no trend yet
-
-
-def test_photo_alert_falls_back_to_text_then_plain(monkeypatch):
-    from mtg_intel.archive.notify import Rich, alert
-
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
-    monkeypatch.setenv("TELEGRAM_CHAT_ID", "42")
-    methods = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        methods.append(request.url.path.rsplit("/", 1)[1])
-        return httpx.Response(400 if methods[-1] == "sendPhoto" else 200, json={"ok": True, "result": {}})
-
-    client = httpx.Client(transport=httpx.MockTransport(handler))
-    assert alert(client, "t", "m", Rich("<b>x</b>", [], photo=b"png", caption="c"))
-    assert methods == ["sendPhoto", "sendMessage"]
+    # The picture goes with a one-line caption (lock screen) and the details behind a tap.
+    rich = deals.rich_alert(deal)
+    assert rich.caption == "✅ Good deal · <b>Loki, God of Mischief</b> · €2.88"  # no trend yet
 
 
 def test_price_trend_tells_where_the_card_has_been():
@@ -407,7 +362,7 @@ def test_cardtrader_trend_uses_the_cheapest_fitting_copy_each_day_since_checks_b
 
 def test_details_are_spaced_trend_sections():
     deal = deals.best_deal(wish(), [listing(cents=288)])
-    rich = deals.telegram(deal, history=[["📈 Cardmarket trend · 90 days", "▁▂▃", "Lowest €3.00 · 1 Oct"], [],
+    rich = deals.rich_alert(deal, history=[["📈 Cardmarket trend · 90 days", "▁▂▃", "Lowest €3.00 · 1 Oct"], [],
                                          ["📉 CardTrader, cheapest copy · since 20 Oct", "▃▁", "Lowest €2.88 · 6 Nov"]])
     head, details = rich.caption.split("\n\n", 1)
     assert head == "✅ Good deal · <b>Loki, God of Mischief</b> · €2.88"

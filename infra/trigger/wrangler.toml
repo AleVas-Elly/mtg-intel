@@ -6,13 +6,12 @@ workers_dev = false
 [triggers]
 crons = ["2,7,12,17,22,27,32,37,42,47,52,57 * * * *", "17 2,8,14 * * *", "* * * * *"]
 
-# The website's KV (frontend/wrangler.toml): the `wants` document and the bot's small keys
-# (`tg:bought:*`, `tgimg:*`, `fast:*`).
+# The website's KV (frontend/wrangler.toml).
 [[kv_namespaces]]
 binding = "DATA"
 id = "fe194e1ee4754791801ac6024a93905a"
 
-# The website's D1 (D67): the edit queue (D50, purchases from the bot's buttons, D53), the time of
+# The website's D1 (D67): the edit queue (D50), the time of
 # the last deal check and the fast-lane list (in `docs` and `meta`), the watchdog.
 [[d1_databases]]
 binding = "DB"
@@ -33,4 +32,4 @@ enabled = true
 GITHUB_REPO = "AleVas-Elly/mtg-intel"
 
 # Secrets (wrangler secret put): GITHUB_TOKEN (fine-grained, this repo only, Actions: read and write),
-# TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, CARDTRADER_TOKEN (Skip, Check now, the fast lane: D58).
+# CARDTRADER_TOKEN (the fast lane, D58, and Check CardTrader, D83).

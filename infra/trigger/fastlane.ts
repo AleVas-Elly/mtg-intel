@@ -4,7 +4,7 @@
 // last hour, makes the timer start a full check at once, which puts it in my cart and alerts.
 // Needs CARDTRADER_TOKEN; without it, it does nothing.
 
-import { cardtrader, type TelegramEnv } from "./telegram.ts";
+import { cardtrader, type TimerEnv } from "./cardtrader.ts";
 
 interface Fast {
   bp: number; key: string; lang: string; foil: string; grade: number; zero: boolean;
@@ -39,7 +39,7 @@ export function isDeal(f: Fast, price: number): boolean {
 }
 
 /** The fast-lane cards that turned into a deal since the last full check. */
-export async function fastLane(env: TelegramEnv): Promise<number[]> {
+export async function fastLane(env: TimerEnv): Promise<number[]> {
   if (!env.CARDTRADER_TOKEN) return [];
   // The list from the last `live` upload, copied to D1 by the site (D67): one row read a minute
   // instead of a KV read of the whole document.

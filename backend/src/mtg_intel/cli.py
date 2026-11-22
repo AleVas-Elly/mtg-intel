@@ -57,8 +57,6 @@ def main(argv: list[str] | None = None) -> int:
     wishlists.add_argument("ids", nargs="*", type=int, help="wishlist IDs to import")
     wishlists.add_argument("--out", type=Path, default=REPO_ROOT / "data" / "my" / "wantlist.csv")
     commands.add_parser("sync-tables", help="download the tables to data/tables for querying")
-    commands.add_parser("telegram-setup", help="find my chat with the bot and send a test message")
-    commands.add_parser("telegram-webhook", help="send the bot's button taps to the website (SITE_URL)")
     test_alert = commands.add_parser("alert", help="send an alert through the configured channel")
     test_alert.add_argument("title")
     test_alert.add_argument("message")
@@ -93,9 +91,9 @@ def main(argv: list[str] | None = None) -> int:
     deal_check = commands.add_parser("check-deals", help="check CardTrader for want-list deals and alert (phase 3)")
     deal_check.add_argument("--dry-run", action="store_true", help="print deals; send and save nothing")
     suggest = commands.add_parser("suggest-targets", help="target price suggestions from 90 days of prices (D55)")
-    suggest.add_argument("--send", action="store_true", help="also send the Telegram note")
+    suggest.add_argument("--send", action="store_true", help="also put the note on the Alerts page")
     trend_note = commands.add_parser("trend-note", help="this week's price moves of the want-list (D71)")
-    trend_note.add_argument("--send", action="store_true", help="also send the Telegram note")
+    trend_note.add_argument("--send", action="store_true", help="also put the note on the Alerts page")
     args = parser.parse_args(argv)
 
     load_env_file(REPO_ROOT / ".env")
@@ -107,10 +105,6 @@ def main(argv: list[str] | None = None) -> int:
         return import_wishlists(args)
     if args.command == "sync-tables":
         return sync_tables()
-    if args.command == "telegram-setup":
-        return telegram_setup()
-    if args.command == "telegram-webhook":
-        return telegram_webhook()
     if args.command == "suggest-targets":
         with httpx.Client(timeout=60) as client:
             return suggest_targets(client, tables_store(None), None, datetime.now(UTC), args.send)
@@ -452,7 +446,7 @@ def apply_site_edits() -> int:
             print("SITE_URL and SITE_INGEST_TOKEN must be set", file=sys.stderr)
             return 2
         ops = (site_store.get("edits") or {}).get("ops") or []
-        # A purchase from the Telegram button waits a few minutes, so its Undo still works.
+        # An edit with `hold_until` waits until then (Undo windows of the old Telegram button, D53).
         ops, held = mycards.ready_edits(ops, datetime.now(UTC))
         if held:
             print(f"{len(held)} edits held for undo")
@@ -502,28 +496,7 @@ def apply_site_edits() -> int:
             if text != before:
                 status = build_tables(argparse.Namespace(local_archive=None, local_out=None, dry_run=False, site=False))
         site_store.put("edits-applied", {"results": results})
-        telegram_edits_done(client, ops, results)
         return status
-
-
-def telegram_edits_done(client: httpx.Client, ops: list[dict], results: list[dict]) -> None:
-    """Purchases made with the Telegram button: once saved, the alert loses its Undo button; one
-    that could not be saved gets a reply saying why."""
-    from mtg_intel.archive.notify import telegram_call
-
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    by_id = {r["id"]: r for r in results}
-    for op in ops:
-        tg, result = op.get("tg"), by_id.get(op.get("id"))
-        if not token or not isinstance(tg, dict) or not result:
-            continue
-        markup = {"inline_keyboard": [tg["links"]] if tg.get("links") else []}
-        telegram_call(client, token, "editMessageReplyMarkup",
-                      {"chat_id": tg["chat"], "message_id": tg["message"], "reply_markup": markup})
-        if not result["ok"]:
-            telegram_call(client, token, "sendMessage", {
-                "chat_id": tg["chat"], "reply_parameters": {"message_id": tg["message"]},
-                "text": f"⚠️ This purchase was not saved: {result['message']}. Record it on the site instead."})
 
 
 def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watch: list[dict], now: datetime,
@@ -536,11 +509,8 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
     from mtg_intel import deals, lifecycle
     from mtg_intel.archive.notify import alert
 
-    tg_token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
-    if not tg_token or not chat:  # no bot: the old plain alerts
-        return [alert(client, *deals.message(d), section="deals", deal=deals.app_deal(d)) for d in result.new[:MAX_DEAL_MESSAGES]]
     account = lifecycle.Account(client, token)
-    telegram = lifecycle.Telegram(client, tg_token, chat)
+    app = lifecycle.App(client)
     alerts: dict[str, dict] = state.setdefault("alerts", {})
     alerted: dict[str, dict] = state.setdefault("alerted", {})
 
@@ -575,7 +545,7 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
 
     # 2. Open alerts: still in the cart, bought, sold out, taken out, no longer a deal.
     if cart is not None:
-        for line in lifecycle.refresh(alerts, result, watch, cart, bought, telegram, account, now):
+        for line in lifecycle.refresh(alerts, result, watch, cart, bought, app, account, now):
             print(f"ALERT  {line}")
 
     # 3. New deals: into the cart first, then the alert. A deal still standing from before live alerts
@@ -601,29 +571,23 @@ def live_deal_alerts(client: httpx.Client, token: str, state: dict, result, watc
             continue
         if open_alert:
             lifecycle.finish(open_alert, lifecycle.Verdict("replaced", "⬇️ A cheaper copy was found · see the newer alert"),
-                             telegram, account, now)
+                             app, account, now)
         out = rich(d)
         record = {"key": d.key, "name": d.wish["name"], "blueprint_id": d.wish["blueprint_id"], "product_id": d.listing.id,
                   "price": d.listing.price, "zero": d.listing.zero, "added": status == "added", "there": status == "there",
                   "head": out.head, "copy": deals.copy_line(d.listing), "tip": getattr(out, "tip", ""),
                   "details": out.details, "links": out.links,
-                  "stamps": out.stamps or {}, "photo": bool(out.photo), "created": now.isoformat()}
+                  "stamps": out.stamps or {}, "created": now.isoformat()}
         line = (lifecycle.cart_line(cart, now) if status in ("added", "there")
                 else "⚠️ Not checked live: CardTrader's cart didn't answer")
         out.caption = lifecycle.caption(record, line)
         out.html = out.caption
         out.buttons = lifecycle.keyboard(record, done=False)
-        out.silent = not lifecycle.rings(d, now)
         record["app_id"] = f"deal:{d.listing.id}"
-        ok = alert(client, *deals.message(d), telegram=out, section="deals", app_id=record["app_id"], deal=deals.app_deal(d))
+        ok = alert(client, *deals.message(d), rich=out, section="deals", app_id=record["app_id"], deal=deals.app_deal(d))
         sent.append(ok)
-        if ok and out.message_id:
-            alerts[str(out.message_id)] = record | {"message_id": out.message_id, "line": line}
-            if out.stamps and site_store:  # for Skip in the timer Worker: the picture to swap in
-                try:
-                    site_store.put(f"tgimg/{chat}/{out.message_id}", out.stamps)
-                except httpx.HTTPError as e:
-                    print(f"WARNING  done pictures not linked: {e}", file=sys.stderr)
+        if ok:
+            alerts[record["app_id"]] = record | {"line": line}
         elif status == "added":  # not alerted: don't leave it in my cart
             account.remove(d.listing.id)
     lifecycle.prune(alerts, now)
@@ -634,11 +598,11 @@ TARGETS_WEEKDAY, TARGETS_HOUR = 6, 10  # the target note: Sundays, with the firs
 
 
 def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: datetime, send: bool) -> int:
-    """Target suggestions for every wish (D55): sent to the site, and as the weekly Telegram note."""
+    """Target suggestions for every wish (D55): sent to the site, and as the weekly note on the Alerts page."""
     import pyarrow.parquet as pq
 
     from mtg_intel import targets
-    from mtg_intel.archive.notify import app_buttons, telegram_call, to_app
+    from mtg_intel.archive.notify import app_buttons, to_app
     from mtg_intel.site import Site
 
     if watch is None:
@@ -669,21 +633,15 @@ def suggest_targets(client: httpx.Client, store, watch: list[dict] | None, now: 
     note = targets.weekly_note(found_targets, os.environ.get("SITE_URL"))
     if send and note:
         print(f"target note on the Alerts page: {to_app(client, 'digest', 'Target prices to set', html=note[0], buttons=app_buttons(note[1]))}")
-    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
-    if send and note and token and chat:
-        sent = telegram_call(client, token, "sendMessage", {
-            "chat_id": chat, "text": note[0], "parse_mode": "HTML", "disable_notification": True,
-            "link_preview_options": {"is_disabled": True}, "reply_markup": {"inline_keyboard": note[1]}})
-        print(f"target note sent: {sent is not None}")
     return 0
 
 
 def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: bool) -> int:
-    """This week's price moves of the want-list (D71): printed, and sent as the Monday Telegram note."""
+    """This week's price moves of the want-list (D71): printed, and the Monday note on the Alerts page."""
     import pyarrow.parquet as pq
 
     from mtg_intel import trends
-    from mtg_intel.archive.notify import telegram_call, to_app
+    from mtg_intel.archive.notify import to_app
 
     if watch is None:
         watch = pq.read_table(store.fetch("my/watch.parquet")).to_pylist()
@@ -696,18 +654,13 @@ def weekly_trends(client: httpx.Client, store, watch: list[dict] | None, send: b
     counts = {kind: sum(m.kind == kind for m in moves) for kind, _ in trends.SECTIONS}
     print("price moves: " + ", ".join(f"{n} {kind}" for kind, n in counts.items()))
     note = trends.weekly_note(moves, os.environ.get("SITE_URL"))
-    if note:  # readable in a terminal: Telegram's HTML without its tags
+    if note:  # readable in a terminal: the note's HTML without its tags
         import html
         import re
 
         print(html.unescape(re.sub(r"<[^>]+>", "", note)))
     if send and note:
         print(f"trend note on the Alerts page: {to_app(client, 'digest', 'This week on the want-list', html=note)}")
-    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
-    if send and note and token and chat:
-        sent = telegram_call(client, token, "sendMessage", {
-            "chat_id": chat, "text": note, "parse_mode": "HTML", "link_preview_options": {"is_disabled": True}})
-        print(f"trend note sent: {sent is not None}")
     return 0
 
 
@@ -798,14 +751,7 @@ def check_deals(args: argparse.Namespace) -> int:
                              out_of_time=lambda: time.monotonic() - started > CARDTRADER_BUDGET.total_seconds(),
                              ignore={int(p) for p in gone})
         targets = deals.cardmarket_targets(watch, alerted, now)
-        site_url, site_token = os.environ.get("SITE_URL"), os.environ.get("SITE_INGEST_TOKEN")
-
-        def preview(d: deals.Deal) -> str | None:
-            if not site_url or not site_token:
-                return None
-            printing, copy = deals.version_line(d)
-            return site.preview_url(site_url, site_token, d.key, d.wish.get("image_url"), printing or d.wish["name"],
-                                    copy, now, d.wish.get("set_name") or "mtg-intel")
+        site_url = os.environ.get("SITE_URL")
 
         history_rows: dict[str, list[dict]] = {}
         if result.new:  # the price trend shown in each alert's details
@@ -852,7 +798,7 @@ def check_deals(args: argparse.Namespace) -> int:
             ct = deals.cardtrader_points(ct_rows.get(d.wish["blueprint_id"], []), d.wish)
             trends = [deals.price_trend(cm, d.cardmarket, "📈 Cardmarket trend"),
                       deals.price_trend(ct, None, "📉 CardTrader, cheapest copy", min_days=5)]
-            out = deals.telegram(d, site_url, preview(d), image, trends)
+            out = deals.rich_alert(d, site_url, trends)
             out.stamps = done
             if image and site_store:  # the picture itself, for the Alerts page (D88)
                 try:
@@ -967,51 +913,6 @@ def pack_day(store, day, work: Path) -> Path | None:
 
 
 DEALS_STATE = "deals/state.json"
-
-
-def telegram_setup() -> int:
-    """Read the bot's latest message to learn my chat ID, then send a test alert there."""
-    from mtg_intel.archive.notify import TELEGRAM_API, send_telegram
-
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token:
-        print("TELEGRAM_BOT_TOKEN is not set (add it to .env)", file=sys.stderr)
-        return 2
-    with httpx.Client(timeout=20) as client:
-        reply = client.get(f"{TELEGRAM_API}/bot{token}/getUpdates").json()
-        if reply.get("error_code") == 409:
-            print("the bot sends its updates to the website (telegram-webhook): TELEGRAM_CHAT_ID is already set up")
-            return 1
-        updates = reply.get("result", [])
-        chats = [u["message"]["chat"]["id"] for u in updates if "message" in u]
-        if not chats:
-            print("no messages yet: send any message to your bot in Telegram, then run this again")
-            return 1
-        chat_id = str(chats[-1])
-        sent = send_telegram(client, token, chat_id, "mtg-intel: alerts will arrive here.")
-    print(f"chat id: {chat_id} | test message sent: {sent}")
-    return 0 if sent else 1
-
-
-def telegram_webhook() -> int:
-    """Point the bot's updates (button taps) at the website Worker, which checks Telegram's secret
-    header: the SHA-256 of "mtg-intel-webhook:" + the bot token, so no extra secret is needed."""
-    import hashlib
-
-    from mtg_intel.archive.notify import telegram_call
-
-    token, site_url = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("SITE_URL")
-    if not token or not site_url:
-        print("TELEGRAM_BOT_TOKEN and SITE_URL must be set", file=sys.stderr)
-        return 2
-    secret = hashlib.sha256(f"mtg-intel-webhook:{token}".encode()).hexdigest()
-    with httpx.Client() as client:
-        done = telegram_call(client, token, "setWebhook", {
-            "url": f"{site_url.rstrip('/')}/api/telegram", "secret_token": secret,
-            "allowed_updates": ["callback_query", "message"], "drop_pending_updates": True})
-        info = telegram_call(client, token, "getWebhookInfo", {}) or {}
-    print(f"webhook set: {done is not None} | url: {info.get('url')} | last error: {info.get('last_error_message')}")
-    return 0 if done is not None else 1
 
 
 if __name__ == "__main__":

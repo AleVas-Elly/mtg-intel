@@ -189,7 +189,7 @@ export function Landing({ busy, error, onSignIn, local, setupMissing }: {
         <MarketsDrop />
       </Section>
 
-      <Section title="Waiting in your cart" lead="When a deal turns up, the copy goes into the CardTrader cart first, then a Telegram alert arrives with its picture. The alert keeps itself up to date until the deal ends.">
+      <Section title="Waiting in your cart" lead="When a deal turns up, the copy goes into the CardTrader cart first, then an alert arrives on your phone, its picture on the Alerts page. The alert keeps itself up to date until the deal ends.">
         <ol class="l-states">
           <li><span class="stamp still ok">In your cart</span><p>Checked again every ten minutes. Pay when you're ready.</p></li>
           <li><span class="stamp still ok">Bought</span><p>Your order is recorded and the card leaves the want-list.</p></li>

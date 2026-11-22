@@ -403,24 +403,11 @@ def message(deal: Deal) -> tuple[str, str]:
 
 CONDITION_GRADE = {"Mint": "NM", "Near Mint": "NM", "Slightly Played": "SP", "Moderately Played": "MP",
                    "Played": "PL", "Heavily Played": "PL", "Poor": "PO"}  # CardTrader words -> want-list grades
-CALLBACK_LIMIT = 64  # bytes Telegram allows in a button's callback data
-
-
-def bought_data(deal: Deal) -> str | None:
-    """What the "Bought it" button sends back (the site Worker reads it): the wish key and the
-    copy bought, packed under Telegram's 64 bytes. `b|<scryfall id without dashes, or blueprint>|
-    <wish language>|<wish foil>|<price in cents>|<grade>|<copy foil 1/0>|<copy language>`."""
-    x = deal.listing
-    card, language, foil = deal.key.split("|")
-    card = card.replace("-", "")
-    copy_language = {v: k for k, v in LANGUAGES.items()}.get(x.language, x.language)
-    data = "|".join(["b", card, language, foil, str(round(x.price * 100)),
-                     CONDITION_GRADE.get(x.condition, "NM"), "1" if x.foil else "0", copy_language])
-    return data if len(data.encode()) <= CALLBACK_LIMIT and "|" not in card else None
+CALLBACK_LIMIT = 64  # bytes a button's action may take (the site Worker checks it, as Telegram did)
 
 
 def _h(text: object) -> str:
-    """Escape text for Telegram's HTML."""
+    """Escape text for the alerts' small HTML."""
     return str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
@@ -587,14 +574,11 @@ def buy_tip(price: float, cardmarket: list[tuple[str, float]], cardtrader: list[
     return ""
 
 
-def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None,
-             photo: bytes | None = None, history: list[list[str]] | None = None) -> Rich:
-    """The deal as a Telegram message (user, 2026-11-06): the strength, the card, then both markets
-    as the site's rows show them, against the usual price (D76); the rest in a quote that opens on a tap; buttons for "Bought it" and the
-    marketplaces. `preview` is the site's preview page for this card: Telegram shows the card's
-    picture small, beside its printing and the copy's condition, language and finish. With `photo`
-    (the deal's image, dealimage.py) the alert is that image, captioned with one line for the lock
-    screen and the same details behind a tap; the text version stays as the fallback."""
+def rich_alert(deal: Deal, site_url: str | None = None, history: list[list[str]] | None = None) -> Rich:
+    """The deal as a rich alert (user, 2026-11-06; the Alerts page since D88): the strength, the card,
+    then both markets as the site's rows show them, against the usual price (D76); the rest in a
+    quote that opens on a tap; buttons for the marketplaces. The caption is one line (the deal's
+    picture goes with it) and the same details."""
     w, x = deal.wish, deal.listing
     head = f"{deal.tier[1]} · {deal.below_pct:.0f}% under" if deal.tier else "🎯 Target price"
     lines = [_h(head), f"<b>{_h(front_name(w['name']))}</b>"]
@@ -602,8 +586,7 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
     if deal.reference:
         lines.append(f"Usual €{deal.reference:.2f}")
     printing, copy = version_line(deal)
-    if not preview:
-        lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
+    lines.append(_h(" · ".join(p for p in (printing, copy) if p)))
 
     # The details, behind a tap: the price trends, each a section with a bold title, a blank line
     # between them (user, 2026-11-06; "why it's a deal", the seller and the list were dropped).
@@ -613,20 +596,15 @@ def telegram(deal: Deal, site_url: str | None = None, preview: str | None = None
     ) + "</blockquote>") if sections else ""
     if details:
         lines += ["", details]
-    buttons: list[list[dict[str, str]]] = []
-    data = bought_data(deal)
-    if data:
-        buttons.append([{"text": "🛒 Bought it", "callback_data": data}])
     links = [{"text": "CardTrader", "url": f"https://www.cardtrader.com/cards/{w['blueprint_id']}"}]
     if w.get("cardmarket_id"):
         links.append({"text": "Cardmarket", "url": cardmarket_url(w)})
     if site_url:
         links.append({"text": "Site", "url": f"{site_url.rstrip('/')}/wants?card={quote(deal.key, safe='')}"})
-    buttons.append(links)
     label = f"{deal.tier[1]} · " if deal.tier else "🎯 Target · "
     head = f"{_h(label)}<b>{_h(front_name(w['name']))}</b> · €{x.price:.2f}"
     caption = head + (f"\n\n{details}" if details else "")
-    return Rich("\n".join(lines), buttons, preview, photo, caption, head=head, details=details, links=links)
+    return Rich("\n".join(lines), [links], caption, head=head, details=details, links=links)
 
 
 LANGUAGE_NAMES = {"en": "English", "jp": "Japanese", "ja": "Japanese", "it": "Italian", "fr": "French", "de": "German",
